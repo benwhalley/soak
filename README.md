@@ -1,17 +1,17 @@
 
 # llemma: tools for psychological research, education and practice
 
-- chatter
-- soak
+This project is a WIP but currently packages one tool
+
+- soak: a DAG based method to describe text-analysis pipelines for qualitative/thematic analysis.
+
 
 
 # SETUP
 
 On OS X or linux:
 
-Install UV
-
-https://docs.astral.sh/uv/getting-started/installation
+Install UV: https://docs.astral.sh/uv/getting-started/installation
 
 
 Clone the repo:
@@ -38,16 +38,6 @@ export LLM_BASE_URL=https://your-endpoint.com (any OpenAI compatible)
 
 # Running  with uv (recommended)
 
-## Chatter
-
-Test the setup by running a chatter prompt:
-
-```
-uv run chatter "Tell me a joke: [[joke]]. Was it funny? [[bool:funny]]"
-```
-
-
-## Soak: qualitative analysis
 
 ```
 uv run soak run demo soak/data/yt-cfs.txt --output yt-cfs-example

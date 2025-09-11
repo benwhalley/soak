@@ -24,12 +24,11 @@ from typing import (
 import anyio
 import tiktoken
 from box import Box
-from chatter import LLM, ChatterResult, LLMCredentials
-from chatter import chatter as chatter_
-from chatter import get_embedding as get_embedding_
-from chatter.parsing import parse_syntax
-from chatter.return_type_models import ACTION_LOOKUP
-from decouple import config
+from struckdown import LLM, ChatterResult, LLMCredentials
+from struckdown import chatter, chatter_async
+from struckdown import get_embedding as get_embedding_
+from struckdown.parsing import parse_syntax
+from struckdown.return_type_models import ACTION_LOOKUP
 from decouple import config as env_config
 from jinja2 import (
     Environment,
@@ -64,11 +63,6 @@ def get_embedding(*args, **kwargs):
     return get_embedding_(*args, **kwargs)
 
 
-# @memory.cache
-def chatter(*args, **kwargs):
-    return chatter_(*args, **kwargs)
-
-
 def get_action_lookup():
     SOAK_ACTION_LOOKUP = dict(ACTION_LOOKUP.copy())
     SOAK_ACTION_LOOKUP.update(
@@ -82,7 +76,7 @@ def get_action_lookup():
     return SOAK_ACTION_LOOKUP
 
 
-MAX_CONCURRENCY = config("MAX_CONCURRENCY", default=20, cast=int)
+MAX_CONCURRENCY = env_config("MAX_CONCURRENCY", default=20, cast=int)
 semaphore = anyio.Semaphore(MAX_CONCURRENCY)
 
 
@@ -147,10 +141,10 @@ class Document:
 
 class QualitativeAnalysis(BaseModel):
     label: Optional[str] = None
-    codes: Optional[List[Code]] = None
-    themes: Optional[List[Theme]] = None
+    codes: Optional[List[Code]] = Field(default_factory=list)
+    themes: Optional[List[Theme]] = Field(default_factory=list)
     narrative: Optional[str] = None
-    quotes: Optional[Any] = None
+    quotes: Optional[Any] = Field(default_factory=list)
     details: Dict[str, Any] = Field(default_factory=dict)
 
     pipeline: Optional[str] = None
@@ -195,10 +189,7 @@ class QualitativeAnalysisComparison(BaseModel):
 
 
 def get_default_llm_credentials():
-    return LLMCredentials(
-        llm_api_key=env_config("LLM_API_KEY"),
-        llm_base_url=env_config("LLM_BASE_URL"),
-    )
+    return LLMCredentials()
 
 
 class DAGConfig(BaseModel):
@@ -650,20 +641,19 @@ class ItemsNode(DAGNode):
         return items
 
 
-async def default_map_task(template, context, model, credentials, max_tokens=None, **kwargs):
+async def default_map_task(template, context, model, credentials, **kwargs):
     """Default map task renders the Step template for each input item and calls the LLM."""
 
     rt = render_strict_template(template, context)
 
     # call chatter as async function within the main event loop
-    result = await chatter(
+    result = await chatter_async(
         multipart_prompt=rt,
         context=context,
         model=model,
         credentials=credentials,
         action_lookup=get_action_lookup(),
-        max_tokens=max_tokens,
-        **kwargs,
+        extra_kwargs=kwargs,
     )
     return result
 
@@ -731,7 +721,7 @@ class Map(ItemsNode, CompletionDAGNode):
                             context={**filtered_context, **item},
                             model=self.get_model(),
                             credentials=self.dag.config.llm_credentials,
-                            max_tokens=self.max_tokens,
+                            max_tokens=self.max_tokens
                         )
 
                 tg.start_soon(run_and_store)
@@ -771,12 +761,12 @@ class Transform(ItemsNode, CompletionDAGNode):
         rt = render_strict_template(self.template, {**self.context, **items[0]})
 
         # call chatter as async function within the main event loop
-        self.output = await chatter(
+        self.output = await chatter_async(
             multipart_prompt=rt,
             model=self.get_model(),
             credentials=self.dag.config.llm_credentials,
             action_lookup=get_action_lookup(),
-            max_tokens=self.max_tokens,
+            extra_kwargs = {'max_tokens':self.max_tokens}   
         )
         return self.output
 
@@ -891,22 +881,25 @@ class QualitativeAnalysisPipeline(DAG):
         template = env.get_template(template_name)
 
         # Render template with data
-        return template.render(pipeline=self, result=self.result())
+        dd = self.model_dump()
+        dd['config']['documents'] =[]
+        return template.render(pipeline=self, result=self.result(), detail=dd)
 
     def result(self):
         def safe_get_output(name):
             try:
-                return Box(self.nodes_dict.get(name).output.response, default=None)
+                return self.nodes_dict.get(name).output.response
             except Exception:
                 return None
-
+            
+        # import pdb; pdb.set_trace()
         return QualitativeAnalysis.model_validate(
             {
-                "themes": safe_get_output("themes").themes,
-                "codes": safe_get_output("codes").codes,
+                "themes": safe_get_output("themes") or [],
+                "codes":  safe_get_output("codes") or [],
                 "narrative": safe_get_output("narrative"),
-                "detail": self.model_dump(),
-                "quotes": safe_get_output("quotes"),
+                "detail": self.model_dump_json(),
+                "quotes": safe_get_output("quotes") or [],
             }
         )
 
@@ -1163,12 +1156,12 @@ class TransformReduce(CompletionDAGNode):
                             self.template_text, {**self.context, "input": batch}
                         )
                         async with semaphore:
-                            results[index] = await chatter(
+                            results[index] = await chatter_async(
                                 multipart_prompt=prompt,
                                 model=self.get_model(),
                                 credentials=self.dag.config.llm_credentials,
                                 action_lookup=get_action_lookup(),
-                                max_tokens=self.max_tokens,
+                                extra_kwargs = {'max_tokens':self.max_tokens},
                             )
 
                     tg.start_soon(run_and_store)
@@ -1180,12 +1173,12 @@ class TransformReduce(CompletionDAGNode):
         final_prompt = render_strict_template(
             self.template_text, {"input": current[0], **self.context}
         )
-        final_response = await chatter(
+        final_response = await chatter_async(
             multipart_prompt=final_prompt,
             model=self.get_model(),
             credentials=self.dag.config.llm_credentials,
             action_lookup=get_action_lookup(),
-            max_tokens=self.max_tokens,
+            extra_kwargs = {'max_tokens':self.max_tokens}
         )
 
         self.output = final_response

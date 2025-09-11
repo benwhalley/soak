@@ -1,1 +1,0 @@
-{{input.to_markdown()}}

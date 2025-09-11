@@ -1,9 +1,16 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
 [project]
-name = "llemma"
-version = "0.1.1"
-description = "LLM based tools for research, education and practice"
+name = "soak-ai"
+version = "0.2.1"
+description = "soak: LLM based tools for textual analysis and qualitative research"
+authors = [
+  { name = "Ben Whalley", email = "ben.whalley@plymouth.ac.uk" }
+]
 readme = "README.md"
-requires-python = ">=3.12"
+requires-python = ">=3.11"
 dependencies = [
     "instructor>=1.10.0",
     "jinja2>=3.1.6",
@@ -25,15 +32,19 @@ dependencies = [
     "asyncpg>=0.30.0",
     "more-itertools>=10.7.0",
     "jinja-markdown>=1.210911",
+    # "struckdown",
 ]
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["chatter*", "soak*", "llemma*"]
+include = ["soak*",]
 
 [project.scripts]
-chatter = "chatter.cli:app"
 soak = "soak.cli:app"
 
 [tool.uv]
 package = true
+
+[tool.uv.sources]
+struckdown = { path = "struckdown" }
+

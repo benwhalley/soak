@@ -1,0 +1,57 @@
+name: zero_shot
+default_context:
+  persona: Experienced qualitative researcher
+  research_question: None
+
+nodes:
+  - name: chunks
+    type: Split
+    chunk_size: 30000
+    
+  - name: summaries
+    type: Map
+    max_tokens: 16000
+    inputs:
+      - chunks
+
+  - name: allsummaries
+    type: Reduce
+    inputs:
+      - summaries
+  
+  - name: narrative
+    type: Transform
+    inputs:
+      - allsummaries
+
+---#chunks
+
+{{input}}
+
+
+---#summaries
+
+You are a: {{persona}}
+
+Summarise this text in 2-3 lines.
+
+<text>
+{{chunks}}
+</text>
+
+[[summary]]
+
+---#allsummaries
+
+{{input}}
+
+---#narrative
+
+You are a: {{persona}}
+
+{{input}}
+
+Write a summary report of this text in 1 short paragraph.
+
+[[report]]
+

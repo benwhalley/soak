@@ -8,7 +8,7 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List
 
-from chatter import get_embedding as get_embedding_
+from struckdown import get_embedding as get_embedding_
 from django.core.files.images import ImageFile
 from joblib import Memory
 from soak.models import QualitativeAnalysis, QualitativeAnalysisComparison

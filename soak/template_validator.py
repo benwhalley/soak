@@ -89,7 +89,7 @@ class TemplateAnalyzer:
             Tuple of (is_valid, error_message)
         """
         try:
-            from chatter.parsing import parse_syntax
+            from struckdown.parsing import parse_syntax
 
             # attempt to parse the template
             parse_syntax(template_string)
