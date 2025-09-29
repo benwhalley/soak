@@ -5,7 +5,7 @@ import logging
 import os
 import sys
 from pathlib import Path
-
+from trogon.typer import init_tui
 import typer
 from struckdown import LLMCredentials
 
@@ -28,9 +28,8 @@ logger = logging.getLogger(__name__)
 
 PIPELINE_DIR = Path(__file__).parent / "pipelines"
 
-
 app = typer.Typer()
-
+init_tui(app)
 
 def resolve_pipeline(pipeline: str, localdir: Path, pipelinedir: Path) -> Path:
     candidates = [
@@ -100,7 +99,7 @@ def run(
     
     
     # generate output content based on format
-    # import pdb; pdb.set_trace()
+
     jsoncontent = analysis.model_dump_json()
     htmlcontent = analysis.to_html()
 

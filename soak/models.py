@@ -890,16 +890,36 @@ class QualitativeAnalysisPipeline(DAG):
             try:
                 return self.nodes_dict.get(name).output.response
             except Exception:
+                logger.warning( f"Error getting output {name}")
                 return None
             
-        # import pdb; pdb.set_trace()
+        
+        try:
+            codes = self.nodes_dict.get('codes').output.response['codes']
+        except Exception:
+            codes = []
+        try:
+            themes = self.nodes_dict.get('themes').output.response['themes']
+        except Exception:
+            themes = []
+            
+        try:
+            narrative = self.nodes_dict.get('narrative').output.response
+        except Exception:
+            narrative = ""
+        
+        try:
+            quotes = self.nodes_dict.get('quotes').output.response
+        except Exception:
+            quotes = []
+            
         return QualitativeAnalysis.model_validate(
             {
-                "themes": safe_get_output("themes") or [],
-                "codes":  safe_get_output("codes") or [],
-                "narrative": safe_get_output("narrative"),
+                "themes": themes,
+                "codes":  codes,
+                "narrative": narrative,
                 "detail": self.model_dump_json(),
-                "quotes": safe_get_output("quotes") or [],
+                "quotes": quotes,
             }
         )
 
@@ -932,10 +952,6 @@ class VerifyQuotes(DAGNode):
             extr_emb = np.array(get_embedding(extr_quotes))
         except Exception as e:
             print(e)
-            import pdb
-
-            pdb.set_trace()
-
         # calculate cosine similarity
         sims = cosine_similarity(extr_emb, real_emb)
 

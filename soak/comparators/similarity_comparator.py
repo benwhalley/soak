@@ -405,9 +405,9 @@ class SimilarityComparator:
         n_neighbors = config.get("n_neighbors", 5)
         min_dist = config.get("min_dist", 0.01)
         method = config.get("method", "umap")
-
+        
         result_combinations = list(itertools.combinations(pipeline_results, 2))
-
+        
         # run synchronously
         similarity_results = [
             compare_result_similarity(i, j, threshold=threshold) for i, j in result_combinations
@@ -430,7 +430,7 @@ class SimilarityComparator:
             threshold=threshold,
         )
 
-        # import pdb; pdb.set_trace()
+
         result_combinations_dict = OrderedDict(
             {i.name() + "_" + j.name(): (i, j) for i, j in result_combinations}
         )
