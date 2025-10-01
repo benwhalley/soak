@@ -47,7 +47,9 @@ def get_scrubber(salt, model="en_core_web_md"):
         """Only match proper RFC-style emails, not things like 'vague @ times'."""
 
         name = "strict_email"
-        regex = re.compile(r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", re.UNICODE)
+        regex = re.compile(
+            r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b", re.UNICODE
+        )
 
     scrubber = scrubadub.Scrubber(
         post_processor_list=[

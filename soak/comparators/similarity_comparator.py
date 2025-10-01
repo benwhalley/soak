@@ -8,9 +8,9 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List
 
-from struckdown import get_embedding as get_embedding_
-from django.core.files.images import ImageFile
 from joblib import Memory
+from struckdown import get_embedding as get_embedding_
+
 from soak.models import QualitativeAnalysis, QualitativeAnalysisComparison
 
 memory = Memory(Path(".embeddings"), verbose=0)
@@ -22,23 +22,38 @@ def get_embedding(*args, **kwargs):
     return get_embedding_(*args, **kwargs)
 
 
-class Base64ImageFile(ImageFile):
+class Base64ImageFile:
+    """Simple wrapper for BytesIO that provides base64 encoding."""
+
+    def __init__(self, buffer, name=None):
+        self.buffer = buffer
+        self.name = name
+
     @property
     def base64(self):
-        if self.closed:
-            self.open()
-        self.seek(0)
-        return base64.b64encode(self.read()).decode("utf-8")
+        self.buffer.seek(0)
+        return base64.b64encode(self.buffer.read()).decode("utf-8")
 
 
 @memory.cache
 def compare_result_similarity(
-    A: QualitativeAnalysis, B: QualitativeAnalysis, threshold: float = 0.6
+    A: QualitativeAnalysis,
+    B: QualitativeAnalysis,
+    threshold: float = 0.6,
+    embedding_template: str = "{name}",
 ) -> Dict[str, Any]:
     """
     Compare two sets of theme embeddings.
 
     Allows many-to-one matches: each theme may match multiple from the other set.
+
+    Args:
+        A: First QualitativeAnalysis to compare
+        B: Second QualitativeAnalysis to compare
+        threshold: Similarity threshold for matching (default: 0.6)
+        embedding_template: Python format string for generating embeddings from themes.
+                          Available fields: {name}, {description}
+                          Default: "{name}"
 
     Returns:
         - precision: % of B themes with at least one A match
@@ -49,8 +64,14 @@ def compare_result_similarity(
         - similarity_matrix: raw cosine similarity values
     """
 
-    A = [i.name for i in A.themes]
-    B = [i.name for i in B.themes]
+    A = [
+        embedding_template.format(name=i.name, description=i.description)
+        for i in A.themes
+    ]
+    B = [
+        embedding_template.format(name=i.name, description=i.description)
+        for i in B.themes
+    ]
 
     import numpy as np
     from sklearn.metrics.pairwise import cosine_similarity
@@ -89,7 +110,11 @@ def compare_result_similarity(
     precision_hits = match_matrix.any(axis=0).sum()
     precision = precision_hits / len(emb_B) if len(emb_B) > 0 else 0
 
-    f1 = 0 if (precision + recall) == 0 else 2 * (precision * recall) / (precision + recall)
+    f1 = (
+        0
+        if (precision + recall) == 0
+        else 2 * (precision * recall) / (precision + recall)
+    )
 
     # Jaccard: intersection / union across all pairwise theme comparisons
     intersection = match_matrix.sum()
@@ -103,7 +128,9 @@ def compare_result_similarity(
     b_a_most_similar = sim_matrix.max(axis=0).mean().round(3) if len(emb_B) > 0 else 0
 
     similarity_f1 = (
-        2 * (a_b_most_similar * b_a_most_similar) / (a_b_most_similar + b_a_most_similar)
+        2
+        * (a_b_most_similar * b_a_most_similar)
+        / (a_b_most_similar + b_a_most_similar)
         if (a_b_most_similar + b_a_most_similar) > 0
         else 0
     )
@@ -129,6 +156,8 @@ def network_similarity_plot(
     min_dist=0.01,
     threshold=0.6,
     exclude_within_set_edges=True,  # New parameter to exclude edges within same set
+    label_template="{name}",
+    embedding_template="{name}",
 ) -> str:
     """Create similarity plot using embedding visualization.
 
@@ -139,6 +168,8 @@ def network_similarity_plot(
         min_dist: UMAP parameter for minimum distance
         threshold: Similarity threshold for drawing edges
         exclude_within_set_edges: If True, don't draw edges between themes from the same set
+        label_template: Python format string for node labels. Available: {name}, {description}
+        embedding_template: Python format string for embeddings. Available: {name}, {description}
     """
 
     import matplotlib
@@ -153,13 +184,30 @@ def network_similarity_plot(
     from sklearn.metrics.pairwise import cosine_similarity
     from umap import UMAP
 
-    theme_sets_ = [[j.name for j in i.themes] for i in pipeline_results]
-    theme_sets = [i for i in theme_sets_ if i]
+    # Extract themes using embedding_template for similarity calculation
+    theme_sets_for_embedding_ = [
+        [
+            embedding_template.format(name=j.name, description=j.description)
+            for j in i.themes
+        ]
+        for i in pipeline_results
+    ]
+    theme_sets_for_embedding = [i for i in theme_sets_for_embedding_ if i]
 
-    pipeline_names = [i.name() for i in pipeline_results]
+    # Extract themes using label_template for display
+    theme_sets_for_labels_ = [
+        [
+            label_template.format(name=j.name, description=j.description)
+            for j in i.themes
+        ]
+        for i in pipeline_results
+    ]
+    theme_sets_for_labels = [i for i in theme_sets_for_labels_ if i]
 
-    # Get embeddings for all sets
-    embeddings = [get_embedding(set_str) for set_str in theme_sets]
+    pipeline_names = [i.name for i in pipeline_results]
+
+    # Get embeddings for all sets using embedding_template
+    embeddings = [get_embedding(set_str) for set_str in theme_sets_for_embedding]
     all_emb = np.vstack(embeddings)
 
     # Calculate similarity matrix
@@ -176,7 +224,7 @@ def network_similarity_plot(
     node_to_set = {}
 
     for plot_idx, (emb, original_idx) in enumerate(zip(embeddings, valid_indices)):
-        set_str = theme_sets[original_idx]
+        set_str = theme_sets_for_labels[original_idx]
         lines = set_str
         for i, phrase in enumerate(lines, start=start_index):
             if not phrase.strip():
@@ -228,7 +276,9 @@ def network_similarity_plot(
     node_colors = [colors[ord(G.nodes[n].get("set", "?")) - 65] for n in G.nodes]
 
     # Draw nodes with colors
-    nx.draw_networkx_nodes(G, pos, node_color=node_colors, alpha=0.8, node_size=200, ax=ax)
+    nx.draw_networkx_nodes(
+        G, pos, node_color=node_colors, alpha=0.8, node_size=200, ax=ax
+    )
 
     # Add legend for sets
     legend_labels = [pipeline_names[idx] for idx in valid_indices]
@@ -289,9 +339,23 @@ def network_similarity_plot(
 
 @memory.cache
 def create_pairwise_heatmap(
-    a: QualitativeAnalysis, b: QualitativeAnalysis, threshold=0.6, use_threshold=True
+    a: QualitativeAnalysis,
+    b: QualitativeAnalysis,
+    threshold=0.6,
+    use_threshold=True,
+    label_template="{name}",
+    embedding_template="{name}",
 ) -> str:
-    """Create a heatmap visualization for a single pair of pipeline results."""
+    """Create a heatmap visualization for a single pair of pipeline results.
+
+    Args:
+        a: First QualitativeAnalysis
+        b: Second QualitativeAnalysis
+        threshold: Similarity threshold for matching
+        use_threshold: Whether to use threshold-based binary heatmap
+        label_template: Python format string for axis labels. Available: {name}, {description}
+        embedding_template: Python format string for embeddings. Available: {name}, {description}
+    """
     import matplotlib
 
     matplotlib.use("Agg")  # Non-GUI backend for headless use (saves to file only)
@@ -307,15 +371,21 @@ def create_pairwise_heatmap(
             return theme
         return theme[: max_len - 3] + "..."
 
-    themes_a = [i.name for i in a.themes]
-    themes_b = [i.name for i in b.themes]
+    themes_a = [
+        label_template.format(name=i.name, description=i.description) for i in a.themes
+    ]
+    themes_b = [
+        label_template.format(name=i.name, description=i.description) for i in b.themes
+    ]
     themes_a_display = [truncate_theme(t) for t in themes_a]
     themes_b_display = [truncate_theme(t) for t in themes_b]
 
     # Better figure sizing accounting for label length
     avg_label_len_b = np.mean([len(label) for label in themes_b_display])
     fig_height = max(8, len(themes_a) * 0.4)
-    fig_width = max(12, len(themes_b) * 0.5 + avg_label_len_b * 0.1)  # Account for label width
+    fig_width = max(
+        12, len(themes_b) * 0.5 + avg_label_len_b * 0.1
+    )  # Account for label width
 
     plt.close("all")
     fig, ax = plt.subplots(figsize=(fig_width, fig_height))
@@ -324,21 +394,24 @@ def create_pairwise_heatmap(
         a,
         b,
         threshold=threshold or 0.5,  # ensure not None
+        embedding_template=embedding_template,
     )
 
     similarity_matrix = comparison["similarity_matrix"]
-    df_sim = pd.DataFrame(similarity_matrix, index=themes_a_display, columns=themes_b_display)
+    df_sim = pd.DataFrame(
+        similarity_matrix, index=themes_a_display, columns=themes_b_display
+    )
 
     assert similarity_matrix.shape == (
         len(themes_a_display),
         len(themes_b_display),
-    ), (
-        f"Shape mismatch: {similarity_matrix.shape} vs {len(themes_a_display)} x {len(themes_b_display)}"
-    )
+    ), f"Shape mismatch: {similarity_matrix.shape} vs {len(themes_a_display)} x {len(themes_b_display)}"
 
     if use_threshold:
         df_binary = (df_sim >= threshold).astype(int)
-        cmap = LinearSegmentedColormap.from_list("threshold_cmap", ["white", "green"], N=2)
+        cmap = LinearSegmentedColormap.from_list(
+            "threshold_cmap", ["white", "green"], N=2
+        )
 
         data = df_binary
         annot = False
@@ -367,9 +440,11 @@ def create_pairwise_heatmap(
 
     # TODO: set nicer titles
 
-    ax.set_title(f"Theme Similarity Matrix\n{a.name()} vs {b.name()}. Threshold: {threshold}")
-    ax.set_xlabel(b.name())
-    ax.set_ylabel(a.name())
+    ax.set_title(
+        f"Theme Similarity Matrix\n{a.name} vs {b.name}. Threshold: {threshold}"
+    )
+    ax.set_xlabel(b.name)
+    ax.set_ylabel(a.name)
 
     # Better tick label handling
     ax.tick_params(axis="x", rotation=45)
@@ -388,7 +463,7 @@ def create_pairwise_heatmap(
     plt.subplots_adjust(bottom=0.2)  # Add extra space at bottom for rotated labels
 
     suffix = threshold and f"_threshold={threshold}" or ""
-    plot_name = f"heatmap_{a.name()}_{b.name()}{suffix}.png"
+    plot_name = f"heatmap_{a.name}_{b.name}{suffix}.png"
     buffer = BytesIO()
     fig.savefig(buffer, dpi=300, bbox_inches="tight", format="png")
     plt.close(fig)
@@ -405,21 +480,40 @@ class SimilarityComparator:
         n_neighbors = config.get("n_neighbors", 5)
         min_dist = config.get("min_dist", 0.01)
         method = config.get("method", "umap")
-        
+        label_template = config.get("label_template", "{name}")
+        embedding_template = config.get("embedding_template", "{name}")
+
         result_combinations = list(itertools.combinations(pipeline_results, 2))
-        
+
         # run synchronously
         similarity_results = [
-            compare_result_similarity(i, j, threshold=threshold) for i, j in result_combinations
+            compare_result_similarity(
+                i, j, threshold=threshold, embedding_template=embedding_template
+            )
+            for i, j in result_combinations
         ]
 
         heatmaps = [
-            create_pairwise_heatmap(a, b, threshold=threshold, use_threshold=False)
+            create_pairwise_heatmap(
+                a,
+                b,
+                threshold=threshold,
+                use_threshold=False,
+                label_template=label_template,
+                embedding_template=embedding_template,
+            )
             for a, b in result_combinations
         ]
 
         thresholded_heatmaps = [
-            create_pairwise_heatmap(a, b, threshold=threshold) for a, b in result_combinations
+            create_pairwise_heatmap(
+                a,
+                b,
+                threshold=threshold,
+                label_template=label_template,
+                embedding_template=embedding_template,
+            )
+            for a, b in result_combinations
         ]
 
         network_plot = network_similarity_plot(
@@ -428,14 +522,17 @@ class SimilarityComparator:
             n_neighbors=n_neighbors,
             min_dist=min_dist,
             threshold=threshold,
+            label_template=label_template,
+            embedding_template=embedding_template,
         )
-
 
         result_combinations_dict = OrderedDict(
-            {i.name() + "_" + j.name(): (i, j) for i, j in result_combinations}
+            {i.name + "_" + j.name: (i, j) for i, j in result_combinations}
         )
 
-        stats_dict = {k: v for k, v in zip(result_combinations_dict.keys(), similarity_results)}
+        stats_dict = {
+            k: v for k, v in zip(result_combinations_dict.keys(), similarity_results)
+        }
 
         heatmap_dict = {k: v for k, v in zip(result_combinations_dict.keys(), heatmaps)}
 
@@ -463,7 +560,9 @@ if False:
 
     pipeline_results = [
         QualitativeAnalysis(**j)
-        for j in [i.result_json for i in Analysis.objects.filter(result_json__isnull=False)][-6:]
+        for j in [
+            i.result_json for i in Analysis.objects.filter(result_json__isnull=False)
+        ][-6:]
         if isinstance(j, dict)
     ]
     pipeline_results[0].name

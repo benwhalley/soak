@@ -1,0 +1,244 @@
+name: zero_shot
+config:
+  model_name: openai/gpt-4.1-mini
+  llm_credentials:
+    api_key: "sk-WXeBBXp6MV21Dn8F71z7TQ"
+    base_url: http://litellm.llemma.net/v1
+
+default_context:
+  persona: Experienced qual researcher
+  research_question: None
+
+nodes:
+  - name: chunks
+    type: Split
+    chunk_size: 30000
+
+  - name: chunk_codes_and_themes
+    type: Map
+    max_tokens: 16000
+    inputs:
+      - chunks
+
+  - name: all_codes
+    type: Reduce
+    inputs:
+      - chunk_codes_and_themes
+
+  - name: all_themes
+    type: Reduce
+    inputs:
+      - chunk_codes_and_themes
+
+  - name: codes
+    type: Transform
+    max_tokens: 32000
+    inputs:
+      - all_codes
+      - all_themes
+
+  - name: themes
+    type: Transform
+    max_tokens: 32000
+    inputs:
+      - codes
+      - all_themes
+
+
+  - name: narrative
+    type: Transform
+    inputs:
+      - themes
+      - codes
+
+
+---#chunks
+
+{{input}}
+
+
+---#chunk_codes_and_themes
+
+You are a: {{persona}}
+
+You will code the transcript independently, without using a pre-existing codebook. This is the initial coding stage, where insights will be drawn directly from the text. The results from this stage will determine the subsequent theme generation process.
+
+{{research_question}}
+
+You are provided text from transcripts of interviews with participants who took part in the study.
+
+In this stage, you will generate codes. Codes are the foundational units of inductive thematic analysis, capturing significant concepts and ideas from the transcripts. Each code includes a concise name, a meaningful description, and representative quotes from the transcripts.
+
+In this task, a 'code' should be related to the desires, needs, and meaningful outcomes for participants. Codes pertain to participants. Codes describe the feeling of the participant themselves.
+
+Your goal is to carefully look through the text and identify all codes discussed by the participant exhaustively. Each code should be specific and distinct without overlaps.
+
+Identify all relevant codes in the text, provide a Name for each code in 8 to 15 words in sentence case.
+
+Write with concise, concrete details and avoid clichés, generalizations.
+
+Give a dense Description of the code in 50 words and direct quotes from the participant for each code. These quotes can consist of multiple excerpts from the text. Use ellipses to shorten quotes as needed.
+
+Try to use the language the participants use when generating the names and descriptions.
+
+Use language like an inductive thematic analysis researcher would do when generating the names and descriptions.
+
+Avoid generalized terms and use specific terms from the quotes when generating code name and description. Be concise. 
+
+<text>
+{{chunks}}
+</text>
+
+
+[[codes:codes]]
+
+Next is the theme identification stage. Above are initial codes: text that has initial codes with their descriptions and relevant quotes.
+
+Your task now is to group the initial codes into distinct themes based on the initial codes, descriptions, and quotes.
+
+A 'theme' is the wants, needs, meaningful outcomes, and lived experiences of participants.
+
+Themes:
+
+- pertain to participants.
+- describe the feeling of the participants themselves.
+- should be specific and distinct.
+- can relate to multiple codes
+- can 'share' codes with other themes
+
+### Instructions
+
+- Provide a descriptive and specific name of 8 to 15 words for each theme based on the code's names, quotes and descriptions.
+
+- Write with concise, concrete details and avoid clichés, generalizations. Avoid the word 'Navigating' in the theme names.
+
+- Use the language the participants use when generating the theme names and descriptions.
+
+- Write the theme name in sentence case.
+
+- Provide a detailed description of 60 to 80 words for each theme.
+
+- Use the language and specific words of each Quote and Description of codes when generating the name and description for that theme. Use personal and domain-specific language and avoid generalized terms.
+
+Act like an inductive Thematic Analysis researcher would. You will be rewarded if you can complete this effectively.
+
+
+Create themes from the codes above
+
+[[themes:themes]]
+
+---#all_codes
+
+{{input.codes}}
+
+
+---#all_themes
+
+{{input.themes}}
+
+---#codes
+
+You are a: {{persona}}
+
+{{research_question}}
+
+We are now going to rationalise the set of codes identified across multiple documents. We will consolidate into a single CodeList.
+
+## Preliminary codes
+
+<text>
+{{all_codes}}
+</text>
+
+First, make a short list of notes on the codes we want to keep. Avoid duplicates. Just list the names of the codes we will keep.
+
+
+[[codenotes]]
+
+Now, form this list of new/aligned codes into the required format.
+
+A code consists of
+
+- A concise name (8-15 words)
+- A codename/slug (max 20 letters a-Z)
+- A meaningful description (around 50 words)
+- Representative quotes from the text (abbreviated with ellipses if needed)
+
+[[codes:codes]]
+
+
+---#themes
+
+You are a: {{persona}}
+
+{{research_question}}
+
+You are at the final theme generation stage. You are provided preliminary themes, with their descriptions and relevant codes.
+
+These preliminary themes and codes are generated from interview transcripts with participants who took part in the study.
+
+A 'theme' relates to the experience of participants.
+
+Themes pertain to participants. Themes describe the feeling of the participant themselves; how the participant feels about the system and their experience of it.
+
+Review and consolidate the following preliminary themes into major themes.
+
+Each major theme should be distinct from the others.
+
+The major themes will be used to write the final report.
+
+A code can appear in multiple major themes if relevant.
+List all the relevant codes under each major theme.
+
+Use personal and domain-specific language and avoid generalized terms to generate names and descriptions of the final themes.
+
+Write with concise, concrete details and avoid clichés and generalizations. Avoid the word 'Navigating' in the names.
+
+Try to use the language the participants use when generating the names and descriptions. Directly use the language from the quotes and descriptions.
+
+Write the final theme name in sentence case.
+
+The name of the theme should consist of 8 to 15 words.
+
+Each final theme should have a description of 60 to 80 words and list all relevant codes.
+
+Act like an Inductive Thematic Analysis researcher would when conducting this Inductive Thematic Analysis for generating the name and descriptions of the themes.
+
+The name of the themes are the desires, needs, and most meaningful outcomes for participants. You will be rewarded if you can complete this effectively.
+
+Review and consolidate the following preliminary themes into ~7 (+/- 2) overarching major themes. Use fewer themes if there is too much overlap.
+
+Complete list of codes identified:
+
+{{codes}}
+
+Preliminary themes:
+
+{{all_themes}}
+
+Produce a single list of themes in the correct format, covering all the themes identified. Use the tools.
+
+[[themes:themes]]
+
+
+---#narrative
+
+Results of a thematic analysis:
+
+## CODES
+
+{{codes}}
+
+
+## THEMES
+{{themes}}
+
+
+## TASK
+
+Write this up as a standard qualitative report, ready copying and pasting into the results section
+of an academic journal. 
+Don't include titles, intro, citations or extended discussion — this is just the result of the analysis.
+Be brief - about 1 paragraph per theme. Make sure to include quotes for each theme which explain and bring the theme to life for readers. Do not edit quotes. No preamble - just report. Use simple markdown. Make the theme names bold face.
+
+[[report]]

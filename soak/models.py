@@ -6,45 +6,27 @@ import json
 import logging
 import math
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
-from typing import (
-    TYPE_CHECKING,
-    Annotated,
-    Any,
-    Callable,
-    Dict,
-    List,
-    Literal,
-    Optional,
-    Set,
-    Tuple,
-    Union,
-)
+from typing import (TYPE_CHECKING, Annotated, Any, Callable, Dict, List,
+                    Literal, Optional, Set, Tuple, Union)
 
 import anyio
 import tiktoken
 from box import Box
-from struckdown import LLM, ChatterResult, LLMCredentials
-from struckdown import chatter, chatter_async
+from decouple import config as env_config
+from jinja2 import (Environment, FileSystemLoader, StrictUndefined,
+                    TemplateSyntaxError, meta)
+from joblib import Memory
+from pydantic import BaseModel, Field, constr
+from struckdown import (LLM, ChatterResult, LLMCredentials, chatter,
+                        chatter_async)
 from struckdown import get_embedding as get_embedding_
 from struckdown.parsing import parse_syntax
 from struckdown.return_type_models import ACTION_LOOKUP
-from decouple import config as env_config
-from jinja2 import (
-    Environment,
-    FileSystemLoader,
-    StrictUndefined,
-    TemplateSyntaxError,
-    meta,
-)
-from joblib import Memory
-from pydantic import BaseModel, Field
 
-from .document_utils import (
-    extract_text,
-    get_scrubber,
-    unpack_zip_to_temp_paths_if_needed,
-)
+from .document_utils import (extract_text, get_scrubber,
+                             unpack_zip_to_temp_paths_if_needed)
 
 if TYPE_CHECKING:
     from .dag import QualitativeAnalysisPipeline
@@ -76,6 +58,22 @@ def get_action_lookup():
     return SOAK_ACTION_LOOKUP
 
 
+def safe_json_dump(obj: Any, indent: int = 2) -> str:
+    """Safely serialize objects to JSON, handling ChatterResult and Pydantic models."""
+    try:
+        # Handle Pydantic models
+        if hasattr(obj, "model_dump"):
+            return json.dumps(obj.model_dump(mode="json"), indent=indent)
+        # Handle regular dicts/lists
+        return json.dumps(obj, indent=indent, default=str)
+    except Exception as e:
+        logger.warning(f"Failed to serialize to JSON: {e}, using repr fallback")
+        return json.dumps(
+            {"__repr__": repr(obj), "__str__": str(obj), "__error__": str(e)},
+            indent=indent,
+        )
+
+
 MAX_CONCURRENCY = env_config("MAX_CONCURRENCY", default=20, cast=int)
 semaphore = anyio.Semaphore(MAX_CONCURRENCY)
 
@@ -93,10 +91,18 @@ class Cancelled(Exception):
     pass
 
 
+CodeSlugStr = constr(min_length=12, max_length=64)
+
+
 class Code(BaseModel):
-    # slug: str = Field(..., min_length=8, description="Unique identifier for the code")
+    slug: CodeSlugStr = Field(
+        ...,
+        description="A very short abbreviated unique slug/reference for this Code (max 20 letters a-Z).",
+    )
     name: str = Field(..., min_length=1, description="A short name for the code.")
-    description: str = Field(..., min_length=5, description="A description of the code.")
+    description: str = Field(
+        ..., min_length=5, description="A description of the code."
+    )
     quotes: List[str] = Field(
         ...,
         min_length=0,
@@ -108,18 +114,20 @@ class CodeList(BaseModel):
     codes: List[Code] = Field(..., min_length=0)
 
     def to_markdown(self):
-        return "\n\n".join([f"- {i.name}: {i.description}\n{i.quotes}" for i in self.codes])
+        return "\n\n".join(
+            [f"- {i.name}: {i.description}\n{i.quotes}" for i in self.codes]
+        )
 
 
 class Theme(BaseModel):
     name: str = Field(..., min_length=10)
     description: str = Field(..., min_length=10)
     # refer to codes by slug/identifier
-    code_names: List[str] = Field(
+    code_slugs: List[CodeSlugStr] = Field(
         ...,
         min_length=0,
-        max_length=10,
-        description="List of the codes that are part of this theme. Identify them accurately by name",
+        max_length=20,
+        description="A List of the code-references that are part of this theme. Identify them accurately by slug/hash code from the text. Each code will be around 8 to 20 a-Z characters long. Only refer to codes in the input text above.",
     )
 
 
@@ -141,6 +149,7 @@ class Document:
 
 class QualitativeAnalysis(BaseModel):
     label: Optional[str] = None
+    name: Optional[str] = None
     codes: Optional[List[Code]] = Field(default_factory=list)
     themes: Optional[List[Theme]] = Field(default_factory=list)
     narrative: Optional[str] = None
@@ -152,11 +161,13 @@ class QualitativeAnalysis(BaseModel):
     def theme_text_for_comparison(self):
         return [i.name for i in self.themes]
 
-    def name(self):
-        return self.label or self.sha256()[:8]
-
     def sha256(self):
         return hashlib.sha256(json.dumps(self.model_dump()).encode()).hexdigest()[:8]
+
+    def model_post_init(self, __context):
+        """Set name field if not provided."""
+        if self.name is None:
+            self.name = self.label or self.sha256()[:8]
 
     def __str__(self):
         return f"Themes: {self.themes}\nCodes: {self.codes}"
@@ -218,7 +229,9 @@ class DAGConfig(BaseModel):
         if self.scrub_pii:
             logger.info("Scrubbing PII")
             if self.scrubber_salt == 42:
-                logger.warning("Scrubber salt is default, consider setting to a random value")
+                logger.warning(
+                    "Scrubber salt is default, consider setting to a random value"
+                )
 
             scrubber = get_scrubber(model=self.scrubber_model, salt=self.scrubber_salt)
             self.documents = [scrubber.clean(i) for i in self.documents]
@@ -327,7 +340,9 @@ class DAG(BaseModel):
         for edge in self.edges:
             lines.append(f"    {edge.from_node} --> {edge.to_node}")
 
-        lines.append("""classDef heavyDotted stroke-dasharray: 4 4, stroke-width: 2px;""")
+        lines.append(
+            """classDef heavyDotted stroke-dasharray: 4 4, stroke-width: 2px;"""
+        )
         for node in self.nodes:
             if node.type == "TransformReduce":
                 lines.append("""class all_themes heavyDotted;""")
@@ -372,7 +387,9 @@ class DAG(BaseModel):
                 raise Exception("LLMCredentials must be set for DAG")
             for batch in self.get_execution_order():
                 # use anyio structured concurrency - start all tasks in batch concurrently
-                with anyio.fail_after(SOAK_MAX_RUNTIME):  # 2 hours, to cleanup if needed
+                with anyio.fail_after(
+                    SOAK_MAX_RUNTIME
+                ):  # 2 hours, to cleanup if needed
                     async with anyio.create_task_group() as tg:
                         for name in batch:
                             tg.start_soon(run_node, self.nodes_dict[name])
@@ -406,7 +423,9 @@ class DAG(BaseModel):
     def get_required_context_variables(self):
         node_names = [i.name for i in self.nodes]
         tmplts = list(
-            itertools.chain(*[get_template_variables(i.template) for i in self.nodes if i.template])
+            itertools.chain(
+                *[get_template_variables(i.template) for i in self.nodes if i.template]
+            )
         )
         return set(tmplts).difference(node_names)
 
@@ -423,6 +442,68 @@ class DAG(BaseModel):
         conf = self.config.extra_context.copy()
         conf.update(results)
         return conf
+
+    def export_execution(self, output_dir: Path, metadata: Dict[str, Any] = None):
+        """Export detailed execution information to a folder structure.
+
+        Args:
+            output_dir: Directory to export to
+            metadata: Optional metadata to include in meta.txt (e.g., CLI command, runtime info)
+        """
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        logger.debug(f"Exporting execution details to {output_dir}")
+
+        # Write metadata file
+        meta_content = f"""DAG Execution Export
+====================
+DAG Name: {self.name}
+Export Time: {datetime.now().isoformat()}
+
+"""
+        if metadata:
+            meta_content += "Runtime Configuration:\n"
+            for key, value in metadata.items():
+                meta_content += f"  {key}: {value}\n"
+
+        meta_content += f"\nDefault Context:\n"
+        for key, value in self.default_context.items():
+            meta_content += f"  {key}: {value}\n"
+
+        meta_content += f"\nDAG Configuration:\n"
+        meta_content += f"  Model: {self.config.model_name}\n"
+        meta_content += f"  Temperature: {self.config.temperature}\n"
+        meta_content += f"  Chunk size: {self.config.chunk_size}\n"
+        meta_content += f"  Documents: {len(self.config.documents)}\n"
+
+        (output_dir / "meta.txt").write_text(meta_content)
+
+        # Get execution order for numbering
+        execution_order = self.get_execution_order()
+
+        # Create node_to_order mapping
+        node_order = {}
+        for batch_idx, batch in enumerate(execution_order):
+            for node_name in batch:
+                node_order[node_name] = batch_idx + 1
+
+        # Export each node
+        for node in self.nodes:
+            order = node_order.get(node.name, 0)
+            folder_name = f"{order:02d}_{node.type}_{node.name}"
+            node_folder = output_dir / folder_name
+
+            try:
+                node.export(node_folder)
+                logger.debug(f"  Exported node: {folder_name}")
+            except Exception as e:
+                logger.error(f"  Failed to export node {node.name}: {e}")
+                import traceback
+
+                traceback.print_exc()
+
+        logger.debug(f"Export complete: {output_dir}")
 
 
 OutputUnion = Union[
@@ -482,7 +563,9 @@ class DAGNode(BaseModel):
             ctx["documents"] = self.dag.config.load_documents()
 
         prev_nodes = {k: self.dag.nodes_dict.get(k) for k in self.inputs}
-        prev_output = {k: v.output for k, v in prev_nodes.items() if v and v.output is not None}
+        prev_output = {
+            k: v.output for k, v in prev_nodes.items() if v and v.output is not None
+        }
         ctx.update(prev_output)
 
         return ctx
@@ -490,6 +573,28 @@ class DAGNode(BaseModel):
     @property
     def template(self) -> str:
         return self.template_text
+
+    def export(self, folder: Path):
+        """Export node execution details to a folder. Override in subclasses."""
+        folder.mkdir(parents=True, exist_ok=True)
+
+        # Write node config
+        config_data = {
+            "name": self.name,
+            "type": self.type,
+            "inputs": self.inputs,
+        }
+        (folder / "meta.txt").write_text(safe_json_dump(config_data))
+
+        # Write output summary if output exists
+        if self.output is not None:
+            try:
+                output_str = str(self.output)
+                if len(output_str) > 5000:
+                    output_str = output_str[:5000] + "\n...\n(truncated)"
+                (folder / "output_preview.txt").write_text(output_str)
+            except Exception as e:
+                logger.warning(f"Failed to write output summary for {self.name}: {e}")
 
 
 class CompletionDAGNode(DAGNode):
@@ -545,7 +650,9 @@ class Split(DAGNode):
 
         await super().run()
         input_docs = self.context[self.inputs[0]]
-        self.output = list(itertools.chain.from_iterable(map(self.split_document, input_docs)))
+        self.output = list(
+            itertools.chain.from_iterable(map(self.split_document, input_docs))
+        )
         lens = [len(self.tokenize(doc, method=self.split_unit)) for doc in self.output]
         logger.info(
             f"CREATED {len(self.output)} chunks; average length ({self.split_unit}): {np.mean(lens).round(1)}, max: {max(lens)}, min: {min(lens)}."
@@ -558,8 +665,12 @@ class Split(DAGNode):
             return self._split_by_length(doc, len_fn=len, overlap=self.overlap)
 
         tokens = self.tokenize(doc, method=self.split_unit)
-        spans = self._compute_spans(len(tokens), self.chunk_size, self.min_split, self.overlap)
-        return [self._format_chunk(tokens[start:end]) for start, end in spans if end > start]
+        spans = self._compute_spans(
+            len(tokens), self.chunk_size, self.min_split, self.overlap
+        )
+        return [
+            self._format_chunk(tokens[start:end]) for start, end in spans if end > start
+        ]
 
     def tokenize(self, doc: str, method: str) -> List[Union[int, str]]:
         if method == "tokens":
@@ -601,11 +712,34 @@ class Split(DAGNode):
         elif self.split_unit in {"words", "sentences"}:
             return " ".join(chunk_tokens).strip()
         else:
-            raise ValueError(f"Unexpected split_unit in format_chunk: {self.split_unit}")
+            raise ValueError(
+                f"Unexpected split_unit in format_chunk: {self.split_unit}"
+            )
 
     @property
     def token_encoder(self):
         return tiktoken.get_encoding(self.encoding_name)
+
+    def export(self, folder: Path):
+        """Export Split node details."""
+        super().export(folder)
+
+        if self.output:
+            import numpy as np
+
+            lens = [
+                len(self.tokenize(doc, method=self.split_unit)) for doc in self.output
+            ]
+            summary = f"""Split Summary
+==============
+Chunks created: {len(self.output)}
+Split unit: {self.split_unit}
+Chunk size: {self.chunk_size}
+Average length: {np.mean(lens).round(1)}
+Max length: {max(lens)}
+Min length: {min(lens)}
+"""
+            (folder / "split_summary.txt").write_text(summary)
 
 
 class ItemsNode(DAGNode):
@@ -616,7 +750,9 @@ class ItemsNode(DAGNode):
         # resolve futures now (it's lazy to this point)
         input_data = {k: self.context[k] for k in self.inputs}
 
-        lengths = {k: len(v) if isinstance(v, list) else 1 for k, v in input_data.items()}
+        lengths = {
+            k: len(v) if isinstance(v, list) else 1 for k, v in input_data.items()
+        }
         max_len = max(lengths.values())
 
         for k, v in input_data.items():
@@ -721,7 +857,7 @@ class Map(ItemsNode, CompletionDAGNode):
                             context={**filtered_context, **item},
                             model=self.get_model(),
                             credentials=self.dag.config.llm_credentials,
-                            max_tokens=self.max_tokens
+                            max_tokens=self.max_tokens,
                         )
 
                 tg.start_soon(run_and_store)
@@ -740,6 +876,39 @@ class Map(ItemsNode, CompletionDAGNode):
         else:
             self.output = results
             return results
+
+    def export(self, folder: Path):
+        """Export Map node details with numbered prompts and responses."""
+        super().export(folder)
+
+        # Write template
+        if self.template_text:
+            (folder / "prompt_template.sd.md").write_text(self.template_text)
+
+        # Write each prompt/response pair
+        if self.output and isinstance(self.output, list):
+            for idx, result in enumerate(self.output, 1):
+                # Try to extract prompt from ChatterResult
+                try:
+                    if hasattr(result, "results") and result.results:
+                        # Get first segment's prompt
+                        first_seg = next(iter(result.results.values()))
+                        if hasattr(first_seg, "prompt"):
+                            (folder / f"{idx:03d}_prompt.md").write_text(
+                                first_seg.prompt
+                            )
+
+                    # Write response text
+                    if hasattr(result, "response"):
+                        response_text = str(result.response)
+                        (folder / f"{idx:03d}_response.txt").write_text(response_text)
+
+                    # Write full ChatterResult JSON
+                    (folder / f"{idx:03d}_response.json").write_text(
+                        safe_json_dump(result)
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to export Map item {idx}: {e}")
 
 
 class Transform(ItemsNode, CompletionDAGNode):
@@ -766,9 +935,36 @@ class Transform(ItemsNode, CompletionDAGNode):
             model=self.get_model(),
             credentials=self.dag.config.llm_credentials,
             action_lookup=get_action_lookup(),
-            extra_kwargs = {'max_tokens':self.max_tokens}   
+            extra_kwargs={"max_tokens": self.max_tokens},
         )
         return self.output
+
+    def export(self, folder: Path):
+        """Export Transform node details with single prompt/response."""
+        super().export(folder)
+
+        # Write template
+        if self.template_text:
+            (folder / "prompt_template.sd.md").write_text(self.template_text)
+
+        # Write prompt and response
+        if self.output:
+            try:
+                if hasattr(self.output, "results") and self.output.results:
+                    # Get first segment's prompt
+                    first_seg = next(iter(self.output.results.values()))
+                    if hasattr(first_seg, "prompt"):
+                        (folder / "prompt.md").write_text(first_seg.prompt)
+
+                # Write response text
+                if hasattr(self.output, "response"):
+                    response_text = str(self.output.response)
+                    (folder / "response.txt").write_text(response_text)
+
+                # Write full ChatterResult JSON
+                (folder / "response.json").write_text(safe_json_dump(self.output))
+            except Exception as e:
+                logger.warning(f"Failed to export Transform node: {e}")
 
 
 class Reduce(ItemsNode):
@@ -824,6 +1020,23 @@ class Reduce(ItemsNode):
             self.output = "\n".join(rendered)
             return self.output
 
+    def export(self, folder: Path):
+        """Export Reduce node details."""
+        super().export(folder)
+
+        # Write reduce template
+        if self.template_text:
+            (folder / "reduce_template.md").write_text(self.template_text)
+
+        # Write reduced output
+        if self.output:
+            if isinstance(self.output, str):
+                (folder / "reduced.txt").write_text(self.output)
+            elif isinstance(self.output, list):
+                # Handle list of reduced outputs
+                for idx, item in enumerate(self.output, 1):
+                    (folder / f"reduced_{idx:03d}.txt").write_text(str(item))
+
 
 @dataclass
 class BatchList(object):
@@ -865,7 +1078,7 @@ class QualitativeAnalysisPipeline(DAG):
         if template_path is None:
             # Use default template in soak/templates directory
             template_dir = Path(__file__).parent / "templates"
-            template_name = "qualitative_analysis.html"
+            template_name = "default.html"
         else:
             # Use provided template path
             template_path = Path(template_path)
@@ -882,7 +1095,7 @@ class QualitativeAnalysisPipeline(DAG):
 
         # Render template with data
         dd = self.model_dump()
-        dd['config']['documents'] =[]
+        dd["config"]["documents"] = []
         return template.render(pipeline=self, result=self.result(), detail=dd)
 
     def result(self):
@@ -890,33 +1103,32 @@ class QualitativeAnalysisPipeline(DAG):
             try:
                 return self.nodes_dict.get(name).output.response
             except Exception:
-                logger.warning( f"Error getting output {name}")
+                logger.warning(f"Error getting output {name}")
                 return None
-            
-        
+
         try:
-            codes = self.nodes_dict.get('codes').output.response['codes']
+            codes = self.nodes_dict.get("codes").output.response["codes"]
         except Exception:
             codes = []
         try:
-            themes = self.nodes_dict.get('themes').output.response['themes']
+            themes = self.nodes_dict.get("themes").output.response["themes"]
         except Exception:
             themes = []
-            
+
         try:
-            narrative = self.nodes_dict.get('narrative').output.response
+            narrative = self.nodes_dict.get("narrative").output.response
         except Exception:
             narrative = ""
-        
+
         try:
-            quotes = self.nodes_dict.get('quotes').output.response
+            quotes = self.nodes_dict.get("quotes").output.response
         except Exception:
             quotes = []
-            
+
         return QualitativeAnalysis.model_validate(
             {
                 "themes": themes,
-                "codes":  codes,
+                "codes": codes,
                 "narrative": narrative,
                 "detail": self.model_dump_json(),
                 "quotes": quotes,
@@ -960,7 +1172,9 @@ class VerifyQuotes(DAGNode):
         max_matches = 10
         for quote, row in zip(extr_quotes, sims):
             real_and_sim = list(zip(real_quotes, row))
-            above_thresh = [(r, float(s)) for r, s in real_and_sim if s >= self.threshold]
+            above_thresh = [
+                (r, float(s)) for r, s in real_and_sim if s >= self.threshold
+            ]
 
             if above_thresh:
                 matches = sorted(above_thresh, key=lambda x: -x[1])[:max_matches]
@@ -984,12 +1198,16 @@ class VerifyQuotes(DAGNode):
             average_sim = float(np.mean(best_match_sims)) if best_match_sims else None
             min_sim = float(np.min(best_match_sims)) if best_match_sims else None
             percentiles = (
-                np.percentile(best_match_sims, [10, 90]) if best_match_sims else [None, None]
+                np.percentile(best_match_sims, [10, 90])
+                if best_match_sims
+                else [None, None]
             )
             # Count no matches above threshold
             n_total = len(top_matches)
             n_below_thresh = sum(
-                1 for m in top_matches if all(sim < self.threshold for _, sim in m["matches"])
+                1
+                for m in top_matches
+                if all(sim < self.threshold for _, sim in m["matches"])
             )
             pct_below_thresh = (n_below_thresh / n_total) * 100 if n_total else 0
             self.stats = {
@@ -1029,7 +1247,9 @@ class TransformReduce(CompletionDAGNode):
     split_unit: Literal["chars", "tokens", "words", "sentences"] = "tokens"
     encoding_name: str = "cl100k_base"
     reduce_template: str = "{{input}}\n\n"
-    template_text: str = "<text>\n{{input}}\n</text>\n\n-----\nSummarise the text: [[output]]"
+    template_text: str = (
+        "<text>\n{{input}}\n</text>\n\n-----\nSummarise the text: [[output]]"
+    )
     max_levels: int = 5
 
     reduction_tree: List[List[OutputUnion]] = Field(default_factory=list, exclude=False)
@@ -1076,7 +1296,10 @@ class TransformReduce(CompletionDAGNode):
         spans = self._compute_spans(len(tokens))
 
         if self.split_unit == "tokens":
-            return [self.token_encoder.decode(tokens[start:end]).strip() for start, end in spans]
+            return [
+                self.token_encoder.decode(tokens[start:end]).strip()
+                for start, end in spans
+            ]
         else:
             return [" ".join(tokens[start:end]).strip() for start, end in spans]
 
@@ -1177,7 +1400,7 @@ class TransformReduce(CompletionDAGNode):
                                 model=self.get_model(),
                                 credentials=self.dag.config.llm_credentials,
                                 action_lookup=get_action_lookup(),
-                                extra_kwargs = {'max_tokens':self.max_tokens},
+                                extra_kwargs={"max_tokens": self.max_tokens},
                             )
 
                     tg.start_soon(run_and_store)
@@ -1194,11 +1417,65 @@ class TransformReduce(CompletionDAGNode):
             model=self.get_model(),
             credentials=self.dag.config.llm_credentials,
             action_lookup=get_action_lookup(),
-            extra_kwargs = {'max_tokens':self.max_tokens}
+            extra_kwargs={"max_tokens": self.max_tokens},
         )
 
         self.output = final_response
         return final_response
+
+    def export(self, folder: Path):
+        """Export TransformReduce node with multi-level structure."""
+        super().export(folder)
+
+        # Write templates
+        if self.template_text:
+            (folder / "prompt_template.sd.md").write_text(self.template_text)
+        if self.reduce_template:
+            (folder / "reduce_template.md").write_text(self.reduce_template)
+
+        # Export each level of the reduction tree
+        if self.reduction_tree:
+            for level_idx, level_items in enumerate(self.reduction_tree):
+                level_folder = folder / f"level_{level_idx}"
+                level_folder.mkdir(exist_ok=True)
+
+                for item_idx, item in enumerate(level_items, 1):
+                    try:
+                        # Write the item as text
+                        item_text = str(item)
+                        (level_folder / f"{item_idx:03d}_item.txt").write_text(
+                            item_text
+                        )
+
+                        # If it's a ChatterResult, export it fully
+                        if hasattr(item, "results"):
+                            (level_folder / f"{item_idx:03d}_result.json").write_text(
+                                safe_json_dump(item)
+                            )
+                    except Exception as e:
+                        logger.warning(
+                            f"Failed to export TransformReduce level {level_idx} item {item_idx}: {e}"
+                        )
+
+        # Export final result
+        if self.output:
+            final_folder = folder / "final"
+            final_folder.mkdir(exist_ok=True)
+
+            try:
+                if hasattr(self.output, "results") and self.output.results:
+                    first_seg = next(iter(self.output.results.values()))
+                    if hasattr(first_seg, "prompt"):
+                        (final_folder / "prompt.md").write_text(first_seg.prompt)
+
+                if hasattr(self.output, "response"):
+                    (final_folder / "response.txt").write_text(
+                        str(self.output.response)
+                    )
+
+                (final_folder / "response.json").write_text(safe_json_dump(self.output))
+            except Exception as e:
+                logger.warning(f"Failed to export TransformReduce final result: {e}")
 
 
 # Resolve forward references after QualitativeAnalysisPipeline is defined

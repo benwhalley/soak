@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html>
+<meta charset="UTF-8">
+
+<head>
+    <title>Analysis Comparison Report</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/css/bootstrap-grid.min.css" integrity="sha512-uzG4YY/dpwIEUrfjYud6T7ieVM06DwkHYHNQc4Chb/dS1Sw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/css/bootstrap-reboot.min.css" integrity="sha512-Hvxqga90bvpEid1McCftiBcPXI+TZR3GVf4KUdLu3NPx6/gPXSQTdY7AHaLLJDSJym6kOotc713b2D7gQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/css/bootstrap.min.css" integrity="sha512-rt/SrQ4UNIaGfDyEXZtNcyWvQeOq0QLygHluFQcSjaGB04IxWhal71tKuzP6K8eYXYB6vJV4pHkXcmFGGQ1/0w==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/js/bootstrap.bundle.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Analysis Comparison Report</h1>
+
+        <hr>
+        <div class="analysis-results">
+            <h2 class="mt-4">Analyses Included in Comparison</h2>
+
+            <div class="row">
+                {% for result in comparison.results %}
+                <div class="col-4">
+                    <div class="card mb-3">
+                        <div class="card-body">
+                            <h5 class="card-title">{{ result.name }}</h5>
+
+                            <h6 class="mt-3">Themes ({{ result.themes|length }})</h6>
+                            <ul class="small">
+                                {% for t in result.themes %}
+                                <li>{{ t.name }}</li>
+                                {% endfor %}
+                            </ul>
+
+                            <h6 class="mt-3">Codes ({{ result.codes|length }})</h6>
+                            <ul class="small">
+                                {% for c in result.codes %}
+                                <li>{{ c.name }}</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <hr class="mt-5">
+
+        <div class="comparison-results">
+            <h2>Theme Network</h2>
+            <p class="text-muted">Visualization showing similarity relationships between themes across analyses (threshold: {{ comparison.config.threshold }})</p>
+
+            <div class="row">
+                <div class="col-md-12">
+                    <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comparison.additional_plots.network_plot.base64 }}" alt="Network plot">
+                </div>
+            </div>
+
+            <hr class="mt-5">
+
+            <h2>Pairwise Comparisons</h2>
+
+            {% for key, comp in comparison.by_comparisons().items() %}
+            <div class="comparison-pair mt-5">
+                <h3 class="mb-4">{{ comp.a.name }} vs {{ comp.b.name }}</h3>
+
+                <div class="row mb-4">
+                    <div class="col-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <strong>Analysis A: {{ comp.a.name }}</strong>
+                            </div>
+                            <div class="card-body">
+                                <h6>Themes</h6>
+                                <ul>
+                                    {% for t in comp.a.themes %}
+                                    <li>{{ t.name }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <strong>Analysis B: {{ comp.b.name }}</strong>
+                            </div>
+                            <div class="card-body">
+                                <h6>Themes</h6>
+                                <ul>
+                                    {% for t in comp.b.themes %}
+                                    <li>{{ t.name }}</li>
+                                    {% endfor %}
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
+                <h4>Similarity Heatmaps</h4>
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6>Continuous Similarity</h6>
+                        <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comp.plots.heatmaps.base64 }}" alt="Similarity heatmap">
+                    </div>
+                    <div class="col-md-6">
+                        <h6>Binary Match (threshold={{ comparison.config.threshold }})</h6>
+                        <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comp.plots.thresholded_heatmaps.base64 }}" alt="Thresholded heatmap">
+                    </div>
+                </div>
+
+                <hr class="mt-4">
+
+                <h5>Similarity Statistics</h5>
+                <div class="row">
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">Binary Metrics</div>
+                            <div class="card-body">
+                                <ul class="list-unstyled">
+                                    <li><strong>Precision:</strong> {{ "%.3f"|format(comp.stats.precision) }}</li>
+                                    <li><strong>Recall:</strong> {{ "%.3f"|format(comp.stats.recall) }}</li>
+                                    <li><strong>F1:</strong> {{ "%.3f"|format(comp.stats.f1) }}</li>
+                                    <li><strong>Jaccard:</strong> {{ "%.3f"|format(comp.stats.jaccard) }}</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">Continuous Metrics</div>
+                            <div class="card-body">
+                                <ul class="list-unstyled">
+                                    <li><strong>A→B (max similarity):</strong> {{ "%.3f"|format(comp.stats.a_b_most_similar) }}</li>
+                                    <li><strong>B→A (max similarity):</strong> {{ "%.3f"|format(comp.stats.b_a_most_similar) }}</li>
+                                    <li><strong>Similarity F1:</strong> {{ "%.3f"|format(comp.stats.similarity_f1) }}</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">Similarity Matrix</div>
+                            <div class="card-body">
+                                <pre class="small" style="max-height: 200px; overflow-y: auto; font-size: 0.7rem;">{{ comp.stats.similarity_matrix }}</pre>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr class="mt-4 mb-5" style="border-top: 2px solid #333;">
+            </div>
+            {% endfor %}
+        </div>
+
+        <hr class="mt-5">
+
+        <div class="comparison-config mt-4">
+            <h3>Comparison Configuration</h3>
+            <pre class="bg-light p-3">{{ comparison.config }}</pre>
+        </div>
+    </div>
+</body>
+</html>

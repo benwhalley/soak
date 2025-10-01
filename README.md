@@ -1,9 +1,23 @@
 
-# llemma: tools for psychological research, education and practice
+# soak: a DAG based method to describe text-analysis pipelines for qualitative/thematic analysis.
 
-This project is a WIP but currently packages one tool
+```
+uv run soak run soak/pipelines/zspe.yaml \
+   data/5LC.docx  \
+   --output result_exercise  \
+   -t short \
+   -c excerpt_topics="Exercise and camaraderie" \
+   && open result_exercise.html
 
-- soak: a DAG based method to describe text-analysis pipelines for qualitative/thematic analysis.
+
+uv run soak run soak/pipelines/zspe.yaml \
+   data/5LC.docx  \
+   --output result_fun  \
+   -t short \
+   -c excerpt_topics="Fun and family" \
+   && open result_fun.html
+
+```
 
 
 

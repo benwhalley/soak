@@ -44,6 +44,8 @@ class Comparator(ABC):
         Path(self.config.output_dir).mkdir(parents=True, exist_ok=True)
 
     @abstractmethod
-    def compare(self, pipeline_results: List[QualitativeAnalysis]) -> QualitativeAnalysisComparison:
+    def compare(
+        self, pipeline_results: List[QualitativeAnalysis]
+    ) -> QualitativeAnalysisComparison:
         """Compare pipeline results and generate output."""
         pass

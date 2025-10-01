@@ -4,10 +4,8 @@ from pathlib import Path
 from typing import Union
 
 import yaml
-from soak.models import (
-    DAGNode,
-    QualitativeAnalysisPipeline,
-)
+
+from soak.models import DAGNode, QualitativeAnalysisPipeline
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +63,9 @@ def pipeline_to_template_bundle(pipeline: QualitativeAnalysisPipeline) -> str:
 
     # use model_dump to get the pipeline data, excluding computed/internal fields
 
-    dumped = pipeline.model_dump(exclude={"nodes": {"__all__": {"template_text"}}, "config": True})
+    dumped = pipeline.model_dump(
+        exclude={"nodes": {"__all__": {"template_text"}}, "config": True}
+    )
     templates = {k.name: k.template_text for k in pipeline.nodes if k.template_text}
 
     # generate yaml content

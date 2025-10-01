@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "soak-llm"
-version = "0.2.1"
+version = "0.2.3"
 description = "soak: LLM based tools for textual analysis and qualitative research"
 authors = [
   { name = "Ben Whalley", email = "ben.whalley@plymouth.ac.uk" }
@@ -32,12 +32,18 @@ dependencies = [
     "asyncpg>=0.30.0",
     "more-itertools>=10.7.0",
     "jinja-markdown>=1.210911",
-    # "struckdown",
+    "struckdown",
+    "trogon>=0.6.0",
 ]
+
+[tool.setuptools.package-data]
+soak = ["templates/*.html", "pipelines/*.yaml"]
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["soak*",]
+
+
 
 [project.scripts]
 soak = "soak.cli:app"
@@ -46,5 +52,6 @@ soak = "soak.cli:app"
 package = true
 
 [tool.uv.sources]
-struckdown = { path = "struckdown" }
-
+# Production defaults (git)
+# struckdown = { git = "https://github.com/benwhalley/struckdown", rev = "HEAD" }
+struckdown = { path = "../struckdown", editable = true }

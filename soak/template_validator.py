@@ -39,7 +39,9 @@ class TemplateAnalyzer:
         except TemplateSyntaxError as e:
             raise TemplateValidationError(f"Template syntax error: {e}")
 
-    def analyze_template_dependencies(self, template_string: str) -> Dict[str, Set[str]]:
+    def analyze_template_dependencies(
+        self, template_string: str
+    ) -> Dict[str, Set[str]]:
         """analyze all dependencies in a template.
 
         Args:
@@ -79,7 +81,9 @@ class TemplateAnalyzer:
         except TemplateValidationError:
             return False, []
 
-    def validate_chatter_template_syntax(self, template_string: str) -> Tuple[bool, str]:
+    def validate_chatter_template_syntax(
+        self, template_string: str
+    ) -> Tuple[bool, str]:
         """validate that chatter template syntax is correct.
 
         Args:
@@ -139,7 +143,9 @@ class PipelineTemplateValidator:
                 return False, [syntax_error]
 
             # then validate jinja2 context
-            return self.analyzer.validate_template_context(template_content, available_context)
+            return self.analyzer.validate_template_context(
+                template_content, available_context
+            )
         except FileNotFoundError:
             logger.error(f"Template file not found: {full_path}")
             return False, [f"Template file not found: {template_path}"]
@@ -200,7 +206,9 @@ class PipelineTemplateValidator:
 
         # suggest similar variables that might be typos
         for missing_var in missing_vars:
-            similar_vars = [var for var in available_context if self._is_similar(missing_var, var)]
+            similar_vars = [
+                var for var in available_context if self._is_similar(missing_var, var)
+            ]
             if similar_vars:
                 suggestions.append(
                     f"  - '{missing_var}' might be a typo. Similar available variables: {', '.join(similar_vars)}"
@@ -211,7 +219,9 @@ class PipelineTemplateValidator:
                 )
 
         # suggest adding to user inputs
-        user_input_candidates = [var for var in missing_vars if "." not in var and "_" not in var]
+        user_input_candidates = [
+            var for var in missing_vars if "." not in var and "_" not in var
+        ]
         if user_input_candidates:
             suggestions.append(
                 f"Consider adding these to user inputs: {', '.join(user_input_candidates)}"
@@ -227,7 +237,9 @@ class PipelineTemplateValidator:
         # show what context is available
         if available_context:
             context_list = sorted(available_context)
-            suggestions.append(f"Available context variables: {', '.join(context_list[:10])}")
+            suggestions.append(
+                f"Available context variables: {', '.join(context_list[:10])}"
+            )
             if len(context_list) > 10:
                 suggestions.append(f"... and {len(context_list) - 10} more")
         else:
