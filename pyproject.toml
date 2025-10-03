@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "soak-llm"
-version = "0.2.3"
+version = "0.2.7"
 description = "soak: LLM based tools for textual analysis and qualitative research"
 authors = [
   { name = "Ben Whalley", email = "ben.whalley@plymouth.ac.uk" }
@@ -34,6 +34,7 @@ dependencies = [
     "jinja-markdown>=1.210911",
     "struckdown",
     "trogon>=0.6.0",
+    "nltk>=3.9.2",
 ]
 
 [tool.setuptools.package-data]

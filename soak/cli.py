@@ -20,10 +20,6 @@ from .document_utils import unpack_zip_to_temp_paths_if_needed
 from .models import QualitativeAnalysis, QualitativeAnalysisPipeline
 from .specs import load_template_bundle
 
-
-import logging
-import typer
-
 app = typer.Typer()
 init_tui(app)
 
@@ -31,6 +27,87 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 logger = logging.getLogger(__name__)
 
 PIPELINE_DIR = Path(__file__).parent / "pipelines"
+
+
+def load_env_file(env_path: Path) -> dict[str, str]:
+    """Load environment variables from a .env file."""
+    env_vars = {}
+    if env_path.exists():
+        with open(env_path, "r") as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, value = line.split("=", 1)
+                    # Remove quotes if present
+                    value = value.strip().strip('"').strip("'")
+                    env_vars[key] = value
+    return env_vars
+
+
+def save_env_file(env_path: Path, env_vars: dict[str, str]):
+    """Save environment variables to a .env file."""
+    with open(env_path, "w") as f:
+        for key, value in env_vars.items():
+            f.write(f'{key}="{value}"\n')
+
+
+def check_and_prompt_credentials(cwd: Path) -> tuple[str | None, str | None]:
+    """Check for LLM credentials and prompt user if missing.
+
+    Returns:
+        Tuple of (api_key, base_url)
+    """
+    env_path = cwd / ".env"
+
+    # First check environment variables
+    api_key = os.getenv("LLM_API_KEY")
+    base_url = os.getenv("LLM_API_BASE")
+
+    # If not in env, check .env file
+    if not api_key or not base_url:
+        env_vars = load_env_file(env_path)
+        api_key = api_key or env_vars.get("LLM_API_KEY")
+        base_url = base_url or env_vars.get("LLM_API_BASE")
+
+    # Prompt for missing credentials
+    missing = []
+    if not api_key:
+        missing.append("LLM_API_KEY")
+    if not base_url:
+        missing.append("LLM_API_BASE")
+
+    if missing:
+        print("\n⚠️  Missing required LLM credentials:", file=sys.stderr)
+        for var in missing:
+            print(f"   - {var}", file=sys.stderr)
+        print(file=sys.stderr)
+
+        response = typer.confirm("Would you like to provide them now?", default=True)
+        if not response:
+            print("Error: Cannot proceed without LLM credentials", file=sys.stderr)
+            raise typer.Exit(1)
+
+        # Load existing .env vars to preserve them
+        env_vars = load_env_file(env_path)
+
+        if not api_key:
+            api_key = typer.prompt("Enter LLM_API_KEY")
+            env_vars["LLM_API_KEY"] = api_key
+
+        if not base_url:
+            default_url = "https://api.openai.com/v1"
+            base_url = typer.prompt("Enter LLM_API_BASE", default=default_url)
+            env_vars["LLM_API_BASE"] = base_url
+
+        # Save to .env file
+        save_env_file(env_path, env_vars)
+        print(f"\n✓ Credentials saved to {env_path}", file=sys.stderr)
+
+        # Set in current process environment
+        os.environ["LLM_API_KEY"] = api_key
+        os.environ["LLM_API_BASE"] = base_url
+
+    return api_key, base_url
 
 
 def setup_logging(verbose: int):
@@ -43,16 +120,16 @@ def setup_logging(verbose: int):
     else:
         level = logging.DEBUG
 
-    if verbose > 0 :
+    if verbose > 0:
         logging.basicConfig(
             level=logging.WARNING,  # Root level stays at WARNING
             format="%(asctime)s | %(levelname)s | %(name)s - %(message)s",
         )
 
     # Set package-specific levels
-    pkg = __name__.split('.')[0]
+    pkg = __name__.split(".")[0]
     logging.getLogger(pkg).setLevel(level)
-    logging.getLogger('struckdown').setLevel(level)
+    logging.getLogger("struckdown").setLevel(level)
 
 
 @app.callback()
@@ -177,7 +254,7 @@ def run(
         help="Custom dump folder path (default: <output>_dump or <pipeline>_<timestamp>_dump)",
     ),
     force: bool = typer.Option(
-        False, "--force", "-f", help="Overwrite dump folder if it already exists"
+        False, "--force", "-F", help="Overwrite dump folder if it already exists"
     ),
 ):
     """Run a pipeline on input files."""
@@ -194,11 +271,19 @@ def run(
                     existing.append(str(output_json))
                 if output_html.exists():
                     existing.append(str(output_html))
-                print(f"Error: Output file(s) already exist: {', '.join(existing)}", file=sys.stderr)
+                print(
+                    f"Error: Output file(s) already exist: {', '.join(existing)}",
+                    file=sys.stderr,
+                )
                 print(f"Use --force/-f to overwrite", file=sys.stderr)
                 raise typer.Exit(1)
             else:
-                logger.info(f"Overwriting existing output files: {output}.json, {output}.html")
+                logger.info(
+                    f"Overwriting existing output files: {output}.json, {output}.html"
+                )
+
+    # Check and prompt for credentials first
+    api_key, base_url = check_and_prompt_credentials(Path.cwd())
 
     pipyml = resolve_pipeline(pipeline, Path.cwd(), PIPELINE_DIR)
     logger.info(f"Loading pipeline from {pipyml}")
@@ -219,8 +304,8 @@ def run(
 
     pipeline.config.model_name = model_name
     pipeline.config.llm_credentials = LLMCredentials(
-        api_key=os.getenv("LLM_API_KEY") or os.getenv("OPENAI_API_KEY"),
-        base_url=os.getenv("LLM_BASE_URL") or os.getenv("OPENAI_API_BASE"),
+        api_key=api_key,
+        base_url=base_url,
     )
 
     with unpack_zip_to_temp_paths_if_needed(input_files) as docfiles:
@@ -563,7 +648,7 @@ def dump(
     force: bool = typer.Option(
         False,
         "--force",
-        "-f",
+        "-F",
         help="Overwrite output folder if it already exists",
     ),
 ):

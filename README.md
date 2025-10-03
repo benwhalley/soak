@@ -46,7 +46,7 @@ Set 2 environment variables:
 
 ```
 export LLM_API_KEY=your_api_key
-export LLM_BASE_URL=https://your-endpoint.com (any OpenAI compatible)
+export LLM_API_BASE=https://your-endpoint.com (any OpenAI compatible)
 ```
 
 

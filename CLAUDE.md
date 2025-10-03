@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This project uses **uv** as the package manager. Environment variables required:
 - `LLM_API_KEY`: API key for LLM provider
-- `LLM_BASE_URL`: OpenAI-compatible endpoint URL (optional)
+- `LLM_API_BASE`: OpenAI-compatible endpoint URL (optional)
 
 Install the package in development mode:
 ```bash

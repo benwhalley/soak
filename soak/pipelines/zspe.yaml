@@ -42,6 +42,10 @@ nodes:
       - codes
       - all_themes
 
+  - name: checkquotes
+    type: VerifyQuotes
+    inputs:
+      - codes
 
   - name: narrative
     type: Transform

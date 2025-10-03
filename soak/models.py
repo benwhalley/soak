@@ -1,5 +1,5 @@
 """Data models for qualitative analysis pipelines."""
-
+import pandas as pd
 import hashlib
 import itertools
 import json
@@ -8,25 +8,43 @@ import math
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import (TYPE_CHECKING, Annotated, Any, Callable, Dict, List,
-                    Literal, Optional, Set, Tuple, Union)
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 import anyio
 import tiktoken
 from box import Box
 from decouple import config as env_config
-from jinja2 import (Environment, FileSystemLoader, StrictUndefined,
-                    TemplateSyntaxError, meta)
+from jinja2 import (
+    Environment,
+    FileSystemLoader,
+    StrictUndefined,
+    TemplateSyntaxError,
+    meta,
+)
 from joblib import Memory
 from pydantic import BaseModel, Field, constr
-from struckdown import (LLM, ChatterResult, LLMCredentials, chatter,
-                        chatter_async)
+from struckdown import LLM, ChatterResult, LLMCredentials, chatter, chatter_async
 from struckdown import get_embedding as get_embedding_
 from struckdown.parsing import parse_syntax
 from struckdown.return_type_models import ACTION_LOOKUP
 
-from .document_utils import (extract_text, get_scrubber,
-                             unpack_zip_to_temp_paths_if_needed)
+from .document_utils import (
+    extract_text,
+    get_scrubber,
+    unpack_zip_to_temp_paths_if_needed,
+)
 
 if TYPE_CHECKING:
     from .dag import QualitativeAnalysisPipeline
@@ -1137,10 +1155,20 @@ class QualitativeAnalysisPipeline(DAG):
 
 
 class VerifyQuotes(DAGNode):
+    
+    """Quote Verifiction, comparing extracted with original texts.
+    
+    Quote verification statistics are calculated by extracting 'matches' for each quote used to support a Code. Matches are found by using text-embeddings of extracted quotes and a sentence-by-sentence split of the source documents. The similarity value represents the semantic similarity of the extracted and original quote (range 0 to 1, higher scores are better). Matches > 0.9 are typically very close, and normally explained by the LLM tidying punctuation or using ellipses. Checking against the original in this way mitigates the risk that quotes have been hallucinated or changed in the interview transcript: we can verify that an exact match or similar match exists in the original text."""
+    
+    
     type: Literal["VerifyQuotes"] = "VerifyQuotes"
     threshold: float = 0.6
     stats: Optional[Dict[str, Any]] = None
+    original_sentences: Optional[List[str]] = None
+    extracted_sentences: Optional[List[str]] = None
 
+    sentence_matches: Optional[List[Dict[str, Union[str,Any]]]] = None
+    
     async def run(self) -> List[Any]:
         await super().run()
 
@@ -1149,29 +1177,32 @@ class VerifyQuotes(DAGNode):
         from sklearn.metrics.pairwise import cosine_similarity
 
         alldocs = "\n\n".join(self.dag.config.documents)
-        sentences = nltk.sent_tokenize(alldocs)
-        real_quotes = sentences
+        
+        self.original_sentences = nltk.sent_tokenize(alldocs)
+
         codes = self.context.get("codes", None)
         if not codes:
             raise Exception("VerifyQuotes must be run after node called `codes`")
 
-        extr_quotes = list(itertools.chain(*[i.quotes for i in codes.response.codes]))
+        self.extracted_sentences = list(itertools.chain(*[i.quotes for i in codes.response.codes]))
 
         # embed real and extracted quotes
         # import pdb; pdb.set_trace()
         try:
-            real_emb = np.array(get_embedding(real_quotes))
-            extr_emb = np.array(get_embedding(extr_quotes))
+            real_emb = np.array(get_embedding(self.original_sentences))
+            extr_emb = np.array(get_embedding(self.extracted_sentences))
         except Exception as e:
             print(e)
+        
         # calculate cosine similarity
-        sims = cosine_similarity(extr_emb, real_emb)
-
+        similarities = cosine_similarity(extr_emb, real_emb)
+        # self.similarity_matrix = similarities.tolist()
+        
         # find top matches and sort by similarity
         top_matches = []
         max_matches = 10
-        for quote, row in zip(extr_quotes, sims):
-            real_and_sim = list(zip(real_quotes, row))
+        for quote, row in zip(self.extracted_sentences, similarities):
+            real_and_sim = list(zip(self.original_sentences, row))
             above_thresh = [
                 (r, float(s)) for r, s in real_and_sim if s >= self.threshold
             ]
@@ -1181,7 +1212,7 @@ class VerifyQuotes(DAGNode):
             else:
                 top3_idx = row.argsort()[-3:]
                 matches = sorted(
-                    [(real_quotes[j], float(row[j])) for j in top3_idx],
+                    [(self.original_sentences[j], float(row[j])) for j in top3_idx],
                     key=lambda x: -x[1],
                 )[:max_matches]
 
@@ -1191,46 +1222,54 @@ class VerifyQuotes(DAGNode):
                     "matches": matches,
                 }
             )
+        
+        # TODO tie the quotes back to the original source doc?
 
+        # expand top matches into a df to export late
+        df = pd.DataFrame(top_matches)
+        # expand: one row per (quote, match, similarity)
+        df = df.explode("matches", ignore_index=True)
+        df[["match", "similarity"]] = pd.DataFrame(df["matches"].tolist(), index=df.index)
+        df = df.drop(columns=["matches"])
+        sentence_matches = df.to_dict(orient="records")
+        
+        best_matches = (
+            df.sort_values(["quote", "similarity"], ascending=[True, False])
+            .groupby("quote", as_index=False)
+            .first()
+        )        
         # calulate stats on matches
-        try:
-            best_match_sims = [m["matches"][0][1] for m in top_matches if m["matches"]]
-            average_sim = float(np.mean(best_match_sims)) if best_match_sims else None
-            min_sim = float(np.min(best_match_sims)) if best_match_sims else None
-            percentiles = (
-                np.percentile(best_match_sims, [10, 90])
-                if best_match_sims
-                else [None, None]
-            )
-            # Count no matches above threshold
-            n_total = len(top_matches)
-            n_below_thresh = sum(
-                1
-                for m in top_matches
-                if all(sim < self.threshold for _, sim in m["matches"])
-            )
-            pct_below_thresh = (n_below_thresh / n_total) * 100 if n_total else 0
-            self.stats = {
-                "average_best_sim": average_sim,
-                "min_best_sim": min_sim,
-                "10th_percentile_best_sim": (
-                    float(percentiles[0]) if percentiles[0] is not None else None
-                ),
-                "90th_percentile_best_sim": (
-                    float(percentiles[1]) if percentiles[1] is not None else None
-                ),
-                "n_no_match_above_threshold": n_below_thresh,
-                "pct_no_match_above_threshold": round(pct_below_thresh, 2),
-            }
+        try:   
+            self.stats = best_matches["similarity"].describe(percentiles=[0.1, 0.9])        
+            self.stats.update({
+            "n_no_match_above_threshold": (best_matches["similarity"] < self.threshold).sum(),
+            "pct_no_match_above_threshold": (best_matches["similarity"] < self.threshold).mean() * 100,
+            })
+            # for pydantic serialisation
+            self.stats = {k: float(v) for k, v in self.stats.items()}
+            
         except Exception as e:
             logger.error(f"Error calculating stats: {e}")
             self.stats = {"error": str(e)}
-
-        self.output = top_matches
-
+    
+        # import pdb; pdb.set_trace()
+        self.sentence_matches = sentence_matches
+        
         return top_matches
 
-
+    def export(self, folder: Path):
+        """Export a VerifyQuotes node, including details of quote matches with original sources."""
+        super().export(folder)
+        # Write statistics
+        
+        """"""
+        (folder/'info.txt').write_text(VerifyQuotes.__doc__)
+        
+        pd.DataFrame(self.stats, index=[1]).melt().to_csv(folder/'stats.csv')
+        # Write CSV with quote verification details
+        pd.DataFrame(self.sentence_matches).to_csv(folder / "quote_verification.csv")
+        
+            
 class TransformReduce(CompletionDAGNode):
     """
     Recursively reduce a list into a single item by transforming it with an LLM template.
