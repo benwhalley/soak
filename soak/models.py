@@ -300,6 +300,7 @@ DAGNodeUnion = Annotated[
         "Split",
         "TransformReduce",
         "VerifyQuotes",
+        "Classifier",
     ],
     Field(discriminator="type"),
 ]
@@ -348,6 +349,7 @@ class DAG(BaseModel):
             "TransformReduce": (">", "]"),  #
             "VerifyQuotes": ("[[", "]]"),  #
             "Batch": ("[[", "]]"),  # subroutine shape
+            "Classifier": ("[/", "\\]"),  # parallelogram (for input/output operations)
         }
 
         for node in self.nodes:
@@ -603,16 +605,6 @@ class DAGNode(BaseModel):
             "inputs": self.inputs,
         }
         (folder / "meta.txt").write_text(safe_json_dump(config_data))
-
-        # Write output summary if output exists
-        if self.output is not None:
-            try:
-                output_str = str(self.output)
-                if len(output_str) > 5000:
-                    output_str = output_str[:5000] + "\n...\n(truncated)"
-                (folder / "output_preview.txt").write_text(output_str)
-            except Exception as e:
-                logger.warning(f"Failed to write output summary for {self.name}: {e}")
 
 
 class CompletionDAGNode(DAGNode):
@@ -927,6 +919,115 @@ class Map(ItemsNode, CompletionDAGNode):
                     )
                 except Exception as e:
                     logger.warning(f"Failed to export Map item {idx}: {e}")
+
+
+class Classifier(ItemsNode, CompletionDAGNode):
+    """
+    Apply a classification prompt to each input item and extract structured outputs.
+
+    Returns a list of dictionaries where each dict contains the classification results
+    for one input item. Fields are extracted from [[name]] and [[pick:name|...]] syntax
+    in the template.
+
+    Example output: [{"diagnosis": "cfs", "severity": "high"}, ...]
+    """
+
+    type: Literal["Classifier"] = "Classifier"
+    template_text: str = None
+
+    @property
+    def template(self) -> str:
+        return self.template_text
+
+    def validate_template(self):
+        try:
+            parse_syntax(self.template_text)
+            return True
+        except Exception as e:
+            logger.error(f"Template syntax error: {e}")
+            return False
+
+    async def run(self) -> List[Dict[str, Any]]:
+        """Process each item through the classification template."""
+
+        input_data = self.context[self.inputs[0]] if self.inputs else None
+        if not input_data:
+            raise Exception("Classifier node must have input data")
+            
+        if isinstance(input_data, BatchList):
+            raise Exception("Classifier node does not support batch input")
+
+        items = await self.get_items()
+        filtered_context = self.context
+
+        results = [None] * len(items)
+
+        async with anyio.create_task_group() as tg:
+            for idx, item in enumerate(items):
+
+                async def run_and_store(index=idx, item=item):
+                    async with semaphore:
+                        # Run the classification template
+                        chatter_result = await chatter_async(
+                            multipart_prompt=self.template,
+                            context={**filtered_context, **item},
+                            model=self.get_model(),
+                            credentials=self.dag.config.llm_credentials,
+                            action_lookup=get_action_lookup(),
+                            extra_kwargs={"max_tokens": self.max_tokens},
+                        )
+
+                        # Extract structured outputs from ChatterResult
+                        # ChatterResult.response is typically a dict with the extracted fields
+                        results[index] = chatter_result
+
+                tg.start_soon(run_and_store)
+
+        self.output = results
+        return results
+
+    def export(self, folder: Path):
+        """Export Classifier node with CSV output and individual responses."""
+        super().export(folder)
+
+        # Write template
+        if self.template_text:
+            (folder / "prompt_template.sd.md").write_text(self.template_text)
+
+        for i, j in enumerate(self.output):
+            (folder / f"{i:04d}_response.json").write_text(j.outputs.to_json())
+            for k, v in j.results.items():
+                (folder / f"{i:04d}_{k}_prompt.txt").write_text(v.prompt)
+            
+        # Write results as CSV (primary format)
+        if self.output and isinstance(self.output, list):
+            try:
+                # Convert list of dicts to DataFrame and export as CSV
+                df = pd.DataFrame([i.outputs for i in self.output])
+                df.to_csv(folder / "classifications.csv", index=False)
+
+                # Also write as JSON
+                (folder / "classifications.json").write_text(
+                    json.dumps(self.output, indent=2, default=str)
+                )
+
+                # Write summary statistics if there are categorical fields
+                summary = f"""Classifier Summary
+==================
+Total items classified: {len(self.output)}
+
+Field Summary:
+"""
+                if self.output and isinstance(self.output[0], dict):
+                    for field in self.output[0].keys():
+                        values = [item.get(field) for item in self.output if field in item]
+                        unique_vals = set(str(v) for v in values if v is not None)
+                        summary += f"\n{field}:\n  Unique values: {len(unique_vals)}\n  Values: {', '.join(sorted(unique_vals))}\n"
+
+                (folder / "summary.txt").write_text(summary)
+
+            except Exception as e:
+                logger.warning(f"Failed to export Classifier results as CSV: {e}")
 
 
 class Transform(ItemsNode, CompletionDAGNode):
