@@ -18,6 +18,11 @@ nodes:
     
   - name: classify_sentences
     type: Classifier
+    model_names:
+      - litellm/gpt-4.1
+      - litellm/gpt-4.1-mini
+    agreement_fields: 
+      - positivity
     inputs:
       - sentences
       

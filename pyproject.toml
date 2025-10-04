@@ -13,6 +13,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "instructor>=1.10.0",
+    "irrCAC",
     "jinja2>=3.1.6",
     "lark>=1.2.2",
     "matplotlib>=3.10.3",
