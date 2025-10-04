@@ -165,6 +165,72 @@ class Document:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
+@dataclass
+class TrackedItem:
+    """Wrapper for content with provenance metadata.
+
+    Tracks the source document and any splitting operations through the pipeline.
+
+    Examples:
+        "A.txt" -> original document with source_id="A"
+        "A__0" -> first chunk after splitting A
+        "A__0__2" -> third sub-chunk after splitting A__0
+    """
+
+    content: str
+    source_id: str  # e.g., "A", "A__0", "A__0__2"
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def __str__(self) -> str:
+        """Return content for template rendering."""
+        return self.content
+
+    def __repr__(self) -> str:
+        """Return content for representation."""
+        return self.content
+
+    @property
+    def lineage(self) -> List[str]:
+        """Return list of source IDs showing full lineage.
+
+        Example: "A__0__2" -> ["A", "A__0", "A__0__2"]
+        """
+        if "__" not in self.source_id:
+            return [self.source_id]
+
+        parts = self.source_id.split("__")
+        lineage = [parts[0]]
+        for i in range(1, len(parts)):
+            lineage.append("__".join(parts[:i+1]))
+        return lineage
+
+    @property
+    def depth(self) -> int:
+        """Return nesting depth (number of splits from original)."""
+        return len(self.lineage) - 1
+
+    @property
+    def safe_id(self) -> str:
+        """Return source_id safe for filesystem use."""
+        return self.source_id.replace("/", "_").replace("\\", "_")
+
+    @staticmethod
+    def extract_source_id(item: Any) -> str:
+        """Extract source_id from TrackedItem, Box with tracked_item, or return 'unknown'."""
+        if isinstance(item, TrackedItem):
+            return item.source_id
+        elif hasattr(item, 'tracked_item') and isinstance(item.tracked_item, TrackedItem):
+            return item.tracked_item.source_id
+        elif hasattr(item, 'source_id'):
+            return item.source_id
+        return "unknown"
+
+    @staticmethod
+    def make_safe_id(source_id: str) -> str:
+        """Make a source_id safe for filesystem use."""
+        return source_id.replace("/", "_").replace("\\", "_")
+
+
 class QualitativeAnalysis(BaseModel):
     label: Optional[str] = None
     name: Optional[str] = None
@@ -222,8 +288,8 @@ def get_default_llm_credentials():
 
 
 class DAGConfig(BaseModel):
-    document_paths: Optional[List[str]] = []
-    documents: List[str] = []
+    document_paths: Optional[List[Union[str, Tuple[str, Dict[str, Any]]]]] = []
+    documents: List[Union[str, "TrackedItem"]] = []
     model_name: str = "gpt-5-mini"
     temperature: float = 1.0
     chunk_size: int = 20000  # characters, so ~5k tokens or ~4k English words
@@ -236,13 +302,97 @@ class DAGConfig(BaseModel):
     def get_model(self):
         return LLM(model_name=self.model_name, temperature=self.temperature)
 
-    def load_documents(self) -> List[str]:
+    def load_documents(self) -> List["TrackedItem"]:
+        """Load documents and wrap them in TrackedItem for provenance tracking."""
         if hasattr(self, "documents") and self.documents:
             logger.info("Using cached documents")
+            # Ensure cached docs are TrackedItems
+            if self.documents and isinstance(self.documents[0], TrackedItem):
+                return self.documents
+            # Upgrade cached string documents to TrackedItems
+            logger.info("Upgrading cached documents to TrackedItems")
+            self.documents = [
+                TrackedItem(
+                    content=doc,
+                    source_id=f"doc_{idx}",
+                    metadata={"doc_index": idx}
+                ) if isinstance(doc, str) else doc
+                for idx, doc in enumerate(self.documents)
+            ]
             return self.documents
 
-        with unpack_zip_to_temp_paths_if_needed(self.document_paths) as dp_:
-            self.documents = [extract_text(i) for i in dp_]
+        # Check if document_paths contains tuples (already unpacked) or strings (need unpacking)
+        if self.document_paths and isinstance(self.document_paths[0], tuple):
+            # Already unpacked by CLI - document_paths contains (path, metadata) tuples
+            items = self.document_paths
+            texts = [extract_text(path) for path, _ in items]
+
+            # Create TrackedItems with source_id from filename
+            tracked_docs = []
+            for idx, ((path, path_metadata), text) in enumerate(zip(items, texts)):
+                file_stem = Path(path).stem  # "A.txt" -> "A"
+
+                # Construct source_id: include zip name if from zip
+                if path_metadata.get('zip_source'):
+                    source_id = f"{path_metadata['zip_source']}__{file_stem}"
+                else:
+                    source_id = file_stem
+
+                # Build metadata
+                metadata = {
+                    "original_path": str(path),
+                    "doc_index": idx,
+                    "filename": Path(path).name
+                }
+
+                # Add zip info to metadata if present
+                if path_metadata.get('zip_source'):
+                    metadata["zip_source"] = path_metadata['zip_source']
+                    metadata["zip_path"] = path_metadata['zip_path']
+
+                tracked_docs.append(TrackedItem(
+                    content=text,
+                    source_id=source_id,
+                    metadata=metadata
+                ))
+
+            self.documents = tracked_docs
+        else:
+            # Need to unpack - document_paths contains string paths
+            with unpack_zip_to_temp_paths_if_needed(self.document_paths) as items:
+                # items is now list of (path, metadata) tuples
+                texts = [extract_text(path) for path, _ in items]
+
+                # Create TrackedItems with source_id from filename
+                tracked_docs = []
+                for idx, ((path, path_metadata), text) in enumerate(zip(items, texts)):
+                    file_stem = Path(path).stem  # "A.txt" -> "A"
+
+                    # Construct source_id: include zip name if from zip
+                    if path_metadata.get('zip_source'):
+                        source_id = f"{path_metadata['zip_source']}__{file_stem}"
+                    else:
+                        source_id = file_stem
+
+                    # Build metadata
+                    metadata = {
+                        "original_path": str(path),
+                        "doc_index": idx,
+                        "filename": Path(path).name
+                    }
+
+                    # Add zip info to metadata if present
+                    if path_metadata.get('zip_source'):
+                        metadata["zip_source"] = path_metadata['zip_source']
+                        metadata["zip_path"] = path_metadata['zip_path']
+
+                    tracked_docs.append(TrackedItem(
+                        content=text,
+                        source_id=source_id,
+                        metadata=metadata
+                    ))
+
+                self.documents = tracked_docs
 
         if self.scrub_pii:
             logger.info("Scrubbing PII")
@@ -252,7 +402,11 @@ class DAGConfig(BaseModel):
                 )
 
             scrubber = get_scrubber(model=self.scrubber_model, salt=self.scrubber_salt)
-            self.documents = [scrubber.clean(i) for i in self.documents]
+            # Apply scrubbing to TrackedItem content
+            for doc in self.documents:
+                if isinstance(doc, TrackedItem):
+                    doc.content = scrubber.clean(doc.content)
+                    doc.metadata["scrubbed"] = True
 
         return self.documents
 
@@ -594,6 +748,21 @@ class DAGNode(BaseModel):
     def template(self) -> str:
         return self.template_text
 
+    def get_input_items(self) -> Optional[List[Any]]:
+        """Get the input items that were processed by this node."""
+        if not self.inputs or not self.dag:
+            return None
+
+        # Get the first input (most common case)
+        input_name = self.inputs[0]
+        if input_name == "documents":
+            return self.dag.config.documents
+        elif input_name in self.dag.nodes_dict:
+            input_node = self.dag.nodes_dict[input_name]
+            return input_node.output if input_node.output else None
+
+        return None
+
     def export(self, folder: Path):
         """Export node execution details to a folder. Override in subclasses."""
         folder.mkdir(parents=True, exist_ok=True)
@@ -605,6 +774,32 @@ class DAGNode(BaseModel):
             "inputs": self.inputs,
         }
         (folder / "meta.txt").write_text(safe_json_dump(config_data))
+
+        # Export input items for traceability
+        input_items = self.get_input_items()
+        if input_items and isinstance(input_items, list):
+            inputs_folder = folder / "inputs"
+            inputs_folder.mkdir(exist_ok=True)
+
+            for idx, item in enumerate(input_items):
+                if isinstance(item, TrackedItem):
+                    # Export with source_id in filename
+                    (inputs_folder / f"{idx:04d}_{item.safe_id}.txt").write_text(item.content)
+
+                    # Export metadata
+                    if item.metadata:
+                        (inputs_folder / f"{idx:04d}_{item.safe_id}_metadata.json").write_text(
+                            json.dumps(item.metadata, indent=2, default=str)
+                        )
+                elif isinstance(item, str):
+                    # Backward compatibility
+                    (inputs_folder / f"{idx:04d}_input.txt").write_text(item)
+                else:
+                    # Try to convert to string
+                    try:
+                        (inputs_folder / f"{idx:04d}_input.txt").write_text(str(item))
+                    except Exception as e:
+                        logger.warning(f"Failed to export input {idx}: {e}")
 
 
 class CompletionDAGNode(DAGNode):
@@ -637,7 +832,7 @@ class Split(DAGNode):
     chunk_size: int = 20000
     min_split: int = 500
     overlap: int = 0
-    split_unit: Literal["chars", "tokens", "words", "sentences"] = "tokens"
+    split_unit: Literal["chars", "tokens", "words", "sentences", "paragraphs"] = "tokens"
     encoding_name: str = "cl100k_base"
 
     @property
@@ -655,22 +850,72 @@ class Split(DAGNode):
             )
             self.min_split = self.chunk_size // 2
 
-    async def run(self) -> List[str]:
+    async def run(self) -> List[Union[str, "TrackedItem"]]:
         import numpy as np
 
         await super().run()
         input_docs = self.context[self.inputs[0]]
-        self.output = list(
-            itertools.chain.from_iterable(map(self.split_document, input_docs))
-        )
-        lens = [len(self.tokenize(doc, method=self.split_unit)) for doc in self.output]
+
+        # Split each document and track provenance
+        all_chunks = []
+        for doc in input_docs:
+            if isinstance(doc, TrackedItem):
+                chunks = self.split_tracked_document(doc)
+            else:
+                # Backward compatibility: wrap plain strings
+                temp_tracked = TrackedItem(
+                    content=doc,
+                    source_id="unknown_doc",
+                    metadata={}
+                )
+                chunks = self.split_tracked_document(temp_tracked)
+            all_chunks.extend(chunks)
+
+        self.output = all_chunks
+
+        # Calculate stats on content
+        lens = [
+            len(self.tokenize(
+                chunk.content if isinstance(chunk, TrackedItem) else chunk,
+                method=self.split_unit
+            ))
+            for chunk in self.output
+        ]
         logger.info(
             f"CREATED {len(self.output)} chunks; average length ({self.split_unit}): {np.mean(lens).round(1)}, max: {max(lens)}, min: {min(lens)}."
         )
 
         return self.output
 
+    def split_tracked_document(self, doc: TrackedItem) -> List[TrackedItem]:
+        """Split a TrackedItem into multiple TrackedItems with nested source_ids.
+
+        The node name is included in the source_id to track which Split node created the chunk.
+        Format: parent_source_id__nodename__index
+        Example: doc_A__sentences__0 (first chunk from 'sentences' Split node)
+        """
+        text_chunks = self.split_document(doc.content)
+
+        tracked_chunks = []
+        for idx, chunk in enumerate(text_chunks):
+            # Include node name in source_id for tracking which split created this
+            new_source_id = f"{doc.source_id}__{self.name}__{idx}"
+
+            tracked_chunks.append(TrackedItem(
+                content=chunk,
+                source_id=new_source_id,
+                metadata={
+                    **doc.metadata,
+                    "split_index": idx,
+                    "split_node": self.name,
+                    "parent_source_id": doc.source_id
+                }
+            ))
+
+        return tracked_chunks
+
     def split_document(self, doc: str) -> List[str]:
+        """Split a document string into chunks (backward compatibility)."""
         if self.split_unit == "chars":
             return self._split_by_length(doc, len_fn=len, overlap=self.overlap)
 
@@ -694,6 +939,10 @@ class Split(DAGNode):
             import nltk
 
             return nltk.word_tokenize(doc)
+        elif method == "paragraphs":
+            from nltk.tokenize import BlanklineTokenizer
+
+            return BlanklineTokenizer().tokenize(doc)
         else:
             raise ValueError(f"Unsupported tokenization method: {method}")
 
@@ -721,6 +970,8 @@ class Split(DAGNode):
             return self.token_encoder.decode(chunk_tokens).strip()
         elif self.split_unit in {"words", "sentences"}:
             return " ".join(chunk_tokens).strip()
+        elif self.split_unit == "paragraphs":
+            return "\n\n".join(chunk_tokens).strip()
         else:
             raise ValueError(
                 f"Unexpected split_unit in format_chunk: {self.split_unit}"
@@ -737,9 +988,12 @@ class Split(DAGNode):
         if self.output:
             import numpy as np
 
-            lens = [
-                len(self.tokenize(doc, method=self.split_unit)) for doc in self.output
-            ]
+            # Extract content from TrackedItems for statistics
+            lens = []
+            for doc in self.output:
+                content = doc.content if isinstance(doc, TrackedItem) else doc
+                lens.append(len(self.tokenize(content, method=self.split_unit)))
+
             summary = f"""Split Summary
 ==============
 Chunks created: {len(self.output)}
@@ -751,12 +1005,34 @@ Min length: {min(lens)}
 """
             (folder / "split_summary.txt").write_text(summary)
 
+            # Export output chunks with source_id naming
+            outputs_folder = folder / "outputs"
+            outputs_folder.mkdir(exist_ok=True)
+
+            for idx, chunk in enumerate(self.output):
+                if isinstance(chunk, TrackedItem):
+                    # Use source_id in filename
+                    (outputs_folder / f"{idx:04d}_{chunk.safe_id}.txt").write_text(chunk.content)
+
+                    # Export metadata if present
+                    if chunk.metadata:
+                        (outputs_folder / f"{idx:04d}_{chunk.safe_id}_metadata.json").write_text(
+                            json.dumps(chunk.metadata, indent=2, default=str)
+                        )
+                else:
+                    # Backward compatibility: plain strings
+                    (outputs_folder / f"{idx:04d}_chunk.txt").write_text(str(chunk))
+
 
 class ItemsNode(DAGNode):
     """Any note which applies to multiple items at once"""
 
     async def get_items(self) -> List[Dict[str, Any]]:
-        """Resolve all inputs, then zip together, combining multiple inputs"""
+        """Resolve all inputs, then zip together, combining multiple inputs.
+
+        Handles TrackedItem transparently: extracts content for templates while
+        preserving source_id and metadata for provenance tracking.
+        """
         # resolve futures now (it's lazy to this point)
         input_data = {k: self.context[k] for k in self.inputs}
 
@@ -778,10 +1054,30 @@ class ItemsNode(DAGNode):
 
         # make the first input available as {{input}} in any template
         items = []
-        for values in zipped:
-            item_dict = dict(zip(self.inputs, values))
+        for idx, values in enumerate(zipped):
+            item_dict = {}
+
+            for key, val in zip(self.inputs, values):
+                if isinstance(val, TrackedItem):
+                    # Extract content for template, preserve metadata
+                    item_dict[key] = val.content
+                    item_dict[f"__{key}__source_id"] = val.source_id
+                    item_dict[f"__{key}__metadata"] = val.metadata
+                    item_dict[f"__{key}__tracked_item"] = val  # Keep reference
+                else:
+                    item_dict[key] = val
+
+            # Make first input available as {{input}}
             if self.inputs:
-                item_dict["input"] = item_dict[self.inputs[0]]
+                first_val = values[0]
+                if isinstance(first_val, TrackedItem):
+                    item_dict["input"] = first_val.content
+                    item_dict["source_id"] = first_val.source_id
+                    item_dict["metadata"] = first_val.metadata
+                    item_dict["tracked_item"] = first_val
+                else:
+                    item_dict["input"] = first_val
+
             items.append(Box(item_dict))
 
         return items
@@ -895,26 +1191,34 @@ class Map(ItemsNode, CompletionDAGNode):
         if self.template_text:
             (folder / "prompt_template.sd.md").write_text(self.template_text)
 
-        # Write each prompt/response pair
+        # Get input items for source tracking
+        input_items = self.get_input_items()
+
+        # Write each prompt/response pair with source tracking
         if self.output and isinstance(self.output, list):
-            for idx, result in enumerate(self.output, 1):
+            for idx, result in enumerate(self.output):
+                # Get source_id if available
+                item = input_items[idx] if input_items and idx < len(input_items) else None
+                safe_id = TrackedItem.make_safe_id(TrackedItem.extract_source_id(item))
+                file_prefix = f"{idx:04d}_{safe_id}"
+
                 # Try to extract prompt from ChatterResult
                 try:
                     if hasattr(result, "results") and result.results:
                         # Get first segment's prompt
                         first_seg = next(iter(result.results.values()))
                         if hasattr(first_seg, "prompt"):
-                            (folder / f"{idx:03d}_prompt.md").write_text(
+                            (folder / f"{file_prefix}_prompt.md").write_text(
                                 first_seg.prompt
                             )
 
                     # Write response text
                     if hasattr(result, "response"):
                         response_text = str(result.response)
-                        (folder / f"{idx:03d}_response.txt").write_text(response_text)
+                        (folder / f"{file_prefix}_response.txt").write_text(response_text)
 
                     # Write full ChatterResult JSON
-                    (folder / f"{idx:03d}_response.json").write_text(
+                    (folder / f"{file_prefix}_response.json").write_text(
                         safe_json_dump(result)
                     )
                 except Exception as e:
@@ -934,6 +1238,7 @@ class Classifier(ItemsNode, CompletionDAGNode):
 
     type: Literal["Classifier"] = "Classifier"
     template_text: str = None
+    _processed_items: Optional[List[Any]] = None  # Store items for export
 
     @property
     def template(self) -> str:
@@ -953,12 +1258,15 @@ class Classifier(ItemsNode, CompletionDAGNode):
         input_data = self.context[self.inputs[0]] if self.inputs else None
         if not input_data:
             raise Exception("Classifier node must have input data")
-            
+
         if isinstance(input_data, BatchList):
             raise Exception("Classifier node does not support batch input")
 
         items = await self.get_items()
         filtered_context = self.context
+
+        # Store items for export to access TrackedItem metadata
+        self._processed_items = items
 
         results = [None] * len(items)
 
@@ -994,21 +1302,101 @@ class Classifier(ItemsNode, CompletionDAGNode):
         if self.template_text:
             (folder / "prompt_template.sd.md").write_text(self.template_text)
 
+        # Export individual responses with source tracking
         for i, j in enumerate(self.output):
-            (folder / f"{i:04d}_response.json").write_text(j.outputs.to_json())
+            # Get source_id from processed items
+            item = self._processed_items[i] if self._processed_items and i < len(self._processed_items) else None
+            safe_id = TrackedItem.make_safe_id(TrackedItem.extract_source_id(item))
+
+            # Export response with source_id in filename
+            (folder/"prompts").mkdir(parents=True, exist_ok=True)
+            (folder / "prompts" / f"{i:04d}_{safe_id}_response.json").write_text(j.outputs.to_json())
             for k, v in j.results.items():
-                (folder / f"{i:04d}_{k}_prompt.txt").write_text(v.prompt)
-            
-        # Write results as CSV (primary format)
+                (folder / "prompts" / f"{i:04d}_{safe_id}_{k}_prompt.txt").write_text(v.prompt)
+
+        # Write results as CSV (primary format) with source tracking
         if self.output and isinstance(self.output, list):
             try:
-                # Convert list of dicts to DataFrame and export as CSV
-                df = pd.DataFrame([i.outputs for i in self.output])
-                df.to_csv(folder / "classifications.csv", index=False)
+                # Build rows with source_id tracking
+                rows = []
+                for idx, output_item in enumerate(self.output):
+                    row = {}
+
+                    # Add source tracking first (will be first columns)
+                    if self._processed_items and idx < len(self._processed_items):
+                        source_id = TrackedItem.extract_source_id(self._processed_items[idx])
+                        row["item_id"] = source_id
+
+                        # Parse out document name (first part before __)
+                        parts = source_id.split("__")
+                        row["document"] = parts[0] if parts else source_id
+
+                        # Add original filename if available from tracked_item metadata
+                        item = self._processed_items[idx]
+                        metadata = None
+                        if isinstance(item, TrackedItem):
+                            metadata = item.metadata
+                        elif hasattr(item, 'tracked_item') and isinstance(item.tracked_item, TrackedItem):
+                            metadata = item.tracked_item.metadata
+
+                        if metadata:
+                            if "filename" in metadata:
+                                row["filename"] = metadata["filename"]
+                            elif "original_path" in metadata:
+                                row["filename"] = metadata["original_path"]
+                    else:
+                        row["item_id"] = f"item_{idx}"
+                        row["document"] = f"item_{idx}"
+
+                    # Add index
+                    row["index"] = idx
+
+                    # Add classification outputs
+                    row.update(output_item.outputs)
+
+                    rows.append(row)
+
+                # Convert to DataFrame and export as CSV
+                df = pd.DataFrame(rows)
+                df.to_csv(folder / f"classifications_{self.name}.csv", index=False)
+                html = df.to_html(
+                index=False,
+                classes="dataframe",
+                escape=False
+                )
+
+                styled = f"""
+                <html>
+                <head>
+                <style>
+                table {{
+                border-collapse: collapse;
+                width: 100%;
+                }}
+                th, td {{
+                border: 1px solid #ccc;
+                padding: 6px 8px;
+                text-align: left;
+                vertical-align: top;   /* this is the key */
+                font-family: sans-serif;
+                font-size: 14px;
+                }}
+                th {{
+                background: #f0f0f0;
+                }}
+                </style>
+                </head>
+                <body>
+                {html}
+                </body>
+                </html>
+                """
+
+                (folder / f"classifications_{self.name}.html").write_text(styled, encoding="utf-8")
 
                 # Also write as JSON
-                (folder / "classifications.json").write_text(
-                    json.dumps(self.output, indent=2, default=str)
+                (folder / f"classifications_{self.name}.json").write_text(
+                    json.dumps(rows, indent=2, default=str)
                 )
 
                 # Write summary statistics if there are categorical fields
@@ -1384,7 +1772,7 @@ class TransformReduce(CompletionDAGNode):
     chunk_size: int = 20000
     min_split: int = 500
     overlap: int = 0
-    split_unit: Literal["chars", "tokens", "words", "sentences"] = "tokens"
+    split_unit: Literal["chars", "tokens", "words", "sentences", "paragraphs"] = "tokens"
     encoding_name: str = "cl100k_base"
     reduce_template: str = "{{input}}\n\n"
     template_text: str = (
@@ -1409,6 +1797,10 @@ class TransformReduce(CompletionDAGNode):
             import nltk
 
             return nltk.word_tokenize(doc)
+        elif self.split_unit == "paragraphs":
+            from nltk.tokenize import BlanklineTokenizer
+
+            return BlanklineTokenizer().tokenize(doc)
         else:
             raise ValueError(f"Unsupported tokenization method: {self.split_unit}")
 
@@ -1471,6 +1863,10 @@ class TransformReduce(CompletionDAGNode):
                 import nltk
 
                 item_len = len(nltk.sent_tokenize(item))
+            elif self.split_unit == "paragraphs":
+                from nltk.tokenize import BlanklineTokenizer
+
+                item_len = len(BlanklineTokenizer().tokenize(item))
             else:
                 raise ValueError(f"Unknown split_unit: {self.split_unit}")
 

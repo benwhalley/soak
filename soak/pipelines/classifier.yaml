@@ -1,0 +1,85 @@
+name: classifier_simple
+default_context:
+  persona: Experienced researcher
+  model_name: openai/gpt-4.1
+
+nodes:
+  - name: sentences
+    type: Split
+    split_unit: sentences
+    chunk_size: 3
+    min_split: 2
+    
+  - name: paragraphs
+    type: Split
+    split_unit: paragraphs
+    chunk_size: 1
+    min_split: 1
+    
+  - name: classify_sentences
+    type: Classifier
+    inputs:
+      - sentences
+      
+  - name: classify_paragraphs
+    type: Classifier
+    inputs:
+      - paragraphs
+
+
+---#classify_sentences
+
+You are a: {{persona}}
+
+Read the text carefully and classify it:
+
+<text>
+{{input}}
+</text>
+
+
+¡BEGIN
+
+What is the primary topic?
+[[pick:topic|health,technology,education,business,other]]
+
+¡OBLIVIATE
+
+What is the sentiment?
+[[pick:sentiment|positive,negative,neutral,mixed]]
+
+¡OBLIVIATE
+Rate the positivity on a scale of 1-5:
+[[pick:positivity|1,2,3,4,5]]
+
+
+
+---#classify_paragraphs
+
+You are a: {{persona}}
+
+Read the text carefully and classify it:
+
+<text>
+{{input}}
+</text>
+
+
+¡BEGIN
+
+What topics does the text cover:
+
+[[pick*:alltopics|health,technology,education,business,other]]
+
+
+What is the primary topic?
+[[pick:topic|health,technology,education,business,other]]
+
+¡OBLIVIATE
+
+What is the sentiment?
+[[pick:sentiment|positive,negative,neutral,mixed]]
+
+¡OBLIVIATE
+Rate the positivity on a scale of 1-5:
+[[pick:positivity|1,2,3,4,5]]

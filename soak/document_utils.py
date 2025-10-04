@@ -94,27 +94,45 @@ def safer_extract(zip_ref, dest_dir, max_files: int = 1000):
 
 
 @contextmanager
-def unpack_zip_to_temp_paths_if_needed(paths: list[str]) -> list[str]:
+def unpack_zip_to_temp_paths_if_needed(paths: list[str]) -> list[tuple[str, dict]]:
     """
-    Yield list of extracted or globbed file paths. Cleans up any temp dirs.
+    Yield list of (path, metadata) tuples for extracted or globbed files. Cleans up any temp dirs.
+
+    Returns:
+        List of tuples: (file_path, metadata_dict)
+        metadata_dict contains:
+            - 'zip_source': stem of zip file if from zip, None otherwise
+            - 'zip_path': full path to original zip file if from zip, None otherwise
     """
-    expanded_paths = []
+    expanded_items = []
     temp_dirs = []
 
     try:
         for path in paths:
             if path.endswith(".zip") and os.path.isfile(path):
+                zip_stem = Path(path).stem  # "archive.zip" -> "archive"
                 with zipfile.ZipFile(path, "r") as zip_ref:
                     tmpdir = tempfile.mkdtemp(prefix="unpacked_zip_")
                     temp_dirs.append(tmpdir)
                     safer_extract(zip_ref, tmpdir)
                     for root, _, files in os.walk(tmpdir):
                         for f in files:
-                            expanded_paths.append(os.path.join(root, f))
+                            file_path = os.path.join(root, f)
+                            metadata = {
+                                'zip_source': zip_stem,
+                                'zip_path': path
+                            }
+                            expanded_items.append((file_path, metadata))
             else:
-                expanded_paths.extend(glob.glob(path))  # expand globs
+                # Expand globs
+                for expanded_path in glob.glob(path):
+                    metadata = {
+                        'zip_source': None,
+                        'zip_path': None
+                    }
+                    expanded_items.append((expanded_path, metadata))
 
-        yield expanded_paths
+        yield expanded_items
 
     finally:
         for tmpdir in temp_dirs:

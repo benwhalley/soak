@@ -220,7 +220,7 @@ def run(
     input_files: list[str] = typer.Argument(
         ..., help="File patterns or zip files (supports globs like '*.txt')"
     ),
-    model_name: str = typer.Option("litellm/gpt-4.1-mini", help="LLM model name"),
+    model_name: str = typer.Option(None, help="LLM model name"),
     output: str = typer.Option(
         None,
         "--output",
@@ -302,7 +302,8 @@ def run(
             pipeline.default_context[key] = value
             logger.info(f"Set context variable: {key}={value}")
 
-    pipeline.config.model_name = model_name
+    if model_name is not None:
+        pipeline.config.model_name = model_name
     pipeline.config.llm_credentials = LLMCredentials(
         api_key=api_key,
         base_url=base_url,
