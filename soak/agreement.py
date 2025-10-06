@@ -24,7 +24,7 @@ def gwet_ac1(ratings: pd.DataFrame) -> float:
         return round(float(cac.gwet()["est"]["coefficient_value"]), 3)
     except Exception as e:
         logger.warning(f"Failed to calculate Gwet's AC1: {e}")
-        return float('nan')
+        return float("nan")
 
 
 def kripp_alpha(ratings: pd.DataFrame) -> float:
@@ -41,7 +41,7 @@ def kripp_alpha(ratings: pd.DataFrame) -> float:
         return round(float(cac.krippendorff()["est"]["coefficient_value"]), 3)
     except Exception as e:
         logger.warning(f"Failed to calculate Krippendorff's Alpha: {e}")
-        return float('nan')
+        return float("nan")
 
 
 def percent_agreement(ratings: pd.DataFrame) -> float:
@@ -60,13 +60,13 @@ def percent_agreement(ratings: pd.DataFrame) -> float:
         return round(agree.mean(), 3)
     except Exception as e:
         logger.warning(f"Failed to calculate percent agreement: {e}")
-        return float('nan')
+        return float("nan")
 
 
 def calculate_agreement_stats(
     csv_paths: List[Union[str, Path]],
     agreement_fields: List[str],
-    item_id_col: str = "item_id"
+    item_id_col: str = "item_id",
 ) -> Dict[str, Dict[str, float]]:
     """Calculate inter-rater agreement statistics across multiple CSV files.
 
@@ -105,10 +105,14 @@ def calculate_agreement_stats(
     # Verify all CSVs have the required columns
     for rater_name, df in dfs:
         if item_id_col not in df.columns:
-            raise ValueError(f"{rater_name} missing required column '{item_id_col}'. Available columns: {list(df.columns)}")
+            raise ValueError(
+                f"{rater_name} missing required column '{item_id_col}'. Available columns: {list(df.columns)}"
+            )
         missing_fields = [f for f in agreement_fields if f not in df.columns]
         if missing_fields:
-            raise ValueError(f"{rater_name} missing agreement fields: {missing_fields}. Available columns: {list(df.columns)}")
+            raise ValueError(
+                f"{rater_name} missing agreement fields: {missing_fields}. Available columns: {list(df.columns)}"
+            )
 
     results = {}
 
@@ -131,11 +135,11 @@ def calculate_agreement_stats(
         if len(ratings) == 0:
             logger.warning(f"No common items found for field '{field}'")
             results[field] = {
-                "AC1": float('nan'),
-                "Kripp_alpha": float('nan'),
-                "Percent_Agreement": float('nan'),
+                "AC1": float("nan"),
+                "Kripp_alpha": float("nan"),
+                "Percent_Agreement": float("nan"),
                 "n_items": 0,
-                "n_raters": len(dfs)
+                "n_raters": len(dfs),
             }
             continue
 
@@ -145,7 +149,7 @@ def calculate_agreement_stats(
             "Kripp_alpha": kripp_alpha(ratings),
             "Percent_Agreement": percent_agreement(ratings),
             "n_items": len(ratings),
-            "n_raters": len(dfs)
+            "n_raters": len(dfs),
         }
 
     return results
@@ -154,7 +158,7 @@ def calculate_agreement_stats(
 def calculate_agreement_from_dataframes(
     model_dfs: Dict[str, pd.DataFrame],
     agreement_fields: List[str] = None,
-    item_id_col: str = "item_id"
+    item_id_col: str = "item_id",
 ) -> Dict[str, Dict[str, float]]:
     """Calculate inter-rater agreement statistics from DataFrames.
 
@@ -181,10 +185,12 @@ def calculate_agreement_from_dataframes(
 
     # Auto-detect agreement fields if not specified
     if not agreement_fields:
-        metadata_cols = {'item_id', 'document', 'filename', 'index'}
+        metadata_cols = {"item_id", "document", "filename", "index"}
         all_fields = {c for df in model_dfs.values() for c in df.columns}
         agreement_fields = sorted(
-            f for f in all_fields if f not in metadata_cols and not f.endswith('__evidence')
+            f
+            for f in all_fields
+            if f not in metadata_cols and not f.endswith("__evidence")
         )
         logger.info("Auto-detected agreement fields: %s", agreement_fields)
 
@@ -204,7 +210,9 @@ def calculate_agreement_from_dataframes(
             }
 
             if len(ratings_data) < 2:
-                logger.warning(f"Field '{field}' not present in enough models, skipping")
+                logger.warning(
+                    f"Field '{field}' not present in enough models, skipping"
+                )
                 continue
 
             ratings = pd.DataFrame(ratings_data).dropna()
@@ -219,11 +227,11 @@ def calculate_agreement_from_dataframes(
                 "Kripp_alpha": kripp_alpha(ratings),
                 "Percent_Agreement": percent_agreement(ratings),
                 "n_items": len(ratings),
-                "n_raters": len(ratings_data)
+                "n_raters": len(ratings_data),
             }
         except Exception as e:
             logger.error(f"Error calculating agreement for field '{field}': {e}")
-            stats[field] = {'error': str(e)}
+            stats[field] = {"error": str(e)}
 
     if stats:
         logger.info(f"Calculated agreement statistics for {len(stats)} fields")
@@ -232,8 +240,7 @@ def calculate_agreement_from_dataframes(
 
 
 def export_agreement_stats(
-    stats: Dict[str, Dict[str, float]],
-    output_prefix: str = "agreement_stats"
+    stats: Dict[str, Dict[str, float]], output_prefix: str = "agreement_stats"
 ) -> None:
     """Export agreement statistics to CSV and JSON files.
 
@@ -252,4 +259,6 @@ def export_agreement_stats(
     with open(f"{output_prefix}.json", "w") as f:
         json.dump(stats, f, indent=2)
 
-    logger.info(f"Exported agreement stats to {output_prefix}.csv and {output_prefix}.json")
+    logger.info(
+        f"Exported agreement stats to {output_prefix}.csv and {output_prefix}.json"
+    )

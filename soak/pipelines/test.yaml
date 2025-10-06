@@ -1,0 +1,54 @@
+name: filter_test
+
+default_context:
+  persona: "You are a helpful assistant that filters text based on content quality."
+
+nodes:
+  - name: paragraphs
+    type: Split
+    split_unit: paragraphs
+    chunk_size: 1
+
+  - name: filter_substantive
+    type: Filter
+    inputs:
+      - paragraphs
+      
+  - name: summarise_substantive
+    type: Map
+    inputs:
+      - filter_substantive
+
+  - name: classify_substantive
+    type: Classifier
+    model_name: litellm/gpt-4.1-mini
+    inputs:
+      - summarise_substantive
+
+---#filter_substantive
+
+Read this text carefully:
+
+<text>
+{{input}}
+</text>
+
+Does this text contain talk about coffee? True if it does.
+
+[[bool:filter]]
+
+
+---#summarise_substantive
+
+{{input}}
+
+Summarise this text in 2-3 lines.
+
+[[summary]]
+
+
+---#classify_substantive
+
+{{input}}
+
+Pick a topic: [[pick:topic|health,food,tech,culture,other]]

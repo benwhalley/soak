@@ -33,7 +33,7 @@ def export_to_html(df: pd.DataFrame, path: Path) -> None:
         path: Output path (should have .html extension)
     """
     try:
-        html = df.to_html(index=False, escape=False, na_rep='')
+        html = df.to_html(index=False, escape=False, na_rep="")
         styled_html = f"""
 <!DOCTYPE html>
 <html>
@@ -66,7 +66,7 @@ def export_to_json(rows: List[Dict], path: Path) -> None:
         path: Output path (should have .json extension)
     """
     try:
-        with open(path, 'w') as f:
+        with open(path, "w") as f:
             json.dump(rows, f, indent=2, default=str)
         logger.info(f"Exported JSON to {path}")
     except Exception as e:

@@ -1,0 +1,34 @@
+name: zero_shot
+
+nodes:
+  
+  - name: everything
+    type: Reduce
+      
+  - name: codes
+    type: Map
+    inputs:
+      - everything
+
+  - name: verify
+    type: VerifyQuotes
+    inputs:
+      - codes
+      
+---#everything
+
+{{input}}
+
+---#codes
+
+Read the text carefully.
+
+<text>
+{{input}}
+</text>
+
+You are a qualitative researcher doing thematic analysis.
+Make a list of all the codes in the text:
+
+[[codes:codes]]
+

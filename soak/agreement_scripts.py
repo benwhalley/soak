@@ -10,8 +10,7 @@ logger = logging.getLogger(__name__)
 
 
 def collect_field_categories(
-    model_results: Dict[str, List[Any]],
-    agreement_fields: List[str]
+    model_results: Dict[str, List[Any]], agreement_fields: List[str]
 ) -> Dict[str, Set[str]]:
     """Collect all unique categories for each agreement field across all models.
 
@@ -31,7 +30,7 @@ def collect_field_categories(
 
             # Handle different result types
             output_dict = {}
-            if hasattr(result, 'results'):
+            if hasattr(result, "results"):
                 # ChatterResult
                 output_dict = result.results
             elif isinstance(result, dict):
@@ -58,7 +57,7 @@ def generate_human_rater_template(
     node_name: str,
     model_name: str,
     df: pd.DataFrame,
-    field_categories: Dict[str, Set[str]]
+    field_categories: Dict[str, Set[str]],
 ) -> Path:
     """Generate a template CSV for human raters with example categories.
 
@@ -73,7 +72,9 @@ def generate_human_rater_template(
         Path to the generated template file
     """
     safe_model_name = model_name.replace("/", "_").replace(":", "_")
-    template_path = output_folder / f"human_rater_template_{node_name}_{safe_model_name}.csv"
+    template_path = (
+        output_folder / f"human_rater_template_{node_name}_{safe_model_name}.csv"
+    )
 
     # Create template with example row showing valid categories
     template_rows = []
@@ -108,7 +109,7 @@ def generate_agreement_script_content(
     node_name: str,
     agreement_fields: List[str],
     model_csvs: List[str],
-    field_categories: Dict[str, Set[str]]
+    field_categories: Dict[str, Set[str]],
 ) -> str:
     """Generate Python script content for recalculating agreement with human raters.
 
@@ -123,8 +124,7 @@ def generate_agreement_script_content(
     """
     # Convert sets to sorted lists for JSON serialization
     valid_categories = {
-        field: sorted(categories)
-        for field, categories in field_categories.items()
+        field: sorted(categories) for field, categories in field_categories.items()
     }
 
     script_content = f'''#!/usr/bin/env python3
@@ -386,11 +386,11 @@ def generate_agreement_command_script(node_name: str) -> str:
     Returns:
         Bash script content as a string
     """
-    return f'''#!/bin/bash
+    return f"""#!/bin/bash
 # macOS launcher for agreement analysis
 cd "$(dirname "$0")"
 python3 calculate_agreement.py "$@"
-'''
+"""
 
 
 def write_agreement_scripts(
@@ -398,7 +398,7 @@ def write_agreement_scripts(
     node_name: str,
     agreement_fields: List[str],
     model_csvs: List[str],
-    field_categories: Dict[str, Set[str]]
+    field_categories: Dict[str, Set[str]],
 ) -> None:
     """Write agreement analysis scripts to output folder.
 

@@ -26,6 +26,25 @@ init_tui(app)
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 logger = logging.getLogger(__name__)
 
+
+def format_exception_concise(exc: Exception) -> str:
+    """Format exception with minimal context - just the error and relevant code location."""
+    tb = traceback.extract_tb(exc.__traceback__)
+
+    # Get the last frame (where the error actually occurred)
+    if tb:
+        last_frame = tb[-1]
+        error_msg = f"\n{type(exc).__name__}: {exc}\n"
+        error_msg += f"  File: {last_frame.filename}:{last_frame.lineno}\n"
+        error_msg += f"  In: {last_frame.name}\n"
+        if last_frame.line:
+            error_msg += f"    {last_frame.line}\n"
+    else:
+        error_msg = f"\n{type(exc).__name__}: {exc}\n"
+
+    return error_msg
+
+
 PIPELINE_DIR = Path(__file__).parent / "pipelines"
 
 
@@ -287,7 +306,11 @@ def run(
 
     pipyml = resolve_pipeline(pipeline, Path.cwd(), PIPELINE_DIR)
     logger.info(f"Loading pipeline from {pipyml}")
-    pipeline = load_template_bundle(pipyml)
+
+    try:
+        pipeline = load_template_bundle(pipyml)
+    except ValueError as e:
+        raise typer.BadParameter(f"Pipeline validation error: {e}")
 
     # Override default_context with CLI-provided values
     if context:
@@ -299,7 +322,7 @@ def run(
                 )
                 raise typer.Exit(1)
             key, value = item.split("=", 1)
-            pipeline.default_context[key] = value
+            pipeline.default_context[key.trim()] = value.trim()
             logger.info(f"Set context variable: {key}={value}")
 
     if model_name is not None:
@@ -316,14 +339,11 @@ def run(
     try:
         analysis, errors = asyncio.run(pipeline.run())
         if errors:
-            logger.error(f"Errors during pipeline execution: {errors}")
-            logger.warning("Entering pdb for debugging")
+            raise typer.BadParameter(f"Pipeline execution failed:\n{errors}")
 
     except Exception as e:
-        print(f"Error during pipeline execution: {e}", file=sys.stderr)
-
-        traceback.print_exc()
-        raise typer.Exit(1)
+        error_msg = format_exception_concise(e)
+        raise typer.BadParameter(f"Pipeline execution error:\n{error_msg}")
 
     # analysis.config.llm_credentials.api_key = (
     #     analysis.config.llm_credentials.api_key[:5] + "***"
@@ -337,9 +357,13 @@ def run(
     jsoncontent = analysis.model_dump_json()
 
     # this roundtrip to dict is weird, but needed because of a bug in how ChatterResult is reserialised?
-    htmlcontent = generate_html_output(
-        QualitativeAnalysisPipeline.model_validate(analysis.model_dump()), template
-    )
+    try:
+        htmlcontent = generate_html_output(
+            QualitativeAnalysisPipeline.model_validate(analysis.model_dump()), template
+        )
+    except Exception as e:
+        error_msg = format_exception_concise(e)
+        raise typer.BadParameter(f"Error generating HTML output:\n{error_msg}")
     if output is None:
         if format == "json":
             print(jsoncontent, file=sys.stdout)
@@ -458,21 +482,25 @@ def compare(
         with open(input_json, "r", encoding="utf-8") as f:
             data = json.load(f)
 
-        # Load as pipeline and extract result
-        if "nodes" in data:
-            # This is a pipeline
-            pipeline = QualitativeAnalysisPipeline.model_validate(data)
-            analysis = pipeline.result()
-            # Set name from filename (more useful for comparisons)
-            analysis.name = input_path.stem
-        else:
-            # This is already a QualitativeAnalysis
-
-            analysis = QualitativeAnalysis.model_validate(data)
-            if not analysis.name or analysis.name == analysis.sha256()[:8]:
+        try:
+            # Load as pipeline and extract result
+            if "nodes" in data:
+                # This is a pipeline
+                pipeline = QualitativeAnalysisPipeline.model_validate(data)
+                analysis = pipeline.result()
+                # Set name from filename (more useful for comparisons)
                 analysis.name = input_path.stem
+            else:
+                # This is already a QualitativeAnalysis
 
-        analyses.append(analysis)
+                analysis = QualitativeAnalysis.model_validate(data)
+                if not analysis.name or analysis.name == analysis.sha256()[:8]:
+                    analysis.name = input_path.stem
+
+            analyses.append(analysis)
+        except Exception as e:
+            error_msg = format_exception_concise(e)
+            raise typer.BadParameter(f"Error loading {input_json}:\n{error_msg}")
         logger.info(
             f"  Loaded: {analysis.name} ({len(analysis.themes)} themes, {len(analysis.codes)} codes)"
         )
@@ -620,8 +648,8 @@ def export(
         htmlcontent = generate_html_output(pipeline, template)
 
     except Exception as e:
-        print(f"Could not load as pipeline: {e}", file=sys.stderr)
-        raise typer.Exit(1)
+        error_msg = format_exception_concise(e)
+        raise typer.BadParameter(f"Could not load as pipeline:\n{error_msg}")
 
     # Determine output path
     if output is None:
@@ -670,8 +698,8 @@ def dump(
         pipeline = QualitativeAnalysisPipeline.model_validate(data)
         logger.info(f"Loaded pipeline: {pipeline.name}")
     except Exception as e:
-        print(f"Could not load as pipeline: {e}", file=sys.stderr)
-        raise typer.Exit(1)
+        error_msg = format_exception_concise(e)
+        raise typer.BadParameter(f"Could not load as pipeline:\n{error_msg}")
 
     # Determine output folder
     if output_folder is None:

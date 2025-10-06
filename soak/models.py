@@ -1,5 +1,6 @@
 """Data models for qualitative analysis pipelines."""
 import pandas as pd
+import re
 import hashlib
 import itertools
 import json
@@ -8,7 +9,7 @@ import math
 from .agreement import gwet_ac1, kripp_alpha, percent_agreement, export_agreement_stats
 from .export_utils import export_to_csv, export_to_html, export_to_json
 from .agreement_scripts import collect_field_categories, generate_human_rater_template, write_agreement_scripts
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import (
@@ -37,7 +38,7 @@ from jinja2 import (
     meta,
 )
 from joblib import Memory
-from pydantic import BaseModel, Field, constr
+from pydantic import BaseModel, Field, PrivateAttr, constr, model_validator
 from struckdown import LLM, ChatterResult, LLMCredentials, chatter, chatter_async
 from struckdown import get_embedding as get_embedding_
 from struckdown.parsing import parse_syntax
@@ -519,6 +520,7 @@ DAGNodeUnion = Annotated[
         "TransformReduce",
         "VerifyQuotes",
         "Classifier",
+        "Filter",
     ],
     Field(discriminator="type"),
 ]
@@ -541,6 +543,24 @@ class DAG(BaseModel):
             if hasattr(self.config, k) and k not in self.config.model_fields_set:
                 setattr(self.config, k, v)
 
+    @model_validator(mode='after')
+    def validate_node_templates(self) -> 'DAG':
+        """Validate that nodes requiring templates have them defined."""
+        # Node types that require templates
+        template_required_types = {'Map', 'Transform', 'Classifier', 'Filter'}
+
+        for node in self.nodes:
+            if node.type in template_required_types:
+                # Check if template_text exists and is not None/empty
+                if not hasattr(node, 'template_text') or not node.template_text:
+                    raise ValueError(
+                        f"Node '{node.name}' of type '{node.type}' requires a template, "
+                        f"but none was found. Add a template section like '---#{node.name}' "
+                        f"in your YAML file."
+                    )
+
+        return self
+
     def progress(self):
         last_complete = self.nodes[0]
         return f"Last completed: {last_complete.name}"
@@ -557,35 +577,8 @@ class DAG(BaseModel):
 
     def to_mermaid(self) -> str:
         """Generate a Mermaid diagram of the DAG structure with shapes by node type."""
-        lines = ["flowchart TD"]
-
-        shape_map = {
-            "Split": ("(", ")"),  # round edges
-            "Map": ("[[", "]]"),  # standard rectangle
-            "Reduce": ("{{", "}}"),  # hexagon
-            "Transform": (">", "]"),  #
-            "TransformReduce": (">", "]"),  #
-            "VerifyQuotes": ("[[", "]]"),  #
-            "Batch": ("[[", "]]"),  # subroutine shape
-            "Classifier": ("[/", "\\]"),  # parallelogram (for input/output operations)
-        }
-
-        for node in self.nodes:
-            le, ri = shape_map.get(node.type, ("[", "]"))  # fallback to rectangle
-            label = f"{node.type}: {node.name}"
-            lines.append(f"    {node.name}{le}{label}{ri}")
-
-        for edge in self.edges:
-            lines.append(f"    {edge.from_node} --> {edge.to_node}")
-
-        lines.append(
-            """classDef heavyDotted stroke-dasharray: 4 4, stroke-width: 2px;"""
-        )
-        for node in self.nodes:
-            if node.type == "TransformReduce":
-                lines.append("""class all_themes heavyDotted;""")
-
-        return "\n".join(lines)
+        from soak.visualization import dag_to_mermaid
+        return dag_to_mermaid(self)
 
     def get_execution_order(self) -> List[List[str]]:
         """Get the execution order as batches of nodes that can run in parallel."""
@@ -1625,6 +1618,292 @@ class Classifier(ItemsNode, CompletionDAGNode):
         write_agreement_scripts(folder, self.name, self.agreement_fields, csv_files, field_categories)
 
 
+class Filter(ItemsNode, CompletionDAGNode):
+    """
+    Filter items based on a boolean LLM completion.
+
+    Each input item is processed through an LLM prompt containing at least one boolean
+    completion slot. Only items where the filter field evaluates to True are passed to output.
+
+    Filter field identification:
+    1. If a field named 'filter' exists (must be boolean), it's used
+    2. Otherwise, the last completion slot is used (must be boolean)
+    3. Validation error if the identified field is not boolean
+
+    Output: List[TrackedItem] containing only included items (filter == True)
+    """
+
+    type: Literal["Filter"] = "Filter"
+    template_text: str = None
+
+    # Internal state for export (not Pydantic fields, just plain attributes)
+    _excluded_items: Optional[List[Any]] = None
+    _filter_results: Optional[List[Any]] = None
+    _processed_items: Optional[List[Any]] = None
+
+    @property
+    def template(self) -> str:
+        return self.template_text
+
+    def validate_template(self):
+        """Validate template has at least one boolean field."""
+        try:
+            # Just check for [[bool: or [[boolean: or [[decide: syntax without parsing
+            bool_pattern = r'\[\[(bool|boolean|decide):'
+            if not re.search(bool_pattern, self.template_text, re.IGNORECASE):
+                raise ValueError(f"Filter node '{self.name}' template must have at least one boolean completion slot (use [[bool:fieldname]])")
+            return True
+        except Exception as e:
+            logger.error(f"Template validation error: {e}")
+            raise e
+
+    def _identify_filter_field(self) -> str:
+        """Identify which boolean field to use for filtering.
+
+        Returns:
+            str: The field name to use for filtering
+        """
+        import re
+        # Find all boolean field names using regex
+        # Pattern matches: [[bool:name]], [[boolean:name]], [[decide:name]]
+        bool_pattern = r'\[\[(bool|boolean|decide):(\w+)\]'
+        matches = re.findall(bool_pattern, self.template_text, re.IGNORECASE)
+
+        if not matches:
+            raise ValueError(f"Filter node '{self.name}' has no boolean fields")
+
+        # Extract field names (second group from each match)
+        boolean_fields = [m[1] for m in matches]
+
+        # Convention: prefer field named 'filter'
+        if 'filter' in boolean_fields:
+            return 'filter'
+
+        # Fallback: use last boolean field
+        return boolean_fields[-1]
+
+    def _extract_filter_value(self, result: ChatterResult, filter_field: str) -> bool:
+        """Extract the boolean filter value from a ChatterResult.
+
+        Args:
+            result: ChatterResult from LLM
+            filter_field: Name of the field to extract
+
+        Returns:
+            bool: The filter decision (defaults to False if extraction fails)
+        """
+        try:
+            if hasattr(result, 'outputs') and filter_field in result.outputs:
+                return bool(result.outputs[filter_field])
+            elif hasattr(result, 'results') and filter_field in result.results:
+                return bool(result.results[filter_field].output)
+            else:
+                logger.warning(f"Could not find filter field '{filter_field}' in result, defaulting to False (exclude)")
+                return False
+        except Exception as e:
+            logger.warning(f"Error extracting filter value: {e}, defaulting to False (exclude)")
+            return False
+
+    async def run(self) -> List[Any]:
+        """Process each item through filter template, split into included/excluded."""
+        await super().run()
+
+        input_data = self.context[self.inputs[0]] if self.inputs else None
+        if not input_data:
+            raise Exception("Filter node must have input data")
+
+        if isinstance(input_data, BatchList):
+            raise Exception("Filter node does not support batch input")
+
+        items = await self.get_items()
+        filtered_context = self.context
+
+        # Store for export
+        self._processed_items = items
+
+        # Identify which field to use for filtering
+        filter_field = self._identify_filter_field()
+        logger.info(f"Filter node '{self.name}' using field '{filter_field}' for filtering")
+
+        # Process all items concurrently
+        results = [None] * len(items)
+
+        async with anyio.create_task_group() as tg:
+            for idx, item in enumerate(items):
+
+                async def run_and_store(index=idx, item=item):
+                    async with semaphore:
+                        # Run the filter template
+                        chatter_result = await chatter_async(
+                            multipart_prompt=self.template,
+                            context={**filtered_context, **item},
+                            model=self.get_model(),
+                            credentials=self.dag.config.llm_credentials,
+                            action_lookup=get_action_lookup(),
+                            extra_kwargs={"max_tokens": self.max_tokens},
+                        )
+                        results[index] = chatter_result
+
+                tg.start_soon(run_and_store)
+
+        # Store all results for export
+        self._filter_results = results
+
+        # Split items based on filter field
+        included_items = []
+        excluded_items = []
+
+        for idx, (item, result) in enumerate(zip(items, results)):
+            filter_value = self._extract_filter_value(result, filter_field)
+
+            # Get the original TrackedItem from the item dict
+            if hasattr(item, 'tracked_item') and isinstance(item.tracked_item, TrackedItem):
+                tracked = item.tracked_item
+            elif 'tracked_item' in item:
+                tracked = item['tracked_item']
+            elif isinstance(item, TrackedItem):
+                tracked = item
+            else:
+                # Fallback: create TrackedItem from content
+                content = item.get('input', str(item)) if isinstance(item, dict) else str(item)
+                tracked = TrackedItem(
+                    content=content,
+                    source_id=f"item_{idx}",
+                    metadata={}
+                )
+
+            # Create a clean copy of TrackedItem to avoid serialization issues
+            # Filter out any non-serializable objects from metadata
+            clean_metadata = {}
+            if tracked.metadata:
+                for k, v in tracked.metadata.items():
+                    # Only include simple serializable types
+                    if isinstance(v, (str, int, float, bool, type(None))):
+                        clean_metadata[k] = v
+                    elif isinstance(v, (list, dict)):
+                        # Include simple containers (assume they're serializable)
+                        try:
+                            json.dumps(v)
+                            clean_metadata[k] = v
+                        except (TypeError, ValueError):
+                            # Skip non-serializable items
+                            pass
+
+            clean_tracked = TrackedItem(
+                content=tracked.content,
+                source_id=tracked.source_id,
+                metadata=clean_metadata
+            )
+
+            if filter_value:
+                included_items.append(clean_tracked)
+            else:
+                excluded_items.append(clean_tracked)
+
+        # Store excluded items for export
+        self._excluded_items = excluded_items
+
+        # Store included items as output (convert to dicts for serialization)
+        self.output = [{'content': item.content, 'source_id': item.source_id, 'metadata': item.metadata} for item in included_items]
+
+        logger.info(f"Filter '{self.name}': {len(included_items)} included, {len(excluded_items)} excluded")
+
+        return self.output
+
+    def export(self, folder: Path):
+        """Export Filter node with included/excluded items and all prompts."""
+        super().export(folder)
+
+        # Write template
+        if self.template_text:
+            (folder / "prompt_template.sd.md").write_text(self.template_text)
+
+        # Write summary statistics
+        n_included = len(self.output) if self.output else 0
+        n_excluded = len(self._excluded_items) if self._excluded_items else 0
+        n_total = n_included + n_excluded
+
+        pct_included = (n_included / n_total * 100) if n_total > 0 else 0
+        pct_excluded = (n_excluded / n_total * 100) if n_total > 0 else 0
+
+        summary = f"""Filter Summary
+==============
+Total items processed: {n_total}
+Included (filter=True): {n_included} ({pct_included:.1f}%)
+Excluded (filter=False): {n_excluded} ({pct_excluded:.1f}%)
+
+Filter field: {self._identify_filter_field() if self.template_text else 'unknown'}
+"""
+        (folder / "filter_summary.txt").write_text(summary)
+
+        # Export included items (outputs folder) - reconstruct TrackedItems from output dicts
+        if self.output:
+            outputs_folder = folder / "outputs"
+            outputs_folder.mkdir(exist_ok=True)
+
+            for idx, item in enumerate(self.output):
+                # Handle both dict (from self.output) and TrackedItem (from _excluded_items)
+                if isinstance(item, dict):
+                    # Reconstruct from dict
+                    safe_id = item['source_id'].replace("/", "_").replace("\\", "_")
+                    (outputs_folder / f"{idx:04d}_{safe_id}.txt").write_text(item['content'])
+
+                    if item.get('metadata'):
+                        (outputs_folder / f"{idx:04d}_{safe_id}_metadata.json").write_text(
+                            json.dumps(item['metadata'], indent=2, default=str)
+                        )
+                elif isinstance(item, TrackedItem):
+                    safe_id = item.safe_id
+                    (outputs_folder / f"{idx:04d}_{safe_id}.txt").write_text(item.content)
+
+                    if item.metadata:
+                        (outputs_folder / f"{idx:04d}_{safe_id}_metadata.json").write_text(
+                            json.dumps(item.metadata, indent=2, default=str)
+                        )
+
+        # Export excluded items (excluded folder)
+        if self._excluded_items:
+            excluded_folder = folder / "excluded"
+            excluded_folder.mkdir(exist_ok=True)
+
+            for idx, item in enumerate(self._excluded_items):
+                if isinstance(item, TrackedItem):
+                    safe_id = item.safe_id
+                    (excluded_folder / f"{idx:04d}_{safe_id}.txt").write_text(item.content)
+
+                    if item.metadata:
+                        (excluded_folder / f"{idx:04d}_{safe_id}_metadata.json").write_text(
+                            json.dumps(item.metadata, indent=2, default=str)
+                        )
+
+        # Export all prompts and responses (prompts folder)
+        if self._filter_results and self._processed_items:
+            prompts_folder = folder / "prompts"
+            prompts_folder.mkdir(exist_ok=True)
+
+            for idx, (item, result) in enumerate(zip(self._processed_items, self._filter_results)):
+                # Get source_id for filename
+                safe_id = TrackedItem.make_safe_id(TrackedItem.extract_source_id(item))
+                file_prefix = f"{idx:04d}_{safe_id}"
+
+                try:
+                    # Extract and write prompt
+                    if hasattr(result, "results") and result.results:
+                        first_seg = next(iter(result.results.values()))
+                        if hasattr(first_seg, "prompt"):
+                            (prompts_folder / f"{file_prefix}_prompt.md").write_text(first_seg.prompt)
+
+                    # Write response text
+                    if hasattr(result, "response"):
+                        (prompts_folder / f"{file_prefix}_response.txt").write_text(str(result.response))
+
+                    # Write full ChatterResult JSON
+                    (prompts_folder / f"{file_prefix}_response.json").write_text(safe_json_dump(result))
+
+                except Exception as e:
+                    logger.warning(f"Failed to export prompt/response {idx}: {e}")
+
+
 class Transform(ItemsNode, CompletionDAGNode):
     type: Literal["Transform"] = "Transform"
     # TODO: allow for arbitrary python functions instead of chatter?
@@ -1848,124 +2127,302 @@ class QualitativeAnalysisPipeline(DAG):
                 "quotes": quotes,
             }
         )
+from typing import Any, Dict, List, Literal, Optional, Union
+from pathlib import Path
+import pandas as pd
+import numpy as np
+import nltk
+from rank_bm25 import BM25Okapi
+from sklearn.metrics.pairwise import cosine_similarity
+
+
+def make_windows(
+    text: str,
+    window_size: Optional[int] = None,
+    overlap: Optional[int] = None,
+    extracted_sentences: Optional[List[str]] = None,
+) -> List[str]:
+    """Create overlapping windows of text.
+
+    Defaults:
+    - window_size: 10% larger than the longest extracted quote, capped at 500 chars
+    - overlap: 10% of window_size
+    """
+
+    # --- compute defaults ---
+    if extracted_sentences and not window_size:
+        max_quote_len = max(len(q) for q in extracted_sentences)
+        window_size = int(min(1.1 * max_quote_len, 500))
+    elif not window_size:
+        window_size = 400  # fallback default
+
+    if not overlap:
+        overlap = int(window_size * 0.1)
+
+    windows = []
+    i = 0
+    while i < len(text):
+        chunk = text[i : i + window_size]
+        windows.append(chunk)
+        i += window_size - overlap
+    return windows
+
+
+ELLIPSIS_RE = re.compile(r"\.{3,}|…")
+
+
+def verify_quotes_bm25_first(
+    extracted_sentences: List[str],
+    original_windows: List[str],
+    get_embedding,
+    bm25_k1: float = 1.5,
+    bm25_b: float = 0.4,
+    ellipsis_max_gap: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """Verify quotes using BM25-first matching with ellipsis support.
+
+    For each quote:
+    - If no ellipsis: find best BM25 window
+    - If ellipsis: match head/tail separately, reconstruct span
+    - Always compute embedding similarity on final span
+    - Return BM25 score, ratio (top1/top2), and cosine similarity
+    """
+
+    if not extracted_sentences:
+        return []
+
+    # Build BM25 index with custom parameters
+    tokenized = [nltk.word_tokenize(w.lower()) for w in original_windows]
+    bm25 = BM25Okapi(tokenized, k1=bm25_k1, b=bm25_b)
+
+    results = []
+
+    for quote in extracted_sentences:
+        has_ellipsis = bool(ELLIPSIS_RE.search(quote))
+
+        if not has_ellipsis:
+            # Simple case: single BM25 match
+            query_tokens = nltk.word_tokenize(quote.lower())
+            scores = bm25.get_scores(query_tokens)
+            sorted_scores = np.sort(scores)[::-1]
+
+            top1 = float(sorted_scores[0]) if len(sorted_scores) > 0 else 0.0
+            top2 = float(sorted_scores[1]) if len(sorted_scores) > 1 else 0.0
+            ratio = top1 / (top2 + 1e-6)
+
+            best_idx = int(np.argmax(scores))
+            span_text = original_windows[best_idx]
+            bm25_score = top1
+
+        else:
+            # Ellipsis case: match head and tail
+            parts = [p.strip() for p in ELLIPSIS_RE.split(quote) if p.strip()]
+
+            if len(parts) < 2:
+                # Degenerate case: ellipsis but only one part
+                parts = [quote.replace("...", "").replace("…", "").strip()]
+
+            head = parts[0]
+            tail = parts[-1]
+
+            # BM25 for head
+            head_tokens = nltk.word_tokenize(head.lower())
+            head_scores = bm25.get_scores(head_tokens)
+            head_idx = int(np.argmax(head_scores))
+            head_score = float(head_scores[head_idx])
+
+            # BM25 for tail
+            tail_tokens = nltk.word_tokenize(tail.lower())
+            tail_scores = bm25.get_scores(tail_tokens)
+            tail_idx = int(np.argmax(tail_scores))
+            tail_score = float(tail_scores[tail_idx])
+
+            # Ensure head comes before tail
+            if tail_idx < head_idx:
+                head_idx, tail_idx = tail_idx, head_idx
+                head_score, tail_score = tail_score, head_score
+
+            # Check gap constraint
+            if ellipsis_max_gap is not None and (tail_idx - head_idx) > ellipsis_max_gap:
+                # Fall back to single best window
+                best_idx = head_idx if head_score >= tail_score else tail_idx
+                span_text = original_windows[best_idx]
+                bm25_score = max(head_score, tail_score)
+
+                # Calculate ratio for the chosen part
+                scores = head_scores if head_score >= tail_score else tail_scores
+                sorted_scores = np.sort(scores)[::-1]
+                top1 = float(sorted_scores[0]) if len(sorted_scores) > 0 else 0.0
+                top2 = float(sorted_scores[1]) if len(sorted_scores) > 1 else 0.0
+                ratio = top1 / (top2 + 1e-6)
+            else:
+                # Reconstruct span from head to tail
+                span_text = " ".join(original_windows[head_idx:tail_idx+1])
+                bm25_score = (head_score + tail_score) / 2.0
+
+                # Calculate ratio as average of head and tail ratios
+                head_sorted = np.sort(head_scores)[::-1]
+                tail_sorted = np.sort(tail_scores)[::-1]
+
+                head_top1 = float(head_sorted[0]) if len(head_sorted) > 0 else 0.0
+                head_top2 = float(head_sorted[1]) if len(head_sorted) > 1 else 0.0
+                tail_top1 = float(tail_sorted[0]) if len(tail_sorted) > 0 else 0.0
+                tail_top2 = float(tail_sorted[1]) if len(tail_sorted) > 1 else 0.0
+
+                head_ratio = head_top1 / (head_top2 + 1e-6)
+                tail_ratio = tail_top1 / (tail_top2 + 1e-6)
+                ratio = (head_ratio + tail_ratio) / 2.0
+
+        # Compute embedding similarity between original quote and identified span
+        quote_emb = np.array(get_embedding([quote]))
+        span_emb = np.array(get_embedding([span_text]))
+        cosine_sim = float(cosine_similarity(quote_emb, span_emb)[0][0])
+
+        results.append({
+            "quote": quote,
+            "span_text": span_text,
+            "bm25_score": bm25_score,
+            "bm25_ratio": ratio,
+            "cosine_similarity": cosine_sim,
+        })
+
+    return results
 
 
 class VerifyQuotes(DAGNode):
-    
-    """Quote Verifiction, comparing extracted with original texts.
-    
-    Quote verification statistics are calculated by extracting 'matches' for each quote used to support a Code. Matches are found by using text-embeddings of extracted quotes and a sentence-by-sentence split of the source documents. The similarity value represents the semantic similarity of the extracted and original quote (range 0 to 1, higher scores are better). Matches > 0.9 are typically very close, and normally explained by the LLM tidying punctuation or using ellipses. Checking against the original in this way mitigates the risk that quotes have been hallucinated or changed in the interview transcript: we can verify that an exact match or similar match exists in the original text."""
-    
-    
+    """Quote verification using BM25-first matching with ellipsis support.
+
+    Uses BM25 (lexical search) to identify candidate spans, including handling
+    quotes with ellipses by matching head/tail separately and reconstructing
+    the full span. Embeddings are computed on identified spans for verification.
+
+    Configurable windowing (default: 1.1 × longest quote, capped at 500 chars,
+    10% overlap). Returns BM25 scores, ratios (top1/top2), and cosine similarity.
+    """
+
     type: Literal["VerifyQuotes"] = "VerifyQuotes"
-    threshold: float = 0.6
+    window_size: Optional[int] = None
+    overlap: Optional[int] = None
+    bm25_k1: float = 1.5
+    bm25_b: float = 0.4  # Lower value reduces long-doc penalty
+    ellipsis_max_gap: Optional[int] = None  # Max windows between head/tail
+
     stats: Optional[Dict[str, Any]] = None
     original_sentences: Optional[List[str]] = None
     extracted_sentences: Optional[List[str]] = None
+    sentence_matches: Optional[List[Dict[str, Union[str, Any]]]] = None
 
-    sentence_matches: Optional[List[Dict[str, Union[str,Any]]]] = None
-    
     async def run(self) -> List[Any]:
         await super().run()
 
-        import nltk
-        import numpy as np
-        from sklearn.metrics.pairwise import cosine_similarity
+        alldocs = "\n\n".join(doc.content for doc in self.dag.config.documents)
 
-        alldocs = "\n\n".join(self.dag.config.documents)
-        
-        self.original_sentences = nltk.sent_tokenize(alldocs)
-
-        codes = self.context.get("codes", None)
+        codes = self.context.get("codes")
         if not codes:
             raise Exception("VerifyQuotes must be run after node called `codes`")
 
-        self.extracted_sentences = list(itertools.chain(*[i.quotes for i in codes.response.codes]))
-
-        # embed real and extracted quotes
-        # import pdb; pdb.set_trace()
-        try:
-            real_emb = np.array(get_embedding(self.original_sentences))
-            extr_emb = np.array(get_embedding(self.extracted_sentences))
-        except Exception as e:
-            print(e)
-        
-        # calculate cosine similarity
-        similarities = cosine_similarity(extr_emb, real_emb)
-        # self.similarity_matrix = similarities.tolist()
-        
-        # find top matches and sort by similarity
-        top_matches = []
-        max_matches = 10
-        for quote, row in zip(self.extracted_sentences, similarities):
-            real_and_sim = list(zip(self.original_sentences, row))
-            above_thresh = [
-                (r, float(s)) for r, s in real_and_sim if s >= self.threshold
-            ]
-
-            if above_thresh:
-                matches = sorted(above_thresh, key=lambda x: -x[1])[:max_matches]
-            else:
-                top3_idx = row.argsort()[-3:]
-                matches = sorted(
-                    [(self.original_sentences[j], float(row[j])) for j in top3_idx],
-                    key=lambda x: -x[1],
-                )[:max_matches]
-
-            top_matches.append(
-                {
-                    "quote": quote,
-                    "matches": matches,
-                }
+        # collect extracted quotes
+        self.extracted_sentences = []
+        for result in codes:
+            cset = (
+                getattr(result.outputs.get("codes"), "codes", None)
+                if hasattr(result, "outputs")
+                else getattr(result.results.get("codes").output, "codes", None)
             )
-        
-        # TODO tie the quotes back to the original source doc?
+            if not cset:
+                continue
+            for code in cset:
+                self.extracted_sentences.extend(code.quotes)
 
-        # expand top matches into a df to export late
-        df = pd.DataFrame(top_matches)
-        # expand: one row per (quote, match, similarity)
-        df = df.explode("matches", ignore_index=True)
-        df[["match", "similarity"]] = pd.DataFrame(df["matches"].tolist(), index=df.index)
-        df = df.drop(columns=["matches"])
-        sentence_matches = df.to_dict(orient="records")
-        
-        best_matches = (
-            df.sort_values(["quote", "similarity"], ascending=[True, False])
-            .groupby("quote", as_index=False)
-            .first()
-        )        
-        # calulate stats on matches
-        try:   
-            self.stats = best_matches["similarity"].describe(percentiles=[0.1, 0.9])        
-            self.stats.update({
-            "n_no_match_above_threshold": (best_matches["similarity"] < self.threshold).sum(),
-            "pct_no_match_above_threshold": (best_matches["similarity"] < self.threshold).mean() * 100,
-            })
-            # for pydantic serialisation
-            self.stats = {k: float(v) for k, v in self.stats.items()}
-            
+        # --- Create windowed slices through haystack ---
+        self.original_sentences = make_windows(
+            alldocs,
+            window_size=self.window_size,
+            overlap=self.overlap,
+            extracted_sentences=self.extracted_sentences,
+        )
+
+        # --- Run quote matching with BM25-first approach ---
+        matches = verify_quotes_bm25_first(
+            self.extracted_sentences,
+            self.original_sentences,
+            get_embedding,
+            bm25_k1=self.bm25_k1,
+            bm25_b=self.bm25_b,
+            ellipsis_max_gap=self.ellipsis_max_gap,
+        )
+
+        # --- Convert to dataframe and compute stats ---
+        df = pd.DataFrame(matches)
+        self.sentence_matches = df.to_dict(orient="records")
+
+        # Compute statistics
+        try:
+            n_quotes = len(df)
+            n_with_ellipses = df['quote'].apply(lambda q: bool(ELLIPSIS_RE.search(q))).sum()
+
+            self.stats = {
+                "n_quotes": int(n_quotes),
+                "n_with_ellipses": int(n_with_ellipses),
+                "mean_bm25_score": float(df["bm25_score"].mean()) if n_quotes > 0 else 0.0,
+                "median_bm25_score": float(df["bm25_score"].median()) if n_quotes > 0 else 0.0,
+                "mean_bm25_ratio": float(df["bm25_ratio"].mean()) if n_quotes > 0 else 0.0,
+                "median_bm25_ratio": float(df["bm25_ratio"].median()) if n_quotes > 0 else 0.0,
+                "mean_cosine": float(df["cosine_similarity"].mean()) if n_quotes > 0 else 0.0,
+                "median_cosine": float(df["cosine_similarity"].median()) if n_quotes > 0 else 0.0,
+                "min_cosine": float(df["cosine_similarity"].min()) if n_quotes > 0 else 0.0,
+                "max_cosine": float(df["cosine_similarity"].max()) if n_quotes > 0 else 0.0,
+            }
         except Exception as e:
             logger.error(f"Error calculating stats: {e}")
             self.stats = {"error": str(e)}
-    
-        # import pdb; pdb.set_trace()
-        self.sentence_matches = sentence_matches
-        
-        return top_matches
+
+        return matches
 
     def export(self, folder: Path):
-        """Export a VerifyQuotes node, including details of quote matches with original sources."""
         super().export(folder)
-        # Write statistics
+        (folder / "info.txt").write_text(VerifyQuotes.__doc__)
+        pd.DataFrame(self.stats, index=[0]).melt().to_csv(folder / "stats.csv", index=False)
+
+        # Export quote verification as Excel with formatting
+        excel_path = folder / "quote_verification.xlsx"
+        df = pd.DataFrame(self.sentence_matches)
+
+        # Sort by BM25 ratio (lowest confidence first) so problematic quotes appear at top
+        df = df.sort_values(['bm25_ratio', 'bm25_score', 'cosine_similarity'],
+                           ascending=[True, True, True])
+
+        with pd.ExcelWriter(excel_path, engine='openpyxl') as writer:
+            df.to_excel(writer, sheet_name='Quote Verification', index=False)
+
+            # Access the worksheet to apply formatting
+            worksheet = writer.sheets['Quote Verification']
+
+            # Apply text wrapping and set column widths
+            from openpyxl.styles import Alignment
+
+            for column in worksheet.columns:
+                column_letter = column[0].column_letter
+                header_value = column[0].value
+
+                # Set width and wrapping for text columns
+                if header_value in ['span_text', 'quote']:
+                    worksheet.column_dimensions[column_letter].width = 80
+                    for cell in column:
+                        cell.alignment = Alignment(wrap_text=True, vertical='top')
+                elif header_value in ['bm25_score', 'bm25_ratio', 'cosine_similarity']:
+                    # Number columns - narrower
+                    worksheet.column_dimensions[column_letter].width = 15
+                else:
+                    # Auto-width for other columns
+                    max_length = 0
+                    for cell in column:
+                        if cell.value:
+                            max_length = max(max_length, len(str(cell.value)))
+                    worksheet.column_dimensions[column_letter].width = min(max_length + 2, 30)
+
+
         
-        """"""
-        (folder/'info.txt').write_text(VerifyQuotes.__doc__)
-        
-        pd.DataFrame(self.stats, index=[1]).melt().to_csv(folder/'stats.csv')
-        # Write CSV with quote verification details
-        pd.DataFrame(self.sentence_matches).to_csv(folder / "quote_verification.csv")
-        
-            
 class TransformReduce(CompletionDAGNode):
     """
     Recursively reduce a list into a single item by transforming it with an LLM template.
@@ -2227,3 +2684,4 @@ ItemsNode.model_rebuild(force=True)
 DAGNode.model_rebuild(force=True)
 DAG.model_rebuild(force=True)
 QualitativeAnalysis.model_rebuild(force=True)
+Filter.model_rebuild(force=True)

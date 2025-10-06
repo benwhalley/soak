@@ -1,9 +1,9 @@
-import logging
-
 import json
-import pandas as pd
-from struckdown import chatter, LLM, chatter_async
+import logging
 from pathlib import Path
+
+import pandas as pd
+from struckdown import LLM, chatter, chatter_async
 
 logger = logging.getLogger("struckdown")
 logger.setLevel(logging.DEBUG)
@@ -122,7 +122,9 @@ llm = LLM(model_name="litellm/gpt-4.1")
 
 
 import asyncio
+
 from tqdm.asyncio import tqdm_asyncio
+
 
 async def process_decisions(df, pmpt, llm, max_concurrent=5):
     sem = asyncio.Semaphore(10)

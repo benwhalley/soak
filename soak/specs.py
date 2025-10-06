@@ -44,9 +44,16 @@ def load_template_bundle(template: Union[Path, str]) -> QualitativeAnalysisPipel
         templates = {}
 
     loaded = yaml.safe_load(yaml_text)
+
+    # Inject templates into node dicts before validation
+    if templates and "nodes" in loaded:
+        for node in loaded["nodes"]:
+            node_name = node.get("name")
+            if node_name and node_name in templates:
+                node["template_text"] = templates[node_name]
+
     pipeline = QualitativeAnalysisPipeline.model_validate(loaded)
     for i in pipeline.nodes:
-        i.template_text = templates.get(i.name, i.template_text)
         i.validate_template()
         i.dag = pipeline
 
