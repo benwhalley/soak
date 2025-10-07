@@ -4,26 +4,30 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Union
 
+import krippendorff
+import numpy as np
 import pandas as pd
-from irrCAC.raw import CAC
+from statsmodels.stats.inter_rater import aggregate_raters, fleiss_kappa
 
 logger = logging.getLogger(__name__)
 
 
 def gwet_ac1(ratings: pd.DataFrame) -> float:
-    """Calculate Gwet's AC1 coefficient.
+    """Calculate Fleiss' Kappa (replaced Gwet's AC1).
 
     Args:
         ratings: DataFrame where each row is a subject and each column is a rater
 
     Returns:
-        Gwet's AC1 coefficient (0-1, higher is better)
+        Fleiss' Kappa coefficient (0-1, higher is better)
     """
     try:
-        cac = CAC(ratings)
-        return round(float(cac.gwet()["est"]["coefficient_value"]), 3)
+        # Convert to format expected by statsmodels: (n_subjects, n_categories)
+        table, _ = aggregate_raters(ratings.values)
+        kappa = fleiss_kappa(table, method="fleiss")
+        return round(float(kappa), 3)
     except Exception as e:
-        logger.warning(f"Failed to calculate Gwet's AC1: {e}")
+        logger.warning(f"Failed to calculate Fleiss' Kappa: {e}")
         return float("nan")
 
 
@@ -37,8 +41,11 @@ def kripp_alpha(ratings: pd.DataFrame) -> float:
         Krippendorff's Alpha coefficient (0-1, higher is better)
     """
     try:
-        cac = CAC(ratings)
-        return round(float(cac.krippendorff()["est"]["coefficient_value"]), 3)
+        # krippendorff expects shape (n_raters, n_subjects)
+        alpha = krippendorff.alpha(
+            reliability_data=ratings.T.values, level_of_measurement="nominal"
+        )
+        return round(float(alpha), 3)
     except Exception as e:
         logger.warning(f"Failed to calculate Krippendorff's Alpha: {e}")
         return float("nan")
@@ -145,7 +152,7 @@ def calculate_agreement_stats(
 
         # Calculate statistics
         results[field] = {
-            "AC1": gwet_ac1(ratings),
+            "Fleiss_Kappa": gwet_ac1(ratings),
             "Kripp_alpha": kripp_alpha(ratings),
             "Percent_Agreement": percent_agreement(ratings),
             "n_items": len(ratings),
@@ -223,7 +230,7 @@ def calculate_agreement_from_dataframes(
 
             # Calculate statistics
             stats[field] = {
-                "AC1": gwet_ac1(ratings),
+                "Fleiss_Kappa": gwet_ac1(ratings),
                 "Kripp_alpha": kripp_alpha(ratings),
                 "Percent_Agreement": percent_agreement(ratings),
                 "n_items": len(ratings),

@@ -6,6 +6,8 @@ from typing import Any, Dict, List, Set
 
 import pandas as pd
 
+from .export_utils import export_to_excel
+
 logger = logging.getLogger(__name__)
 
 
@@ -59,7 +61,7 @@ def generate_human_rater_template(
     df: pd.DataFrame,
     field_categories: Dict[str, Set[str]],
 ) -> Path:
-    """Generate a template CSV for human raters with example categories.
+    """Generate a template XLSX for human raters with example categories.
 
     Args:
         output_folder: Folder to write template to
@@ -73,7 +75,7 @@ def generate_human_rater_template(
     """
     safe_model_name = model_name.replace("/", "_").replace(":", "_")
     template_path = (
-        output_folder / f"human_rater_template_{node_name}_{safe_model_name}.csv"
+        output_folder / f"human_rater_template_{node_name}_{safe_model_name}.xlsx"
     )
 
     # Create template with example row showing valid categories
@@ -99,7 +101,9 @@ def generate_human_rater_template(
         template_rows.append(template_row)
 
     template_df = pd.DataFrame(template_rows)
-    template_df.to_csv(template_path, index=False)
+
+    # Export to Excel with formatting
+    export_to_excel(template_df, template_path)
     logger.info(f"Generated human rater template: {template_path}")
 
     return template_path
@@ -132,9 +136,10 @@ def generate_agreement_script_content(
 Recalculate agreement statistics for {node_name} with human raters.
 
 Usage:
-    1. Fill in human_rater_template_*.csv files with your classifications
+    1. Fill in human_rater_template_*.xlsx files with your classifications
     2. Run this script:
-       python calculate_agreement.py human_rater1.csv human_rater2.csv ...
+       python calculate_agreement.py human_rater1.xlsx human_rater2.xlsx ...
+       (Also accepts .csv files)
 
 The script will calculate agreement between:
 - All raters (models + humans)
@@ -153,9 +158,15 @@ MODEL_CSVS = {model_csvs!r}
 VALID_CATEGORIES = {valid_categories!r}
 
 
-def validate_human_csv(csv_path, agreement_fields, valid_categories):
-    """Validate human rater CSV and warn about new categories."""
-    df = pd.read_csv(csv_path)
+def load_human_file(file_path, agreement_fields, valid_categories):
+    """Load human rater file (CSV or XLSX) and warn about new categories."""
+    # Auto-detect file type and load
+    if file_path.endswith('.xlsx'):
+        df = pd.read_excel(file_path, engine='openpyxl')
+    elif file_path.endswith('.csv'):
+        df = pd.read_csv(file_path)
+    else:
+        raise ValueError(f"Unsupported file type: {{file_path}}. Use .csv or .xlsx")
 
     # Check required columns
     missing = [f for f in agreement_fields if f not in df.columns]
@@ -195,7 +206,9 @@ def main():
         print()
 
         # Standalone implementation
-        from irrCAC.raw import CAC
+        import numpy as np
+        from statsmodels.stats.inter_rater import aggregate_raters, fleiss_kappa
+        import krippendorff
 
         def calculate_agreement_from_dataframes(model_dfs, agreement_fields=None, item_id_col="item_id"):
             if not agreement_fields:
@@ -221,10 +234,16 @@ def main():
                     continue
 
                 try:
-                    cac = CAC(ratings)
+                    # Fleiss' Kappa (replaces Gwet's AC1)
+                    table, _ = aggregate_raters(ratings.values)
+                    fleiss_k = fleiss_kappa(table, method='fleiss')
+
+                    # Krippendorff's Alpha
+                    kripp_a = krippendorff.alpha(reliability_data=ratings.T.values, level_of_measurement='nominal')
+
                     stats[field] = {{
-                        "AC1": round(float(cac.gwet()["est"]["coefficient_value"]), 3),
-                        "Kripp_alpha": round(float(cac.krippendorff()["est"]["coefficient_value"]), 3),
+                        "Fleiss_Kappa": round(float(fleiss_k), 3),
+                        "Kripp_alpha": round(float(kripp_a), 3),
                         "Percent_Agreement": round((ratings.nunique(axis=1) == 1).mean(), 3),
                         "n_items": len(ratings),
                         "n_raters": len(ratings_data)
@@ -242,13 +261,13 @@ def main():
         print("Agreement Analysis for {node_name}")
         print("=" * 60)
         print()
-        print("Enter paths to human rater CSV files (one per line).")
+        print("Enter paths to human rater files (XLSX or CSV, one per line).")
         print("Press Enter on empty line when done.")
         print()
 
         human_csvs = []
         while True:
-            path = input(f"Human rater {{len(human_csvs) + 1}} CSV (or Enter to finish): ").strip()
+            path = input(f"Human rater {{len(human_csvs) + 1}} file (or Enter to finish): ").strip()
             if not path:
                 break
             if Path(path).exists():
@@ -260,17 +279,17 @@ def main():
             print("No human rater files provided. Exiting.")
             return
 
-    # Validate human CSVs
-    print(f"\\nValidating {{len(human_csvs)}} human rater CSV(s)...")
+    # Validate human files
+    print(f"\\nValidating {{len(human_csvs)}} human rater file(s)...")
     human_dfs = {{}}
-    for csv_path in human_csvs:
+    for file_path in human_csvs:
         try:
-            df = validate_human_csv(csv_path, AGREEMENT_FIELDS, VALID_CATEGORIES)
-            rater_name = Path(csv_path).stem
+            df = load_human_file(file_path, AGREEMENT_FIELDS, VALID_CATEGORIES)
+            rater_name = Path(file_path).stem
             human_dfs[rater_name] = df
             print(f"✓ {{rater_name}}: {{len(df)}} items")
         except Exception as e:
-            print(f"✗ Error loading {{csv_path}}: {{e}}")
+            print(f"✗ Error loading {{file_path}}: {{e}}")
             return
 
     # Load model CSVs
