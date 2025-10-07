@@ -3,17 +3,31 @@
 import logging
 from pathlib import Path
 from typing import Dict, List, Union
-from pyirr import kappam_fleiss as kf
-import krippendorff
+
 import numpy as np
 import pandas as pd
-from statsmodels.stats.inter_rater import aggregate_raters, fleiss_kappa
+from irrCAC.raw import CAC
 
 logger = logging.getLogger(__name__)
 
+
 def kappam_fleiss(ratings: pd.DataFrame) -> float:
-    ratings = ratings.dropna(how="any")  # remove incomplete rows
-    return round(float(kf(ratings).to_dict()['value']), 4)
+    """Calculate Fleiss' Kappa coefficient.
+
+    Args:
+        ratings: DataFrame where each row is a subject and each column is a rater
+
+    Returns:
+        Fleiss' Kappa coefficient (0-1, higher is better)
+    """
+    try:
+        cac = CAC(ratings, weights="identity")
+        result = cac.fleiss()
+        return round(float(result["est"]["coefficient_value"]), 4)
+    except Exception as e:
+        logger.warning(f"Failed to calculate Fleiss' Kappa: {e}")
+        return float("nan")
+
 
 def kripp_alpha(ratings: pd.DataFrame) -> float:
     """Calculate Krippendorff's Alpha coefficient.
@@ -25,11 +39,9 @@ def kripp_alpha(ratings: pd.DataFrame) -> float:
         Krippendorff's Alpha coefficient (0-1, higher is better)
     """
     try:
-        # krippendorff expects shape (n_raters, n_subjects)
-        alpha = krippendorff.alpha(
-            reliability_data=ratings.T.values, level_of_measurement="nominal"
-        )
-        return round(float(alpha), 3)
+        cac = CAC(ratings, weights="identity")
+        result = cac.krippendorff()
+        return round(float(result["est"]["coefficient_value"]), 3)
     except Exception as e:
         logger.warning(f"Failed to calculate Krippendorff's Alpha: {e}")
         return float("nan")
@@ -52,6 +64,93 @@ def percent_agreement(ratings: pd.DataFrame) -> float:
     except Exception as e:
         logger.warning(f"Failed to calculate percent agreement: {e}")
         return float("nan")
+
+
+def gwet_ac1(ratings: pd.DataFrame) -> float:
+    """Calculate Gwet's AC1 coefficient.
+
+    Args:
+        ratings: DataFrame where each row is a subject and each column is a rater
+
+    Returns:
+        Gwet's AC1 coefficient (0-1, higher is better)
+    """
+    try:
+        cac = CAC(ratings, weights="identity")
+        result = cac.gwet()
+        return round(float(result["est"]["coefficient_value"]), 4)
+    except Exception as e:
+        logger.warning(f"Failed to calculate Gwet's AC1: {e}")
+        return float("nan")
+
+
+def _calculate_agreement(
+    ratings_dict: Dict[str, pd.Series],
+    fields: List[str],
+    item_id_col: str,
+    use_gwet: bool = True,
+) -> Dict[str, Dict[str, float]]:
+    """Private helper to calculate agreement statistics from ratings data.
+
+    Args:
+        ratings_dict: Dict mapping rater_name -> DataFrame with classifications
+        fields: List of field names to calculate agreement for
+        item_id_col: Column name containing item identifiers
+        use_gwet: If True, use Gwet's AC1; if False, use Fleiss' Kappa
+
+    Returns:
+        Dictionary mapping field names to agreement statistics
+    """
+    results = {}
+    n_raters = len(ratings_dict)
+
+    for field in fields:
+        # Build ratings matrix: rows=items, cols=raters
+        ratings_data = {}
+
+        for rater_name, df in ratings_dict.items():
+            if field not in df.columns:
+                continue
+            # Use item_id as index, field value as rating
+            field_ratings = df.set_index(item_id_col)[field]
+            ratings_data[rater_name] = field_ratings
+
+        if len(ratings_data) < 2:
+            logger.warning(f"Field '{field}' not present in enough raters, skipping")
+            continue
+
+        # Combine into single DataFrame
+        ratings = pd.DataFrame(ratings_data)
+
+        # Handle missing items across raters
+        # Only include items present in ALL raters
+        ratings = ratings.dropna()
+
+        if len(ratings) == 0:
+            logger.warning(f"No common items found for field '{field}'")
+            metric_name = "Gwet_AC1" if use_gwet else "Fleiss_Kappa"
+            results[field] = {
+                metric_name: float("nan"),
+                "Kripp_alpha": float("nan"),
+                "Percent_Agreement": float("nan"),
+                "n_items": 0,
+                "n_raters": len(ratings_data),
+            }
+            continue
+
+        # Calculate statistics
+        metric_name = "Gwet_AC1" if use_gwet else "Fleiss_Kappa"
+        metric_func = gwet_ac1 if use_gwet else kappam_fleiss
+
+        results[field] = {
+            metric_name: metric_func(ratings),
+            "Kripp_alpha": kripp_alpha(ratings),
+            "Percent_Agreement": percent_agreement(ratings),
+            "n_items": len(ratings),
+            "n_raters": len(ratings_data),
+        }
+
+    return results
 
 
 def calculate_agreement_stats(
@@ -78,14 +177,14 @@ def calculate_agreement_stats(
             }
         }
     """
-    # Load all CSVs
-    dfs = []
+
+    dfs = {}
     for path in csv_paths:
         try:
             df = pd.read_csv(path)
             # Use filename as rater identifier
             rater_name = Path(path).stem
-            dfs.append((rater_name, df))
+            dfs[rater_name] = df
         except Exception as e:
             logger.error(f"Failed to load {path}: {e}")
             raise
@@ -94,7 +193,7 @@ def calculate_agreement_stats(
         raise ValueError("No valid CSV files provided")
 
     # Verify all CSVs have the required columns
-    for rater_name, df in dfs:
+    for rater_name, df in dfs.items():
         if item_id_col not in df.columns:
             raise ValueError(
                 f"{rater_name} missing required column '{item_id_col}'. Available columns: {list(df.columns)}"
@@ -105,45 +204,7 @@ def calculate_agreement_stats(
                 f"{rater_name} missing agreement fields: {missing_fields}. Available columns: {list(df.columns)}"
             )
 
-    results = {}
-
-    for field in agreement_fields:
-        # Build ratings matrix: rows=items, cols=raters
-        ratings_data = {}
-
-        for rater_name, df in dfs:
-            # Use item_id as index, field value as rating
-            field_ratings = df.set_index(item_id_col)[field]
-            ratings_data[rater_name] = field_ratings
-
-        # Combine into single DataFrame
-        ratings = pd.DataFrame(ratings_data)
-
-        # Handle missing items across raters
-        # Only include items present in ALL CSVs
-        ratings = ratings.dropna()
-
-        if len(ratings) == 0:
-            logger.warning(f"No common items found for field '{field}'")
-            results[field] = {
-                "AC1": float("nan"),
-                "Kripp_alpha": float("nan"),
-                "Percent_Agreement": float("nan"),
-                "n_items": 0,
-                "n_raters": len(dfs),
-            }
-            continue
-
-        # Calculate statistics
-        results[field] = {
-            "Fleiss_Kappa": gwet_ac1(ratings),
-            "Kripp_alpha": kripp_alpha(ratings),
-            "Percent_Agreement": percent_agreement(ratings),
-            "n_items": len(ratings),
-            "n_raters": len(dfs),
-        }
-
-    return results
+    return _calculate_agreement(dfs, agreement_fields, item_id_col, use_gwet=True)
 
 
 def calculate_agreement_from_dataframes(
@@ -189,40 +250,14 @@ def calculate_agreement_from_dataframes(
         logger.warning("No agreement fields found")
         return None
 
-    # Calculate agreement for each field
-    stats = {}
-    for field in agreement_fields:
-        try:
-            # Build ratings matrix: rows=items, cols=models
-            ratings_data = {
-                model_name: df.set_index(item_id_col)[field]
-                for model_name, df in model_dfs.items()
-                if field in df.columns
-            }
-
-            if len(ratings_data) < 2:
-                logger.warning(
-                    f"Field '{field}' not present in enough models, skipping"
-                )
-                continue
-
-            ratings = pd.DataFrame(ratings_data).dropna()
-
-            if len(ratings) == 0:
-                logger.warning(f"No common items for field '{field}'")
-                continue
-
-            # Calculate statistics
-            stats[field] = {
-                "Kappa_fleiss": kappam_fleiss(ratings),
-                "Kripp_alpha": kripp_alpha(ratings),
-                "Percent_Agreement": percent_agreement(ratings),
-                "n_items": len(ratings),
-                "n_raters": len(ratings_data),
-            }
-        except Exception as e:
-            logger.error(f"Error calculating agreement for field '{field}': {e}")
-            stats[field] = {"error": str(e)}
+    # Calculate agreement using shared helper
+    try:
+        stats = _calculate_agreement(
+            model_dfs, agreement_fields, item_id_col, use_gwet=False
+        )
+    except Exception as e:
+        logger.error(f"Error calculating agreement: {e}")
+        return None
 
     if stats:
         logger.debug(f"Calculated agreement statistics for {len(stats)} fields")
