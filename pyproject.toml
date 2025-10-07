@@ -42,10 +42,11 @@ dependencies = [
     "krippendorff>=0.6.0",
     "pyirr>=0.84.1.2",
     "setuptools>=80.9.0",
+    "irrcac",
 ]
 
 [tool.setuptools.package-data]
-soak = ["templates/*.html", "templates/*.md", "pipelines/*.yaml"]
+soak = ["templates/*.html", "templates/*.md", "pipelines/*.yaml", "data/*"]
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -63,6 +64,7 @@ package = true
 # Production defaults (git)
 # struckdown = { git = "https://github.com/benwhalley/struckdown", rev = "HEAD" }
 struckdown = { path = "../struckdown", editable = true }
+irrcac = { git = "https://github.com/benwhalley/irrCAC.git" }
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
