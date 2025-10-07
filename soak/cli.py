@@ -1,6 +1,7 @@
 """Command-line interface for running qualitative analysis pipelines."""
 
 import asyncio
+import hashlib
 import json
 import logging
 import os
@@ -165,6 +166,58 @@ def main(
     setup_logging(verbose)
 
 
+def sanitize_for_filename(text: str) -> str:
+    """Remove or replace characters that are problematic in filenames.
+
+    Args:
+        text: Input string
+
+    Returns:
+        Sanitized string safe for use in filenames
+    """
+    # Replace problematic characters with underscores
+    dangerous_chars = ["/", "\\", ":", "*", "?", '"', "<", ">", "|", " "]
+    result = text
+    for char in dangerous_chars:
+        result = result.replace(char, "_")
+    return result
+
+
+def hash_run_config(
+    input_files: list[str],
+    model_name: str | None = None,
+    context: list[str] | None = None,
+    template: str | None = None,
+    length: int = 4,
+) -> str:
+    """Generate a short hash from run configuration.
+
+    Args:
+        input_files: List of input file paths
+        model_name: Model name if specified
+        context: Context overrides if specified
+        template: Template name if specified
+        length: Length of hash to return (default: 4)
+
+    Returns:
+        Short hash string of specified length (hex chars only - always safe)
+    """
+    # Build configuration string from all parameters
+    parts = [
+        "files:" + "|".join(sorted(input_files)),
+    ]
+    if model_name:
+        parts.append(f"model:{model_name}")
+    if context:
+        parts.append("context:" + "|".join(sorted(context)))
+    if template:
+        parts.append(f"template:{template}")
+
+    config_str = "||".join(parts)
+    hash_obj = hashlib.sha256(config_str.encode("utf-8"))
+    return hash_obj.hexdigest()[:length]
+
+
 def resolve_pipeline(pipeline: str, localdir: Path, pipelinedir: Path) -> Path:
     candidates = [
         localdir / pipeline,
@@ -304,7 +357,10 @@ def run(
     # Check and prompt for credentials first
     api_key, base_url = check_and_prompt_credentials(Path.cwd())
 
-    pipyml = resolve_pipeline(pipeline, Path.cwd(), PIPELINE_DIR)
+    # Save the string pipeline argument before it gets reassigned
+    pipeline_arg = pipeline
+
+    pipyml = resolve_pipeline(pipeline_arg, Path.cwd(), PIPELINE_DIR)
     logger.info(f"Loading pipeline from {pipyml}")
 
     try:
@@ -322,7 +378,7 @@ def run(
                 )
                 raise typer.Exit(1)
             key, value = item.split("=", 1)
-            pipeline.default_context[key.trim()] = value.trim()
+            pipeline.default_context[key] = value
             logger.info(f"Set context variable: {key}={value}")
 
     if model_name is not None:
@@ -383,13 +439,22 @@ def run(
 
     # Dump execution details if requested
     if dump:
+        # Generate unique ID for this run
+        config_hash = hash_run_config(
+            input_files=input_files,
+            model_name=model_name,
+            context=context,
+            template=template,
+        )
+
         if dump_folder is None:
             if output:
                 dump_folder = f"{output}_dump"
             else:
-
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                dump_folder = f"{pipeline}_{timestamp}_dump"
+                # Sanitize pipeline name for safe folder name (use pipeline.name from the loaded object)
+                safe_pipeline = sanitize_for_filename(pipeline.name)
+                dump_folder = f"{safe_pipeline}_{config_hash}_{timestamp}_dump"
 
         dump_path = Path(dump_folder)
 
@@ -407,7 +472,7 @@ def run(
                 shutil.rmtree(dump_path)
 
         # Build command string for metadata
-        cmd_parts = [f"soak run {pipeline}"] + input_files
+        cmd_parts = [f"soak run {pipeline_arg}"] + input_files
         if output:
             cmd_parts.append(f"--output {output}")
         cmd_parts.append(f"--model-name {model_name}")
@@ -420,13 +485,14 @@ def run(
             "pipeline_file": str(pipyml),
             "model_name": model_name,
             "template": template,
+            "unique_id": config_hash,
         }
         if context:
             metadata["context_overrides"] = dict([c.split("=", 1) for c in context])
 
         logger.info(f"Dumping execution details to {dump_path}")
         analysis.export_execution(dump_path, metadata=metadata)
-        print(f"✓ Execution dump saved to: {dump_path}", file=sys.stderr)
+        print(f"✓ Execution dump saved to: {str(dump_path)}", file=sys.stderr)
 
 
 @app.command()

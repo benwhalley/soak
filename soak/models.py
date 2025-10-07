@@ -9,19 +9,8 @@ import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import (
-    TYPE_CHECKING,
-    Annotated,
-    Any,
-    Callable,
-    Dict,
-    List,
-    Literal,
-    Optional,
-    Set,
-    Tuple,
-    Union,
-)
+from typing import (TYPE_CHECKING, Annotated, Any, Callable, Dict, List,
+                    Literal, Optional, Set, Tuple, Union)
 
 import anyio
 import nltk
@@ -30,33 +19,25 @@ import pandas as pd
 import tiktoken
 from box import Box
 from decouple import config as env_config
-from jinja2 import (
-    Environment,
-    FileSystemLoader,
-    StrictUndefined,
-    TemplateSyntaxError,
-    meta,
-)
+from jinja2 import (Environment, FileSystemLoader, StrictUndefined,
+                    TemplateSyntaxError, meta)
 from joblib import Memory
 from pydantic import BaseModel, Field, PrivateAttr, constr, model_validator
 from rank_bm25 import BM25Okapi
 from sklearn.metrics.pairwise import cosine_similarity
-from struckdown import LLM, ChatterResult, LLMCredentials, chatter, chatter_async
+from struckdown import (LLM, ChatterResult, LLMCredentials, chatter,
+                        chatter_async)
 from struckdown import get_embedding as get_embedding_
 from struckdown.parsing import parse_syntax
 from struckdown.return_type_models import ACTION_LOOKUP
 
-from .agreement import export_agreement_stats, gwet_ac1, kripp_alpha, percent_agreement
-from .agreement_scripts import (
-    collect_field_categories,
-    generate_human_rater_template,
-    write_agreement_scripts,
-)
-from .document_utils import (
-    extract_text,
-    get_scrubber,
-    unpack_zip_to_temp_paths_if_needed,
-)
+from .agreement import (export_agreement_stats, gwet_ac1, kripp_alpha,
+                        percent_agreement)
+from .agreement_scripts import (collect_field_categories,
+                                generate_human_rater_template,
+                                write_agreement_scripts)
+from .document_utils import (extract_text, get_scrubber,
+                             unpack_zip_to_temp_paths_if_needed)
 from .export_utils import export_to_csv, export_to_html, export_to_json
 
 if TYPE_CHECKING:
@@ -105,6 +86,29 @@ def safe_json_dump(obj: Any, indent: int = 2) -> str:
         )
 
 
+def extract_content(obj) -> Optional[str]:
+    """Extract text content from TrackedItem, str, or dict."""
+    if hasattr(obj, "content"):
+        return obj.content
+    elif isinstance(obj, str):
+        return obj
+    elif isinstance(obj, dict) and "content" in obj:
+        return obj["content"]
+    return None
+
+
+def extract_prompt(chatter_result) -> Optional[str]:
+    """Extract prompt from ChatterResult."""
+    if not chatter_result or not hasattr(chatter_result, "results"):
+        return None
+
+    if chatter_result.results:
+        first_seg = next(iter(chatter_result.results.values()), None)
+        return getattr(first_seg, "prompt", None) if first_seg else None
+
+    return None
+
+
 MAX_CONCURRENCY = env_config("MAX_CONCURRENCY", default=20, cast=int)
 semaphore = anyio.Semaphore(MAX_CONCURRENCY)
 
@@ -122,13 +126,13 @@ class Cancelled(Exception):
     pass
 
 
-CodeSlugStr = constr(min_length=12, max_length=64)
+CodeSlugStr = constr(min_length=12, max_length=128)
 
 
 class Code(BaseModel):
     slug: CodeSlugStr = Field(
         ...,
-        description="A very short abbreviated unique slug/reference for this Code (max 20 letters a-Z).",
+        description="A very short abbreviated unique slug/reference for this Code (MAX 20 ascii characters).",
     )
     name: str = Field(..., min_length=1, description="A short name for the code.")
     description: str = Field(
@@ -157,8 +161,8 @@ class Theme(BaseModel):
     code_slugs: List[CodeSlugStr] = Field(
         ...,
         min_length=0,
-        max_length=20,
-        description="A List of the code-references that are part of this theme. Identify them accurately by slug/hash code from the text. Each code will be around 8 to 20 a-Z characters long. Only refer to codes in the input text above.",
+        max_length=64,
+        description="A List of the code-references that are part of this theme. Identify them accurately by slug/hash code from the text. Each code slug MUST BE no more than 20 ascii characters. Only refer to codes in the input text above.",
     )
 
 
@@ -696,6 +700,9 @@ class DAG(BaseModel):
 
         logger.debug(f"Exporting execution details to {output_dir}")
 
+        # Extract unique_id from metadata if provided
+        unique_id = metadata.get("unique_id", "") if metadata else ""
+
         # Write metadata file
         meta_content = f"""DAG Execution Export
 ====================
@@ -736,7 +743,7 @@ Export Time: {datetime.now().isoformat()}
             node_folder = output_dir / folder_name
 
             try:
-                node.export(node_folder)
+                node.export(node_folder, unique_id=unique_id)
                 logger.debug(f"  Exported node: {folder_name}")
             except Exception as e:
                 logger.error(f"  Failed to export node {node.name}: {e}")
@@ -832,8 +839,22 @@ class DAGNode(BaseModel):
 
         return None
 
-    def export(self, folder: Path):
-        """Export node execution details to a folder. Override in subclasses."""
+    def result(self) -> Dict[str, Any]:
+        """Extract results from this node. Override in subclasses for node-specific results."""
+        return {
+            "name": self.name,
+            "type": self.type,
+            "inputs": self.inputs,
+            "input_items": self.get_input_items(),
+        }
+
+    def export(self, folder: Path, unique_id: str = ""):
+        """Export node execution details to a folder. Override in subclasses.
+
+        Args:
+            folder: Folder to export to
+            unique_id: Optional unique identifier to append to file names
+        """
         folder.mkdir(parents=True, exist_ok=True)
 
         # Write comprehensive node config including all fields and defaults
@@ -1075,9 +1096,34 @@ class Split(DAGNode):
     def token_encoder(self):
         return tiktoken.get_encoding(self.encoding_name)
 
-    def export(self, folder: Path):
+    def result(self) -> pd.DataFrame:
+        """Returns DataFrame of chunks with metadata and length statistics."""
+        rows = []
+        for idx, chunk in enumerate(self.output or []):
+            content = extract_content(chunk)
+            rows.append(
+                {
+                    "index": idx,
+                    "source_id": TrackedItem.extract_source_id(chunk),
+                    "content": content,
+                    "metadata": getattr(chunk, "metadata", None),
+                    "length": (
+                        len(self.tokenize(content, method=self.split_unit))
+                        if content
+                        else 0
+                    ),
+                }
+            )
+
+        df = pd.DataFrame(rows)
+        if not df.empty:
+            df["split_unit"] = self.split_unit
+            df["chunk_size"] = self.chunk_size
+        return df
+
+    def export(self, folder: Path, unique_id: str = ""):
         """Export Split node details."""
-        super().export(folder)
+        super().export(folder, unique_id=unique_id)
 
         if self.output:
             import numpy as np
@@ -1302,9 +1348,41 @@ class Map(ItemsNode, CompletionDAGNode):
             self.output = results
             return results
 
-    def export(self, folder: Path):
+    def result(self) -> pd.DataFrame:
+        """Returns DataFrame with one row per mapped item."""
+        input_items = self.get_input_items()
+        rows = []
+
+        output_list = self.output if isinstance(self.output, list) else []
+
+        for idx, chatter_result in enumerate(output_list):
+            item = input_items[idx] if input_items and idx < len(input_items) else None
+
+            row = TrackedItem.extract_export_metadata(item, idx)
+            row.update(
+                {
+                    "prompt": extract_prompt(chatter_result),
+                    "response_text": (
+                        str(chatter_result.response)
+                        if hasattr(chatter_result, "response")
+                        else None
+                    ),
+                    "response_obj": (
+                        chatter_result.response
+                        if hasattr(chatter_result, "response")
+                        else None
+                    ),
+                    "chatter_result": chatter_result,
+                }
+            )
+
+            rows.append(row)
+
+        return pd.DataFrame(rows)
+
+    def export(self, folder: Path, unique_id: str = ""):
         """Export Map node details with numbered prompts and responses."""
-        super().export(folder)
+        super().export(folder, unique_id=unique_id)
 
         # Write template
         if self.template_text:
@@ -1506,9 +1584,59 @@ class Classifier(ItemsNode, CompletionDAGNode):
 
         return model_dfs if model_dfs else None
 
-    def export(self, folder: Path):
+    def result(self) -> Dict[str, pd.DataFrame]:
+        """Returns dict of {model_name: DataFrame} with classification results."""
+        # Reconstruct _model_results if needed
+        if not self._model_results:
+            if isinstance(self.output, dict):
+                self._model_results = self.output
+            else:
+                model_name = (
+                    self.model_names[0]
+                    if self.model_names
+                    else (self.model_name or "default")
+                )
+                self._model_results = {model_name: self.output}
+
+        if not self._model_results:
+            return {}
+
+        model_dfs = {}
+
+        for model_name, results in self._model_results.items():
+            if not results:
+                continue
+
+            rows = []
+            for idx, output_item in enumerate(results):
+                row = TrackedItem.extract_export_metadata(
+                    (
+                        self._processed_items[idx]
+                        if self._processed_items and idx < len(self._processed_items)
+                        else None
+                    ),
+                    idx,
+                )
+
+                # Add classification fields
+                if hasattr(output_item, "outputs"):
+                    row.update(output_item.outputs)
+                elif isinstance(output_item, dict):
+                    row.update(
+                        {k: v for k, v in output_item.items() if not k.startswith("__")}
+                    )
+
+                row["chatter_result"] = output_item
+                rows.append(row)
+
+            if rows:
+                model_dfs[model_name] = pd.DataFrame(rows)
+
+        return model_dfs
+
+    def export(self, folder: Path, unique_id: str = ""):
         """Export Classifier node with CSV output and individual responses."""
-        super().export(folder)
+        super().export(folder, unique_id=unique_id)
 
         # Write template
         if self.template_text:
@@ -1618,9 +1746,17 @@ class Classifier(ItemsNode, CompletionDAGNode):
 
             # Export CSV, HTML, JSON using utility functions
             df = pd.DataFrame(rows)
-            export_to_csv(df, folder / f"classifications_{self.name}{suffix}.csv")
-            export_to_html(df, folder / f"classifications_{self.name}{suffix}.html")
-            export_to_json(rows, folder / f"classifications_{self.name}{suffix}.json")
+            # Add unique_id to filename if provided
+            uid_suffix = f"_{unique_id}" if unique_id else ""
+            export_to_csv(
+                df, folder / f"classifications_{self.name}{suffix}{uid_suffix}.csv"
+            )
+            export_to_html(
+                df, folder / f"classifications_{self.name}{suffix}{uid_suffix}.html"
+            )
+            export_to_json(
+                rows, folder / f"classifications_{self.name}{suffix}{uid_suffix}.json"
+            )
 
         # Calculate and export agreement statistics if multiple models
         if len(self._model_results) >= 2:
@@ -1935,9 +2071,55 @@ class Filter(ItemsNode, CompletionDAGNode):
 
         return self.output
 
-    def export(self, folder: Path):
+    def result(self) -> Dict[str, Any]:
+        """Returns included/excluded items and filter statistics."""
+        included_rows = []
+        if self.output:
+            for idx, item in enumerate(self.output):
+                included_rows.append(
+                    {
+                        "index": idx,
+                        "source_id": (
+                            item.get("source_id")
+                            if isinstance(item, dict)
+                            else getattr(item, "source_id", None)
+                        ),
+                        "content": (
+                            item.get("content")
+                            if isinstance(item, dict)
+                            else getattr(item, "content", None)
+                        ),
+                        "metadata": (
+                            item.get("metadata")
+                            if isinstance(item, dict)
+                            else getattr(item, "metadata", None)
+                        ),
+                    }
+                )
+
+        excluded_rows = []
+        if self._excluded_items:
+            for idx, item in enumerate(self._excluded_items):
+                excluded_rows.append(
+                    {
+                        "index": idx,
+                        "source_id": getattr(item, "source_id", None),
+                        "content": getattr(item, "content", None),
+                        "metadata": getattr(item, "metadata", None),
+                    }
+                )
+
+        return {
+            "included": pd.DataFrame(included_rows),
+            "excluded": pd.DataFrame(excluded_rows),
+            "filter_field": (
+                self._identify_filter_field() if self.template_text else None
+            ),
+        }
+
+    def export(self, folder: Path, unique_id: str = ""):
         """Export Filter node with included/excluded items and all prompts."""
-        super().export(folder)
+        super().export(folder, unique_id=unique_id)
 
         # Write template
         if self.template_text:
@@ -2073,9 +2255,19 @@ class Transform(ItemsNode, CompletionDAGNode):
         )
         return self.output
 
-    def export(self, folder: Path):
+    def result(self) -> Dict[str, Any]:
+        """Returns prompt, response object, and raw ChatterResult."""
+        return {
+            "prompt": extract_prompt(self.output),
+            "response_obj": (
+                self.output.response if hasattr(self.output, "response") else None
+            ),
+            "chatter_result": self.output,
+        }
+
+    def export(self, folder: Path, unique_id: str = ""):
         """Export Transform node details with single prompt/response."""
-        super().export(folder)
+        super().export(folder, unique_id=unique_id)
 
         # Write template
         if self.template_text:
@@ -2154,9 +2346,13 @@ class Reduce(ItemsNode):
             self.output = "\n".join(rendered)
             return self.output
 
-    def export(self, folder: Path):
+    def result(self) -> Dict[str, Any]:
+        """Returns reduced output."""
+        return {"output": self.output}
+
+    def export(self, folder: Path, unique_id: str = ""):
         """Export Reduce node details."""
-        super().export(folder)
+        super().export(folder, unique_id=unique_id)
 
         # Write reduce template
         if self.template_text:
@@ -2281,16 +2477,8 @@ def make_windows(
     Returns list of tuples: (window_text, start_pos, end_pos)
 
     Defaults:
-    - window_size: 10% larger than the longest extracted quote, capped at 500 chars
     - overlap: 30% of window_size (helps catch quotes spanning window boundaries)
     """
-
-    # --- compute defaults ---
-    if extracted_sentences and not window_size:
-        max_quote_len = max(len(q) for q in extracted_sentences)
-        window_size = int(min(1.1 * max_quote_len, 500))
-    elif not window_size:
-        window_size = 400  # fallback default
 
     if not overlap:
         overlap = int(window_size * 0.3)  # 30% overlap for better boundary coverage
@@ -2308,47 +2496,69 @@ def make_windows(
 ELLIPSIS_RE = re.compile(r"\.{3,}|…")
 
 
-def create_document_boundaries(documents: List["TrackedItem"]) -> List[Tuple[str, int, int]]:
+def create_document_boundaries(
+    documents: List["TrackedItem"],
+) -> Tuple[List[Tuple[str, int, int]], Dict[str, str]]:
     """Create a list of (doc_name, start_pos, end_pos) for each document in concatenated text.
 
     Assumes documents are joined with "\n\n" separator.
+
+    Returns:
+        Tuple of (boundaries, doc_content_map) where:
+        - boundaries: List of (doc_name, start_pos, end_pos)
+        - doc_content_map: Dict mapping doc_name to full document content
     """
     boundaries = []
+    doc_content_map = {}
     current_pos = 0
 
     for doc in documents:
         content_len = len(doc.content)
 
-
         doc_name = None
         doc_name = (
             doc.metadata.get("filename")
             if hasattr(doc, "metadata") and doc.metadata
-            else (doc.source_id if hasattr(doc, 'source_id') else getattr(doc, 'path', 'unknown'))
+            else (
+                doc.source_id
+                if hasattr(doc, "source_id")
+                else getattr(doc, "path", "unknown")
+            )
         )
         # Fall back to source_id or path attribute
         if not doc_name:
-            doc_name = doc.source_id if hasattr(doc, 'source_id') else getattr(doc, 'path', 'unknown')
+            doc_name = (
+                doc.source_id
+                if hasattr(doc, "source_id")
+                else getattr(doc, "path", "unknown")
+            )
 
-        boundaries.append((str(doc_name), current_pos, current_pos + content_len))
+        doc_name_str = str(doc_name)
+        boundaries.append((doc_name_str, current_pos, current_pos + content_len))
+        doc_content_map[doc_name_str] = doc.content
         current_pos += content_len + 2  # +2 for "\n\n" separator
 
-    return boundaries
+    return boundaries, doc_content_map
 
 
-def find_source_document(position: int, doc_boundaries: List[Tuple[str, int, int]]) -> str:
-    """Find which document a character position belongs to."""
+def find_source_document(
+    position: int,
+    doc_boundaries: List[Tuple[str, int, int]],
+    doc_content_map: Dict[str, str],
+) -> Tuple[str, str]:
+    """Find which document a character position belongs to.
+
+    Returns:
+        Tuple of (doc_name, doc_content)
+    """
     for doc_name, start, end in doc_boundaries:
         if start <= position < end:
-            return doc_name
-    return "unknown"
+            return doc_name, doc_content_map.get(doc_name, "")
+    return "unknown", ""
 
 
 def find_alignment_fuzzy(
-    quote: str,
-    span: str,
-    min_ratio: float = 0.6,
-    context_pad: int = 30
+    quote: str, span: str, min_ratio: float = 0.6, context_pad: int = 30
 ) -> Dict[str, Any]:
     """Find best character offset in span where quote aligns using fuzzy matching.
 
@@ -2379,7 +2589,7 @@ def find_alignment_fuzzy(
             "start_char": start,
             "end_char": end,
             "match_ratio": 1.0,
-            "matched_text": span[start:end]
+            "matched_text": span[start:end],
         }
 
     # Use SequenceMatcher to find matching blocks
@@ -2390,7 +2600,12 @@ def find_alignment_fuzzy(
 
     if not blocks:
         # Fallback: no good match
-        return {"start_char": 0, "end_char": len(span), "match_ratio": 0.0, "matched_text": span}
+        return {
+            "start_char": 0,
+            "end_char": len(span),
+            "match_ratio": 0.0,
+            "matched_text": span,
+        }
 
     # Find the best block (longest contiguous match)
     best_block = max(blocks, key=lambda b: b[2])
@@ -2408,7 +2623,7 @@ def find_alignment_fuzzy(
         "start_char": start,
         "end_char": end,
         "match_ratio": float(match_ratio),
-        "matched_text": span[start:end]
+        "matched_text": span[start:end],
     }
 
 
@@ -2454,10 +2669,10 @@ def find_alignment_sliding_bm25(quote: str, span: str) -> Tuple[int, float]:
 def trim_span_to_quote(
     quote: str,
     span: str,
-    method: Literal["fuzzy", "sliding_bm25", "hybrid"] = "fuzzy",
+    method: Literal["fuzzy", "sliding_bm25", "hybrid"] = "hybrid",
     min_fuzzy_ratio: float = 0.6,
     min_span_length_multiplier: float = 1.2,
-    context_pad: int = 30
+    context_pad: int = 30,
 ) -> Dict[str, Any]:
     """Trim span to align with quote start using matching blocks.
 
@@ -2468,7 +2683,7 @@ def trim_span_to_quote(
             "matched_text": span,
             "start_char": 0,
             "end_char": len(span) if span else 0,
-            "match_ratio": 0.0
+            "match_ratio": 0.0,
         }
 
     # Don't trim very short quotes (unreliable)
@@ -2477,7 +2692,7 @@ def trim_span_to_quote(
             "matched_text": span,
             "start_char": 0,
             "end_char": len(span),
-            "match_ratio": 0.0
+            "match_ratio": 0.0,
         }
 
     if method == "fuzzy":
@@ -2493,7 +2708,7 @@ def trim_span_to_quote(
             "start_char": start,
             "end_char": end,
             "match_ratio": confidence,
-            "matched_text": span[start:end]
+            "matched_text": span[start:end],
         }
 
     elif method == "hybrid":
@@ -2511,14 +2726,14 @@ def trim_span_to_quote(
                     "start_char": start,
                     "end_char": end,
                     "match_ratio": confidence_bm25,
-                    "matched_text": span[start:end]
+                    "matched_text": span[start:end],
                 }
     else:
         result = {
             "matched_text": span,
             "start_char": 0,
             "end_char": len(span),
-            "match_ratio": 0.0
+            "match_ratio": 0.0,
         }
 
     # Safety: don't trim if result would be too short (preserve some context)
@@ -2529,17 +2744,14 @@ def trim_span_to_quote(
             "matched_text": span,
             "start_char": 0,
             "end_char": len(span),
-            "match_ratio": result["match_ratio"]
+            "match_ratio": result["match_ratio"],
         }
 
     return result
 
 
 def snap_to_boundaries(
-    text: str,
-    start: int,
-    end: int,
-    snap_to: Literal["word", "sentence"] = "word"
+    text: str, start: int, end: int, snap_to: Literal["word", "sentence"] = "word"
 ) -> Tuple[int, int]:
     """Expand start/end to nearest word or sentence boundary.
 
@@ -2552,7 +2764,29 @@ def snap_to_boundaries(
     """
     if snap_to == "word":
         # Define word boundary characters (whitespace and punctuation)
-        boundaries = {" ", "\n", "\t", "\r", ".", "!", "?", ",", ";", ":", "-", "(", ")", "[", "]", "{", "}", '"', "'", "/", "\\"}
+        boundaries = {
+            " ",
+            "\n",
+            "\t",
+            "\r",
+            ".",
+            "!",
+            "?",
+            ",",
+            ";",
+            ":",
+            "-",
+            "(",
+            ")",
+            "[",
+            "]",
+            "{",
+            "}",
+            '"',
+            "'",
+            "/",
+            "\\",
+        }
 
         # Expand left until we hit a boundary (or reach start of text)
         while start > 0 and text[start - 1] not in boundaries:
@@ -2573,7 +2807,7 @@ def snap_to_boundaries(
 
     elif snap_to == "sentence":
         # Find sentence boundaries (periods, exclamation, question marks followed by space/newline)
-        sentence_pattern = r'[.!?][\s\n]+'
+        sentence_pattern = r"[.!?][\s\n]+"
         sentence_ends = [m.end() for m in re.finditer(sentence_pattern, text)]
 
         # Expand left to previous sentence end (or beginning)
@@ -2597,9 +2831,7 @@ def snap_to_boundaries(
 
 
 def is_match_truncated(
-    match_result: Dict[str, Any],
-    span_text: str,
-    boundary_threshold: int = 30
+    match_result: Dict[str, Any], span_text: str, boundary_threshold: int = 30
 ) -> bool:
     """Detect if a match looks truncated and might benefit from window expansion.
 
@@ -2627,30 +2859,29 @@ def verify_quotes_bm25_first(
     original_windows: List[Tuple[str, int, int]],
     original_text: str,
     doc_boundaries: List[Tuple[str, int, int]],
+    doc_content_map: Dict[str, str],
     get_embedding,
     bm25_k1: float = 1.5,
     bm25_b: float = 0.4,
-    ellipsis_max_gap: Optional[int] = None,
+    ellipsis_max_gap: Optional[int] = 300,
     trim_spans: bool = True,
-    trim_method: Literal["fuzzy", "sliding_bm25", "hybrid"] = "fuzzy",
+    trim_method: Literal["fuzzy", "sliding_bm25", "hybrid"] = "hybrid",
     min_fuzzy_ratio: float = 0.6,
     expand_window_neighbors: int = 1,
-    context_chars: int = 300,
 ) -> List[Dict[str, Any]]:
     """Verify quotes using BM25-first matching with ellipsis support.
 
     For each quote:
     - If no ellipsis: find best BM25 window
     - If ellipsis: match head/tail separately, reconstruct span
-    - Always compute embedding similarity on final span
-    - Return BM25 score, ratio (top1/top2), and cosine similarity
-    - Extract context from original text using positions (avoids overlapping window concatenation)
+    - Always compute embedding similarity on combined span
+    - Return BM25 score, ratio (top1/top2), cosine similarity, and full source document content
 
     Args:
         original_windows: List of (window_text, start_pos, end_pos) tuples
         original_text: Full concatenated source text
         doc_boundaries: List of (doc_name, start_pos, end_pos) for document tracking
-        context_chars: Number of characters to include on each side for context_window
+        doc_content_map: Dict mapping doc_name to full document content
     """
 
     if not extracted_sentences:
@@ -2680,7 +2911,9 @@ def verify_quotes_bm25_first(
             bm25_score = top1
 
             # Get window with position info
-            single_window_text, window_start_pos, window_end_pos = original_windows[best_idx]
+            single_window_text, window_start_pos, window_end_pos = original_windows[
+                best_idx
+            ]
 
             if trim_spans:
                 # Try matching in single window
@@ -2689,10 +2922,14 @@ def verify_quotes_bm25_first(
                 )
 
                 # Check if match looks truncated
-                if expand_window_neighbors > 0 and is_match_truncated(match_result, single_window_text):
+                if expand_window_neighbors > 0 and is_match_truncated(
+                    match_result, single_window_text
+                ):
                     # Expand to neighbors and retry using original text
                     start_idx = max(0, best_idx - expand_window_neighbors)
-                    end_idx = min(len(original_windows), best_idx + expand_window_neighbors + 1)
+                    end_idx = min(
+                        len(original_windows), best_idx + expand_window_neighbors + 1
+                    )
 
                     # Get global positions for expanded range
                     expanded_start_pos = original_windows[start_idx][1]
@@ -2705,7 +2942,9 @@ def verify_quotes_bm25_first(
                     )
 
                     # Use expanded result if it's better
-                    if expanded_result.get("match_ratio", 0) > match_result.get("match_ratio", 0):
+                    if expanded_result.get("match_ratio", 0) > match_result.get(
+                        "match_ratio", 0
+                    ):
                         match_result = expanded_result
                         window_start_pos = expanded_start_pos  # Update base position
 
@@ -2723,13 +2962,10 @@ def verify_quotes_bm25_first(
                 global_end = window_end_pos
                 match_ratio = None
 
-            # Extract context directly from original text using global positions
-            context_start = max(0, global_start - context_chars)
-            context_end = min(len(original_text), global_end + context_chars)
-            context_window = original_text[context_start:context_end]
-
-            # Find source document
-            source_doc = find_source_document(global_start, doc_boundaries)
+            # Find source document and get full document content
+            source_doc, source_doc_content = find_source_document(
+                global_start, doc_boundaries, doc_content_map
+            )
 
         else:
             # Ellipsis case: match head and tail
@@ -2770,7 +3006,9 @@ def verify_quotes_bm25_first(
                 # Expand search space to include neighbor windows using original text
                 if expand_window_neighbors > 0:
                     start_idx = max(0, best_idx - expand_window_neighbors)
-                    end_idx = min(len(original_windows), best_idx + expand_window_neighbors + 1)
+                    end_idx = min(
+                        len(original_windows), best_idx + expand_window_neighbors + 1
+                    )
 
                     expanded_start_pos = original_windows[start_idx][1]
                     expanded_end_pos = original_windows[end_idx - 1][2]
@@ -2808,13 +3046,10 @@ def verify_quotes_bm25_first(
                     global_end = window_start_pos + len(expanded_span)
                     match_ratio = None
 
-                # Extract context directly from original text
-                context_start = max(0, global_start - context_chars)
-                context_end = min(len(original_text), global_end + context_chars)
-                context_window = original_text[context_start:context_end]
-
-                # Find source document
-                source_doc = find_source_document(global_start, doc_boundaries)
+                # Find source document and get full document content
+                source_doc, source_doc_content = find_source_document(
+                    global_start, doc_boundaries, doc_content_map
+                )
             else:
                 # Reconstruct span from head to tail using global positions
                 head_start_pos = original_windows[head_idx][1]
@@ -2855,17 +3090,25 @@ def verify_quotes_bm25_first(
                     global_end = tail_end_pos
                     match_ratio = None
 
-                # Extract context directly from original text
-                context_start = max(0, global_start - context_chars)
-                context_end = min(len(original_text), global_end + context_chars)
-                context_window = original_text[context_start:context_end]
-
-                # Find source document
-                source_doc = find_source_document(global_start, doc_boundaries)
+                # Find source document and get full document content
+                source_doc, source_doc_content = find_source_document(
+                    global_start, doc_boundaries, doc_content_map
+                )
 
         # Compute embedding similarity between original quote and identified span
-        quote_emb = np.array(get_embedding([quote]))
-        span_emb = np.array(get_embedding([span_text]))
+        # For long spans (e.g., ellipsis quotes spanning multiple windows), we need to
+        # avoid exceeding the embedding model's context window (8192 tokens).
+        # Strategy: embed comparable-length excerpts - use 2x quote length (bounded by 2000 chars)
+        # to allow for context while staying within limits
+        max_embed_chars = min(max(len(quote) * 2, 500), 4000)
+        quote_truncated = quote[:max_embed_chars]
+
+        # For very long spans, take start portion (where quote likely appears)
+        # rather than truncating the quote comparison unfairly
+        span_truncated = span_text[:max_embed_chars]
+
+        quote_emb = np.array(get_embedding([quote_truncated]))
+        span_emb = np.array(get_embedding([span_truncated]))
         cosine_sim = float(cosine_similarity(quote_emb, span_emb)[0][0])
 
         results.append(
@@ -2873,7 +3116,7 @@ def verify_quotes_bm25_first(
                 "quote": quote,
                 "source_doc": source_doc,
                 "span_text": span_text,
-                "context_window": context_window,
+                "source_doc_content": source_doc_content,
                 "bm25_score": float(bm25_score),
                 "bm25_ratio": float(ratio),
                 "global_start": int(global_start),
@@ -2901,11 +3144,11 @@ class VerifyQuotes(DAGNode):
     """
 
     type: Literal["VerifyQuotes"] = "VerifyQuotes"
-    window_size: Optional[int] = None
+    window_size: Optional[int] = 300
     overlap: Optional[int] = None
     bm25_k1: float = 1.5
     bm25_b: float = 0.4  # Lower value reduces long-doc penalty
-    ellipsis_max_gap: Optional[int] = None  # Max windows between head/tail
+    ellipsis_max_gap: Optional[int] = 3  # Max windows between head/tail
     trim_spans: bool = True
     trim_method: Literal["fuzzy", "sliding_bm25", "hybrid"] = "fuzzy"
     min_fuzzy_ratio: float = 0.6
@@ -2922,7 +3165,9 @@ class VerifyQuotes(DAGNode):
         alldocs = "\n\n".join(doc.content for doc in self.dag.config.documents)
 
         # Create document boundaries for tracking source documents
-        doc_boundaries = create_document_boundaries(self.dag.config.documents)
+        doc_boundaries, doc_content_map = create_document_boundaries(
+            self.dag.config.documents
+        )
 
         codes = self.context.get("codes")
         if not codes:
@@ -2930,16 +3175,52 @@ class VerifyQuotes(DAGNode):
 
         # collect extracted quotes
         self.extracted_sentences = []
-        for result in codes:
-            cset = (
-                getattr(result.outputs.get("codes"), "codes", None)
-                if hasattr(result, "outputs")
-                else getattr(result.results.get("codes").output, "codes", None)
+        # Wrap in list if it's a single result
+        codes_list = [codes] if not isinstance(codes, list) else codes
+        for result in codes_list:
+            try:
+                # Try different ways to extract codes from the result
+                cset = None
+                if hasattr(result, "outputs"):
+                    if hasattr(result.outputs, "codes"):
+                        cset = result.outputs.codes
+                    elif isinstance(result.outputs, dict) and "codes" in result.outputs:
+                        cset = result.outputs["codes"]
+                elif hasattr(result, "results") and result.results.get("codes"):
+                    output = result.results.get("codes").output
+                    if hasattr(output, "codes"):
+                        cset = output.codes
+                    elif isinstance(output, dict) and "codes" in output:
+                        cset = output["codes"]
+
+                if not cset:
+                    logger.warning(
+                        f"Could not extract codes from result: {type(result)}"
+                    )
+                    continue
+
+                # Handle CodeList wrapper
+                codes_to_process = cset.codes if hasattr(cset, "codes") else cset
+                for code in codes_to_process:
+                    if hasattr(code, "quotes"):
+                        self.extracted_sentences.extend(code.quotes)
+                    else:
+                        logger.warning(
+                            f"Code object missing 'quotes' attribute: {type(code)}"
+                        )
+            except Exception as e:
+                logger.error(f"Error extracting quotes from result: {e}")
+                raise
+
+        # Check if we found any quotes - fail early if not
+        if not self.extracted_sentences:
+            logger.error("No quotes found in codes to verify")
+            import pdb
+
+            pdb.set_trace()
+            raise ValueError(
+                "No quotes found in codes to verify. Check that the 'codes' node produces Code objects with quotes."
             )
-            if not cset:
-                continue
-            for code in cset:
-                self.extracted_sentences.extend(code.quotes)
 
         # --- Create windowed slices through haystack ---
         windows_with_positions = make_windows(
@@ -2958,6 +3239,7 @@ class VerifyQuotes(DAGNode):
             windows_with_positions,
             alldocs,
             doc_boundaries,
+            doc_content_map,
             get_embedding,
             bm25_k1=self.bm25_k1,
             bm25_b=self.bm25_b,
@@ -2973,101 +3255,98 @@ class VerifyQuotes(DAGNode):
         self.sentence_matches = df.to_dict(orient="records")
 
         # Compute statistics
-        try:
-            n_quotes = len(df)
-            n_with_ellipses = (
-                df["quote"].apply(lambda q: bool(ELLIPSIS_RE.search(q))).sum()
+        n_quotes = len(df)
+        n_with_ellipses = df["quote"].apply(lambda q: bool(ELLIPSIS_RE.search(q))).sum()
+
+        self.stats = {
+            "n_quotes": int(n_quotes),
+            "n_with_ellipses": int(n_with_ellipses),
+            "mean_bm25_score": float(df["bm25_score"].mean()),
+            "median_bm25_score": float(df["bm25_score"].median()),
+            "mean_bm25_ratio": float(df["bm25_ratio"].mean()),
+            "median_bm25_ratio": float(df["bm25_ratio"].median()),
+            "mean_cosine": float(df["cosine_similarity"].mean()),
+            "median_cosine": float(df["cosine_similarity"].median()),
+            "min_cosine": float(df["cosine_similarity"].min()),
+            "max_cosine": float(df["cosine_similarity"].max()),
+        }
+
+        # Add match_ratio stats if available
+        if "match_ratio" in df.columns and df["match_ratio"].notna().any():
+            valid_match = df["match_ratio"].dropna()
+            self.stats.update(
+                {
+                    "mean_match_ratio": (
+                        float(valid_match.mean()) if len(valid_match) > 0 else None
+                    ),
+                    "median_match_ratio": (
+                        float(valid_match.median()) if len(valid_match) > 0 else None
+                    ),
+                    "min_match_ratio": (
+                        float(valid_match.min()) if len(valid_match) > 0 else None
+                    ),
+                    "n_low_match_confidence": (
+                        int((valid_match < self.min_fuzzy_ratio).sum())
+                        if len(valid_match) > 0
+                        else 0
+                    ),
+                    "mean_span_length": float(
+                        (df["global_end"] - df["global_start"]).mean()
+                    ),
+                }
             )
-
-            self.stats = {
-                "n_quotes": int(n_quotes),
-                "n_with_ellipses": int(n_with_ellipses),
-                "mean_bm25_score": (
-                    float(df["bm25_score"].mean()) if n_quotes > 0 else 0.0
-                ),
-                "median_bm25_score": (
-                    float(df["bm25_score"].median()) if n_quotes > 0 else 0.0
-                ),
-                "mean_bm25_ratio": (
-                    float(df["bm25_ratio"].mean()) if n_quotes > 0 else 0.0
-                ),
-                "median_bm25_ratio": (
-                    float(df["bm25_ratio"].median()) if n_quotes > 0 else 0.0
-                ),
-                "mean_cosine": (
-                    float(df["cosine_similarity"].mean()) if n_quotes > 0 else 0.0
-                ),
-                "median_cosine": (
-                    float(df["cosine_similarity"].median()) if n_quotes > 0 else 0.0
-                ),
-                "min_cosine": (
-                    float(df["cosine_similarity"].min()) if n_quotes > 0 else 0.0
-                ),
-                "max_cosine": (
-                    float(df["cosine_similarity"].max()) if n_quotes > 0 else 0.0
-                ),
-            }
-
-            # Add match_ratio stats if available
-            if "match_ratio" in df.columns and df["match_ratio"].notna().any():
-                valid_match = df["match_ratio"].dropna()
-                self.stats.update(
-                    {
-                        "mean_match_ratio": (
-                            float(valid_match.mean()) if len(valid_match) > 0 else None
-                        ),
-                        "median_match_ratio": (
-                            float(valid_match.median()) if len(valid_match) > 0 else None
-                        ),
-                        "min_match_ratio": (
-                            float(valid_match.min()) if len(valid_match) > 0 else None
-                        ),
-                        "n_low_match_confidence": (
-                            int((valid_match < self.min_fuzzy_ratio).sum())
-                            if len(valid_match) > 0
-                            else 0
-                        ),
-                        "mean_span_length": (
-                            float((df["global_end"] - df["global_start"]).mean())
-                            if "global_start" in df.columns and "global_end" in df.columns
-                            else None
-                        ),
-                    }
-                )
-        except Exception as e:
-            logger.error(f"Error calculating stats: {e}")
-            self.stats = {"error": str(e)}
 
         return matches
 
-    def export(self, folder: Path):
-        super().export(folder)
+    def result(self) -> Dict[str, Any]:
+        """Returns DataFrame of quote matches and statistics."""
+        df = pd.DataFrame(self.sentence_matches)
+
+        # Reorder columns for readability
+        if df.empty:
+            raise Exception("No matches found when verifying quotes.")
+
+        # Sort by confidence
+        if "bm25_ratio" in df.columns:
+            df = df.sort_values(
+                ["bm25_score", "bm25_ratio", "cosine_similarity"],
+                ascending=[True, True, True],
+            )
+
+        return {"matches_df": df, "stats": self.stats}
+
+    def export(self, folder: Path, unique_id: str = ""):
+        super().export(folder, unique_id=unique_id)
         (folder / "info.txt").write_text(VerifyQuotes.__doc__)
         pd.DataFrame(self.stats, index=[0]).melt().to_csv(
             folder / "stats.csv", index=False
         )
 
         # Export quote verification as Excel with formatting
-        excel_path = folder / "quote_verification.xlsx"
+        uid_suffix = f"_{unique_id}" if unique_id else ""
+        excel_path = folder / f"quote_verification{uid_suffix}.xlsx"
         df = pd.DataFrame(self.sentence_matches)
 
         # Rename columns for clarity
-        df = df.rename(columns={
-            "quote": "extracted_quote",
-            "span_text": "found_in_original",
-            "context_window": "context_in_original"
-        })
+        df = df.rename(
+            columns={
+                "quote": "extracted_quote",
+                "span_text": "found_in_original",
+                "source_doc_content": "full_original_text",
+            }
+        )
 
         # Reorder columns: text columns first, then source_doc, then metrics
-        priority_cols = ["extracted_quote", "found_in_original", "context_in_original", "source_doc"]
+        priority_cols = [
+            "extracted_quote",
+            "found_in_original",
+            "source_doc",
+            "full_original_text",
+        ]
         other_cols = [col for col in df.columns if col not in priority_cols]
         df = df[priority_cols + other_cols]
 
         # Sort by BM25 ratio (lowest confidence first) so problematic quotes appear at top
-        df = df.sort_values(
-            ["bm25_ratio", "bm25_score", "cosine_similarity"],
-            ascending=[True, True, True],
-        )
 
         with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
             df.to_excel(writer, sheet_name="Quote Verification", index=False)
@@ -3086,7 +3365,11 @@ class VerifyQuotes(DAGNode):
                 header_value = column[0].value
 
                 # Set width and wrapping for text columns
-                if header_value in ["extracted_quote", "found_in_original", "context_in_original"]:
+                if header_value in [
+                    "extracted_quote",
+                    "found_in_original",
+                    "full_original_text",
+                ]:
                     worksheet.column_dimensions[column_letter].width = 80
                     for cell in column:
                         cell.alignment = Alignment(wrap_text=True, vertical="top")
@@ -3322,9 +3605,39 @@ class TransformReduce(CompletionDAGNode):
         self.output = final_response
         return final_response
 
-    def export(self, folder: Path):
+    def result(self) -> Dict[str, Any]:
+        """Returns reduction tree structure and final result."""
+        # Build tree structure with DataFrames per level
+        tree_dfs = []
+
+        for level_idx, level_items in enumerate(self.reduction_tree):
+            level_rows = []
+            for item_idx, item in enumerate(level_items):
+                level_rows.append(
+                    {
+                        "level": level_idx,
+                        "item_idx": item_idx,
+                        "text": str(item),
+                        "response_obj": (
+                            item.response if hasattr(item, "response") else None
+                        ),
+                        "chatter_result": item if hasattr(item, "results") else None,
+                    }
+                )
+            tree_dfs.append(pd.DataFrame(level_rows))
+
+        return {
+            "tree_levels": tree_dfs,
+            "final_prompt": extract_prompt(self.output),
+            "final_response": (
+                self.output.response if hasattr(self.output, "response") else None
+            ),
+            "final_chatter_result": self.output,
+        }
+
+    def export(self, folder: Path, unique_id: str = ""):
         """Export TransformReduce node with multi-level structure."""
-        super().export(folder)
+        super().export(folder, unique_id=unique_id)
 
         # Write templates
         if self.template_text:
