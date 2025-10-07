@@ -199,7 +199,7 @@ def calculate_agreement_from_dataframes(
             for f in all_fields
             if f not in metadata_cols and not f.endswith("__evidence")
         )
-        logger.info("Auto-detected agreement fields: %s", agreement_fields)
+        logger.debug("Auto-detected agreement fields: %s", agreement_fields)
 
     if not agreement_fields:
         logger.warning("No agreement fields found")
@@ -241,7 +241,7 @@ def calculate_agreement_from_dataframes(
             stats[field] = {"error": str(e)}
 
     if stats:
-        logger.info(f"Calculated agreement statistics for {len(stats)} fields")
+        logger.debug(f"Calculated agreement statistics for {len(stats)} fields")
 
     return stats if stats else None
 

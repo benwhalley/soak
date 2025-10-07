@@ -303,7 +303,7 @@ def run(
         "json", "--format", "-f", help="Output format: json or html"
     ),
     template: str = typer.Option(
-        "default.html",
+        "pipeline.html",
         "--template",
         "-t",
         help="Template name (in soak/templates) or path to custom HTML template",
@@ -350,7 +350,7 @@ def run(
                 print(f"Use --force/-f to overwrite", file=sys.stderr)
                 raise typer.Exit(1)
             else:
-                logger.info(
+                logger.warning(
                     f"Overwriting existing output files: {output}.json, {output}.html"
                 )
 
@@ -598,10 +598,10 @@ def compare(
     print(f"\n✓ Comparison report saved to: {output}")
 
     # Print summary statistics
-    logger.info("\nSummary:")
+    logger.debug("\nSummary:")
     for key, comp in comparison.by_comparisons().items():
-        logger.info(f"  {key}:")
-        logger.info(
+        logger.debug(f"  {key}:")
+        logger.debug(
             f"    F1: {comp['stats']['f1']:.3f}, Similarity F1: {comp['stats']['similarity_f1']:.3f}"
         )
 
@@ -688,7 +688,7 @@ def export(
         help="Output file path (without extension). If not specified, replaces input .json with .html",
     ),
     template: str = typer.Option(
-        "default.html",
+        "pipeline.html",
         "--template",
         "-t",
         help="Template name (in soak/templates) or path to custom HTML template",

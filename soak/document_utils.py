@@ -1,6 +1,7 @@
 """Text extraction utilities for PDF, Word, and text documents."""
 
 import glob
+import logging
 import os
 import re
 import shutil
@@ -10,6 +11,8 @@ from contextlib import contextmanager
 from pathlib import Path
 
 import magic
+
+logger = logging.getLogger(__name__)
 
 
 def strip_null_bytes(obj):
@@ -175,7 +178,7 @@ def _extract_docx_text(path: str) -> str:
         return "\n".join(parts)
 
     except Exception as e:
-        print(f"DOCX read failed: {path}: {e}")
+        logger.error(f"DOCX read failed: {path}: {e}")
         return ""
 
 
@@ -205,11 +208,11 @@ def _extract_text_cached(path: str, mtime: float) -> str:
                 return f.read()
 
     except PdfminerException:
-        print(f"PDF read failed: {path}")
+        logger.error(f"PDF read failed: {path}")
         return ""
 
     except Exception as e:
-        print(f"Read failed: {path}: {e}")
+        logger.error(f"Read failed: {path}: {e}")
         return ""
 
 

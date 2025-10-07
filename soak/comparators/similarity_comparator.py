@@ -2,6 +2,7 @@
 
 import base64
 import itertools
+import logging
 import textwrap
 from collections import OrderedDict
 from io import BytesIO
@@ -13,12 +14,14 @@ from struckdown import get_embedding as get_embedding_
 
 from soak.models import QualitativeAnalysis, QualitativeAnalysisComparison
 
+logger = logging.getLogger(__name__)
+
 memory = Memory(Path(".embeddings"), verbose=0)
 
 
 @memory.cache
 def get_embedding(*args, **kwargs):
-    print("Getting embedding...")
+    logger.debug("Getting embedding...")
     return get_embedding_(*args, **kwargs)
 
 

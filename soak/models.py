@@ -79,7 +79,7 @@ def safe_json_dump(obj: Any, indent: int = 2) -> str:
         # Handle regular dicts/lists
         return json.dumps(obj, indent=indent, default=str)
     except Exception as e:
-        logger.warning(f"Failed to serialize to JSON: {e}, using repr fallback")
+        logger.debug(f"Failed to serialize to JSON: {e}, using repr fallback")
         return json.dumps(
             {"__repr__": repr(obj), "__str__": str(obj), "__error__": str(e)},
             indent=indent,
@@ -383,12 +383,12 @@ class DAGConfig(BaseModel):
     def load_documents(self) -> List["TrackedItem"]:
         """Load documents and wrap them in TrackedItem for provenance tracking."""
         if hasattr(self, "documents") and self.documents:
-            logger.info("Using cached documents")
+            logger.debug("Using cached documents")
             # Ensure cached docs are TrackedItems
             if self.documents and isinstance(self.documents[0], TrackedItem):
                 return self.documents
             # Upgrade cached string documents to TrackedItems
-            logger.info("Upgrading cached documents to TrackedItems")
+            logger.debug("Upgrading cached documents to TrackedItems")
             self.documents = [
                 (
                     TrackedItem(
@@ -473,7 +473,7 @@ class DAGConfig(BaseModel):
                 self.documents = tracked_docs
 
         if self.scrub_pii:
-            logger.info("Scrubbing PII")
+            logger.debug("Scrubbing PII")
             if self.scrubber_salt == 42:
                 logger.warning(
                     "Scrubber salt is default, consider setting to a random value"
@@ -492,7 +492,7 @@ class DAGConfig(BaseModel):
 async def run_node(node):
     try:
         result = await node.run()
-        logger.info(f"COMPLETED: {node.name}\n")
+        logger.debug(f"COMPLETED: {node.name}\n")
         return result
     except Exception as e:
         logger.error(f"Node {node.name} failed: {e}")
@@ -574,10 +574,6 @@ class DAG(BaseModel):
 
         return self
 
-    def progress(self):
-        last_complete = self.nodes[0]
-        return f"Last completed: {last_complete.name}"
-
     @property
     def edges(self) -> List["Edge"]:
         all_edges = []
@@ -634,7 +630,7 @@ class DAG(BaseModel):
                 # use anyio structured concurrency - start all tasks in batch concurrently
                 with anyio.fail_after(
                     SOAK_MAX_RUNTIME
-                ):  # 2 hours, to cleanup if needed
+                ):
                     async with anyio.create_task_group() as tg:
                         for name in batch:
                             tg.start_soon(run_node, self.nodes_dict[name])
@@ -796,7 +792,7 @@ class DAGNode(BaseModel):
             return False
 
     async def run(self, items: List[Any] = None) -> List[Any]:
-        logger.info(f"\n\nRunning `{self.name}` ({self.__class__.__name__})\n\n")
+        logger.debug(f"\n\nRunning `{self.name}` ({self.__class__.__name__})\n\n")
 
     @property
     def context(self) -> Dict[str, Any]:
@@ -994,7 +990,7 @@ class Split(DAGNode):
             )
             for chunk in self.output
         ]
-        logger.info(
+        logger.debug(
             f"CREATED {len(self.output)} chunks; average length ({self.split_unit}): {np.mean(lens).round(1)}, max: {max(lens)}, min: {min(lens)}."
         )
 
@@ -1494,7 +1490,7 @@ class Classifier(ItemsNode, CompletionDAGNode):
 
         # Run classification for each model
         for model_name in self.model_names:
-            logger.info(f"Running classification with model: {model_name}")
+            logger.debug(f"Running classification with model: {model_name}")
 
             results = [None] * len(items)
 
