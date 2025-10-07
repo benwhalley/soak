@@ -22,6 +22,7 @@ memory = Memory(Path(".embeddings"), verbose=0)
 @memory.cache
 def get_embedding(*args, **kwargs):
     logger.debug("Getting embedding...")
+    logger.debug(f"Args: {args}, kwargs: {kwargs}")
     return get_embedding_(*args, **kwargs)
 
 
@@ -79,9 +80,10 @@ def compare_result_similarity(
     import numpy as np
     from sklearn.metrics.pairwise import cosine_similarity
 
+    logger.debug("Getting embeddings for A and B")
     emb_A = get_embedding(list(map(lambda x: x.strip(), A)))
     emb_B = get_embedding(list(map(lambda x: x.strip(), B)))
-
+    logger.debug("Got embeddings for A and B")
     assert len(emb_A) == len(A), f"Mismatch in emb_A: {len(emb_A)} != {len(A)}"
     assert len(emb_B) == len(B), f"Mismatch in emb_B: {len(emb_B)} != {len(B)}"
 
