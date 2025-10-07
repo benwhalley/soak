@@ -1,0 +1,33 @@
+<div class="node-result">
+  <h5>{{ result.metadata.name }}</h5>
+  <p class="text-muted">Type: <code>VerifyQuotes</code></p>
+
+  <p><strong>Number of quotes verified:</strong> {{ result.metadata.num_quotes }}</p>
+  <p><strong>Min fuzzy ratio threshold:</strong> {{ result.metadata.min_fuzzy_ratio }}</p>
+
+  {% if result.stats %}
+  <div class="card card-body mb-3">
+    <h6>Verification Statistics:</h6>
+    <ul class="mb-0">
+      {% for key, value in result.stats.items() %}
+      <li><strong>{{ key }}:</strong> {{ "%.2f"|format(value) }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if result.matches_df is defined and not result.matches_df.empty %}
+  <details>
+    <summary><strong>Quote Matches</strong> (click to expand)</summary>
+    <div class="mt-2">
+      <style>
+        .sim-high { color: green; }
+        .sim-mid { color: orange; }
+        .sim-low { color: red; }
+        .sim-verylow { color: grey; }
+      </style>
+      {{ result.matches_df|df_to_html|safe }}
+    </div>
+  </details>
+  {% endif %}
+</div>

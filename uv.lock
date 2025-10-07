@@ -1361,6 +1361,21 @@ wheels = [
 ]
 
 [[package]]
+name = "pyirr"
+version = "0.84.1.2"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "numpy" },
+    { name = "pandas" },
+    { name = "scipy" },
+    { name = "statsmodels" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3e/40/901b26ba63a0eeab2535f28d23f0dcb4a008768e4abac3055213a217008e/pyirr-0.84.1.2.tar.gz", hash = "sha256:24c80e3b9a1685b3dd8a35e3c17c542711145b4f0abe256b47a5c9bf9c6b6eba", size = 53865 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/89/2a/46d25a2ae516082127438a0d07bb6df6cc1578575297fa2e80d5469a0413/pyirr-0.84.1.2-py3-none-any.whl", hash = "sha256:8b499b02503851ecf405291e61bbb95ebcc1ee4dfcccbdfcb484947a71a22c2b", size = 58873 },
+]
+
+[[package]]
 name = "pymdown-extensions"
 version = "10.16.1"
 source = { registry = "https://pypi.org/simple" }
@@ -1748,6 +1763,15 @@ wheels = [
 ]
 
 [[package]]
+name = "setuptools"
+version = "80.9.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/18/5d/3bf57dcd21979b887f014ea83c24ae194cfcd12b9e0fda66b957c69d1fca/setuptools-80.9.0.tar.gz", hash = "sha256:f36b47402ecde768dbfafc46e8e4207b4360c654f1f3bb84475f0a28628fb19c", size = 1319958 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a3/dc/17031897dae0efacfea57dfd3a82fdd2a2aeb58e0ff71b77b87e44edc772/setuptools-80.9.0-py3-none-any.whl", hash = "sha256:062d34222ad13e0cc312a4c02d73f059e86a4acbfbdea8f8f76b28c99f306922", size = 1201486 },
+]
+
+[[package]]
 name = "shellingham"
 version = "1.5.4"
 source = { registry = "https://pypi.org/simple" }
@@ -1793,6 +1817,7 @@ dependencies = [
     { name = "pandas" },
     { name = "pdfplumber" },
     { name = "pydantic" },
+    { name = "pyirr" },
     { name = "python-box" },
     { name = "python-decouple" },
     { name = "python-docx" },
@@ -1801,6 +1826,7 @@ dependencies = [
     { name = "scikit-learn" },
     { name = "scipy" },
     { name = "seaborn" },
+    { name = "setuptools" },
     { name = "statsmodels" },
     { name = "struckdown" },
     { name = "tiktoken" },
@@ -1825,6 +1851,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=2.3.1" },
     { name = "pdfplumber", specifier = ">=0.11.7" },
     { name = "pydantic", specifier = ">=2.11.7" },
+    { name = "pyirr", specifier = ">=0.84.1.2" },
     { name = "python-box", specifier = ">=7.3.2" },
     { name = "python-decouple", specifier = ">=3.8" },
     { name = "python-docx", specifier = ">=1.2.0" },
@@ -1833,6 +1860,7 @@ requires-dist = [
     { name = "scikit-learn", specifier = ">=1.7.1" },
     { name = "scipy", specifier = ">=1.14" },
     { name = "seaborn", specifier = ">=0.13.2" },
+    { name = "setuptools", specifier = ">=80.9.0" },
     { name = "statsmodels", specifier = ">=0.14.0" },
     { name = "struckdown", editable = "../struckdown" },
     { name = "tiktoken", specifier = ">=0.9.0" },

@@ -1,0 +1,10 @@
+<div class="node-result">
+  <h5>{{ result.metadata.name }}</h5>
+  <p class="text-muted">Type: <code>Batch</code></p>
+
+  {% if result.metadata.inputs %}
+  <p><strong>Inputs:</strong> {{ result.metadata.inputs|join(', ') }}</p>
+  {% endif %}
+
+  <p><em>Batches items for downstream processing</em></p>
+</div>

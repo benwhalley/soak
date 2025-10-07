@@ -1,0 +1,39 @@
+name: test_split
+
+nodes:
+  # Test different split units
+  - name: split_tokens
+    type: Split
+    split_unit: tokens
+    chunk_size: 500
+    overlap: 50
+
+  - name: split_words
+    type: Split
+    split_unit: words
+    chunk_size: 300
+    overlap: 30
+
+  - name: split_sentences
+    type: Split
+    split_unit: sentences
+    chunk_size: 3
+    overlap: 0
+
+  - name: split_paragraphs
+    type: Split
+    split_unit: paragraphs
+    chunk_size: 2
+    overlap: 0
+
+---#split_tokens
+{{input}}
+
+---#split_words
+{{input}}
+
+---#split_sentences
+{{input}}
+
+---#split_paragraphs
+{{input}}

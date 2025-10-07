@@ -1,0 +1,34 @@
+<div class="node-result">
+  <h5>{{ result.metadata.name }}</h5>
+  <p class="text-muted">Type: <code>TransformReduce</code></p>
+
+  {% if result.metadata.model_name %}
+  <p><strong>Model:</strong> <code>{{ result.metadata.model_name }}</code></p>
+  {% endif %}
+
+  <p><strong>Reduction levels:</strong> {{ result.metadata.num_levels }}</p>
+  <p><strong>Batch size:</strong> {{ result.metadata.batch_size }}</p>
+
+  {% if result.tree_levels %}
+  <details class="mb-3">
+    <summary><strong>Reduction Tree</strong> (click to expand)</summary>
+    <div class="mt-2">
+      {% for level_idx, level_df in result.tree_levels|enumerate %}
+      <h6>Level {{ level_idx }}</h6>
+      {{ level_df|df_to_html|safe }}
+      {% endfor %}
+    </div>
+  </details>
+  {% endif %}
+
+  {% if result.final_response %}
+  <div class="card card-body">
+    <h6>Final Result:</h6>
+    <div>
+{% markdown %}
+{{ result.final_response }}
+{% endmarkdown %}
+    </div>
+  </div>
+  {% endif %}
+</div>

@@ -1,0 +1,30 @@
+name: test_verify_quotes
+
+nodes:
+  - name: chunks
+    type: Split
+    split_unit: sentences
+    chunk_size: 5
+
+  - name: extract_codes
+    type: Map
+    inputs:
+      - chunks
+
+  - name: verify
+    type: VerifyQuotes
+    inputs:
+      - extract_codes
+
+---#chunks
+{{input}}
+
+---#extract_codes
+
+Extract key themes with quotes from this text:
+
+<text>
+{{input}}
+</text>
+
+[[codes:codes]]

@@ -302,11 +302,11 @@ def run(
     format: str = typer.Option(
         "json", "--format", "-f", help="Output format: json or html"
     ),
-    template: str = typer.Option(
-        "pipeline.html",
+    template: list[str] = typer.Option(
+        ["pipeline.html"],
         "--template",
         "-t",
-        help="Template name (in soak/templates) or path to custom HTML template",
+        help="Template name (in soak/templates) or path to custom HTML template (can be used multiple times)",
     ),
     include_documents: bool = typer.Option(
         False, "--include-documents", help="Include original documents in output"
@@ -334,24 +334,31 @@ def run(
     # Check if output files exist (if output specified)
     if output:
         output_json = Path(f"{output}.json")
-        output_html = Path(f"{output}.html")
 
-        if output_json.exists() or output_html.exists():
+        # Check for all template HTML files
+        output_html_files = []
+        for tmpl in template:
+            template_stem = Path(resolve_template(tmpl)).stem
+            output_html_files.append(Path(f"{output}_{template_stem}.html"))
+
+        existing = []
+        if output_json.exists():
+            existing.append(str(output_json))
+        for html_file in output_html_files:
+            if html_file.exists():
+                existing.append(str(html_file))
+
+        if existing:
             if not force:
-                existing = []
-                if output_json.exists():
-                    existing.append(str(output_json))
-                if output_html.exists():
-                    existing.append(str(output_html))
                 print(
                     f"Error: Output file(s) already exist: {', '.join(existing)}",
                     file=sys.stderr,
                 )
-                print(f"Use --force/-f to overwrite", file=sys.stderr)
+                print(f"Use --force/-F to overwrite", file=sys.stderr)
                 raise typer.Exit(1)
             else:
                 logger.warning(
-                    f"Overwriting existing output files: {output}.json, {output}.html"
+                    f"Overwriting existing output files: {', '.join(existing)}"
                 )
 
     # Check and prompt for credentials first
@@ -412,30 +419,47 @@ def run(
     # generate output content based on format
     jsoncontent = analysis.model_dump_json()
 
-    # this roundtrip to dict is weird, but needed because of a bug in how ChatterResult is reserialised?
-    try:
-        htmlcontent = generate_html_output(
-            QualitativeAnalysisPipeline.model_validate(analysis.model_dump()), template
-        )
-    except Exception as e:
-        error_msg = format_exception_concise(e)
-        raise typer.BadParameter(f"Error generating HTML output:\n{error_msg}")
+    # Generate HTML for each template
+    html_outputs = {}
+    pipeline_for_html = QualitativeAnalysisPipeline.model_validate(
+        analysis.model_dump()
+    )
+
+    for tmpl in template:
+        try:
+            html_outputs[tmpl] = generate_html_output(pipeline_for_html, tmpl)
+        except Exception as e:
+            error_msg = format_exception_concise(e)
+            raise typer.BadParameter(
+                f"Error generating HTML output for template '{tmpl}':\n{error_msg}"
+            )
+
     if output is None:
         if format == "json":
             print(jsoncontent, file=sys.stdout)
         elif format == "html":
-            print(htmlcontent, file=sys.stdout)
+            # For stdout, use first template only
+            print(html_outputs[template[0]], file=sys.stdout)
         else:
             raise typer.BadParameter(
                 "Format must be 'json' or 'html' or specify output file name"
             )
 
     else:
-        logger.info(f"Writing output to {output}.json and {output}.html")
-        with open(output + ".html", "w", encoding="utf-8") as f:
-            f.write(htmlcontent)
+        # Write JSON file
+        logger.info(f"Writing output to {output}.json")
         with open(output + ".json", "w", encoding="utf-8") as f:
             f.write(jsoncontent)
+
+        # Write HTML files for each template
+        for tmpl in template:
+            template_stem = Path(resolve_template(tmpl)).stem
+            html_filename = f"{output}_{template_stem}.html"
+            logger.info(
+                f"Writing HTML output with template '{template_stem}' to {html_filename}"
+            )
+            with open(html_filename, "w", encoding="utf-8") as f:
+                f.write(html_outputs[tmpl])
 
     # Dump execution details if requested
     if dump:
@@ -464,7 +488,7 @@ def run(
                 print(
                     f"\nError: Dump folder already exists: {dump_path}", file=sys.stderr
                 )
-                print(f"Use --force/-f to overwrite", file=sys.stderr)
+                print(f"Use --force/-F to overwrite", file=sys.stderr)
                 raise typer.Exit(1)
             else:
                 logger.info(f"Removing existing dump folder: {dump_path}")
@@ -484,7 +508,7 @@ def run(
             "command": " ".join(cmd_parts),
             "pipeline_file": str(pipyml),
             "model_name": model_name,
-            "template": template,
+            "templates": template,
             "unique_id": config_hash,
         }
         if context:
@@ -674,128 +698,6 @@ def show(
 
     # Print contents to stdout
     print(item_path.read_text(), file=sys.stdout)
-
-
-@app.command()
-def export(
-    input_json: str = typer.Argument(
-        ..., help="Path to JSON file containing QualitativeAnalysis"
-    ),
-    output: str = typer.Option(
-        None,
-        "--output",
-        "-o",
-        help="Output file path (without extension). If not specified, replaces input .json with .html",
-    ),
-    template: str = typer.Option(
-        "pipeline.html",
-        "--template",
-        "-t",
-        help="Template name (in soak/templates) or path to custom HTML template",
-    ),
-):
-    """Export a saved analysis result to HTML."""
-
-    # Load the JSON file
-    input_path = Path(input_json)
-    if not input_path.exists():
-        print(f"Error: File not found: {input_json}", file=sys.stderr)
-        raise typer.Exit(1)
-
-    logger.info(f"Loading analysis from {input_json}")
-    with open(input_json, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    # Try to parse as QualitativeAnalysisPipeline first (which has to_html method)
-    # If that fails, try QualitativeAnalysis
-    try:
-        pipeline = QualitativeAnalysisPipeline.model_validate(data)
-        logger.info("Loaded as QualitativeAnalysisPipeline")
-        htmlcontent = generate_html_output(pipeline, template)
-
-    except Exception as e:
-        error_msg = format_exception_concise(e)
-        raise typer.BadParameter(f"Could not load as pipeline:\n{error_msg}")
-
-    # Determine output path
-    if output is None:
-        output = str(input_path.with_suffix(""))
-
-    output_html = output + ".html"
-    logger.info(f"Writing HTML to {output_html}")
-    with open(output_html, "w", encoding="utf-8") as f:
-        f.write(htmlcontent)
-
-    print(f"Successfully exported to {output_html}")
-
-
-@app.command()
-def dump(
-    input_json: str = typer.Argument(
-        ..., help="Path to JSON file from a saved pipeline run"
-    ),
-    output_folder: str = typer.Option(
-        None,
-        "--output-folder",
-        "-o",
-        help="Output folder path. If not specified, creates <input_stem>_dump/ in current directory",
-    ),
-    force: bool = typer.Option(
-        False,
-        "--force",
-        "-F",
-        help="Overwrite output folder if it already exists",
-    ),
-):
-    """Dump detailed DAG execution to folder structure for inspection."""
-
-    # Load the JSON file
-    input_path = Path(input_json)
-    if not input_path.exists():
-        print(f"Error: File not found: {input_json}", file=sys.stderr)
-        raise typer.Exit(1)
-
-    logger.info(f"Loading pipeline from {input_json}")
-    with open(input_json, "r", encoding="utf-8") as f:
-        data = json.load(f)
-
-    # Load as QualitativeAnalysisPipeline
-    try:
-        pipeline = QualitativeAnalysisPipeline.model_validate(data)
-        logger.info(f"Loaded pipeline: {pipeline.name}")
-    except Exception as e:
-        error_msg = format_exception_concise(e)
-        raise typer.BadParameter(f"Could not load as pipeline:\n{error_msg}")
-
-    # Determine output folder
-    if output_folder is None:
-        output_folder = f"{input_path.stem}_dump"
-
-    output_path = Path(output_folder)
-
-    # Check if output folder exists
-    if output_path.exists():
-        if not force:
-            print(
-                f"Error: Output folder already exists: {output_path}", file=sys.stderr
-            )
-            print(f"Use --force/-f to overwrite", file=sys.stderr)
-            raise typer.Exit(1)
-        else:
-            logger.info(f"Removing existing folder: {output_path}")
-
-            shutil.rmtree(output_path)
-
-    # Export execution details
-    metadata = {
-        "source_file": str(input_path),
-        "command": f"soak dump {input_json}",
-    }
-
-    logger.info(f"Dumping execution details to {output_path}")
-    pipeline.export_execution(output_path, metadata=metadata)
-
-    print(f"\n✓ Execution dump saved to: {output_path}")
 
 
 if __name__ == "__main__":

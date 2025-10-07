@@ -1,0 +1,33 @@
+name: test_classifier
+
+nodes:
+  - name: chunks
+    type: Split
+    split_unit: sentences
+    chunk_size: 3
+
+  - name: classify
+    type: Classifier
+    model_names:
+      - litellm/gpt-4o-mini
+      - litellm/gpt-4.1-mini
+    agreement_fields:
+      - topic
+      - sentiment
+    inputs:
+      - chunks
+
+---#chunks
+{{input}}
+
+---#classify
+
+Read the text and classify it:
+
+<text>
+{{input}}
+</text>
+
+What is the main topic? [[pick:topic|coffee,economics,politics,lifestyle,other]]
+
+What is the overall sentiment? [[pick:sentiment|positive,negative,neutral]]

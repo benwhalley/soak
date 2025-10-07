@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html>
+<meta charset="UTF-8">
+
+<head>
+    <title>Pipeline Analysis Report - {{ pipeline.name }}</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/css/bootstrap.min.css"
+          integrity="sha512-rt/SrQ4UNIaGfDyEXZtNcyWvQeOq0QLygHluFQcSjaGB04IxWhal71tKuzP6K8eYXYB6vJV4pHkXcmFGGQ1/0w=="
+          crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/js/bootstrap.bundle.min.js"
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/11.8.1/mermaid.min.js"
+            integrity="sha512-BFmLwKC92En/Mv3/tTlkzotbuaJlvgUvGRyDh1037lTgKhP326tEL1mDN0wl8kXC/ZbNsKd7mT4iOjFC+EhoNg=="
+            crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+    <style>
+        body {
+            padding-top: 20px;
+            padding-bottom: 40px;
+        }
+        .mermaid-container {
+            background-color: #f8f9fa;
+            border: 1px solid #dee2e6;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .mermaid {
+            text-align: center;
+        }
+        .node-result {
+            margin-bottom: 30px;
+            padding: 20px;
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            background-color: #ffffff;
+        }
+        .node-result h5 {
+            margin-top: 0;
+            color: #007bff;
+        }
+        .section-header {
+            margin-top: 40px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #007bff;
+        }
+        details {
+            border: 1px solid #dee2e6;
+            border-radius: 4px;
+            padding: 10px;
+            margin-top: 10px;
+        }
+        details summary {
+            cursor: pointer;
+            font-weight: bold;
+            user-select: none;
+        }
+        details[open] summary {
+            margin-bottom: 10px;
+        }
+        .table {
+            font-size: 0.9rem;
+        }
+        .execution-batch {
+            background-color: #e9ecef;
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container-fluid">
+        <h1>Pipeline Analysis Report</h1>
+        <h2 class="text-muted">{{ pipeline.name }}</h2>
+
+        <!-- SECTION 1: Mermaid DAG Diagram -->
+        <div class="section-header">
+            <h3>1. Pipeline Structure</h3>
+        </div>
+
+        <div class="row">
+            <div class="col-12">
+                <div class="mermaid-container">
+                    <div class="mermaid">
+                        {{ pipeline.to_mermaid()|safe }}
+                    </div>
+                </div>
+                <script>
+                    mermaid.initialize({
+                        startOnLoad: true,
+                        theme: 'default',
+                        flowchart: {
+                            useMaxWidth: true,
+                            htmlLabels: true,
+                            curve: 'basis'
+                        }
+                    });
+                </script>
+            </div>
+        </div>
+
+        <!-- SECTION 2: Run Metadata -->
+        <div class="section-header">
+            <h3>2. Run Metadata</h3>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Pipeline Information</h5>
+                        <ul class="list-unstyled">
+                            <li><strong>Name:</strong> <code>{{ pipeline.name }}</code></li>
+                            <li><strong>Total Nodes:</strong> {{ pipeline.nodes|length }}</li>
+                            {% if pipeline.config.model_name %}
+                            <li><strong>Default Model:</strong> <code>{{ pipeline.config.model_name }}</code></li>
+                            {% endif %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Context Variables</h5>
+                        {% if pipeline.default_context %}
+                        <ul class="list-unstyled">
+                            {% for key, value in pipeline.default_context.items() %}
+                            <li><strong>{{ key }}:</strong> <code>{{ value }}</code></li>
+                            {% endfor %}
+                        </ul>
+                        {% else %}
+                        <p class="text-muted">No context variables</p>
+                        {% endif %}
+
+                        {% if pipeline.config.extra_context %}
+                        <h6 class="mt-3">Extra Context:</h6>
+                        <ul class="list-unstyled">
+                            {% for key, value in pipeline.config.extra_context.items() %}
+                            <li><strong>{{ key }}:</strong> <code>{{ value }}</code></li>
+                            {% endfor %}
+                        </ul>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="row mt-3">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Execution Order</h5>
+                        <p class="text-muted">Nodes in the same batch run in parallel</p>
+                        {% for batch_idx, batch_nodes in execution_order|enumerate %}
+                        <div class="execution-batch">
+                            <strong>Batch {{ batch_idx + 1 }}:</strong>
+                            {% for node_name in batch_nodes %}
+                            <a href="#node-{{ node_name }}" class="badge badge-primary">{{ node_name }}</a>
+                            {% endfor %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if pipeline.config.document_paths %}
+        <div class="row mt-3">
+            <div class="col-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Source Documents</h5>
+                        <ul>
+                            {% for doc_path in pipeline.config.document_paths %}
+                            <li><code>{{ doc_path }}</code></li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- SECTION 3: Node Results -->
+        <div class="section-header">
+            <h3>3. Node Results</h3>
+        </div>
+
+        <div class="row">
+            <div class="col-12">
+                {% for node in pipeline.nodes %}
+                <div id="node-{{ node.name }}" class="node-result">
+                    {{ render_node(node)|safe }}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+        <!-- Optional: Debug info -->
+        <div class="row mt-5">
+            <div class="col-12">
+                <details>
+                    <summary>Show Full Pipeline Details (JSON)</summary>
+                    <pre class="mt-3" style="font-size: 0.8rem; max-height: 500px; overflow-y: auto;">{{ detail|tojson(indent=2) }}</pre>
+                </details>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

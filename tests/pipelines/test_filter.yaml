@@ -1,0 +1,27 @@
+name: test_filter
+
+nodes:
+  - name: chunks
+    type: Split
+    split_unit: sentences
+    chunk_size: 1
+
+  - name: filter_about_coffee
+    type: Filter
+    inputs:
+      - chunks
+
+---#chunks
+{{input}}
+
+---#filter_about_coffee
+
+Does this text mention coffee, cafes, or beverages?
+
+<text>
+{{input}}
+</text>
+
+Return True if it mentions coffee/cafes/beverages, False otherwise.
+
+[[bool:filter]]

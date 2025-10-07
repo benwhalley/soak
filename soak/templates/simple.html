@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html>
+<meta charset="UTF-8">
+
+<head>
+    <title>Analysis Results - {{ pipeline.name }}</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/css/bootstrap.min.css"
+          integrity="sha512-rt/SrQ4UNIaGfDyEXZtNcyWvQeOq0QLygHluFQcSjaGB04IxWhal71tKuzP6K8eYXYB6vJV4pHkXcmFGGQ1/0w=="
+          crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+    <style>
+        body {
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+        }
+
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+        }
+
+        h2 {
+            color: #2c3e50;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            font-size: 1.8rem;
+        }
+
+        .narrative-section {
+            background-color: #f8f9fa;
+            padding: 30px;
+            border-radius: 8px;
+            border-left: 5px solid #3498db;
+            margin-bottom: 40px;
+            font-size: 1.05rem;
+            line-height: 1.8;
+        }
+
+        .code-card {
+            background: white;
+            border: 1px solid #e1e8ed;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            transition: box-shadow 0.2s;
+        }
+
+        .code-card:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        .code-name {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .code-slug {
+            display: inline-block;
+            background-color: #e8f4f8;
+            color: #2980b9;
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            font-family: 'Courier New', monospace;
+            margin-left: 10px;
+        }
+
+        .code-description {
+            color: #555;
+            margin-bottom: 15px;
+            font-size: 1.05rem;
+        }
+
+        .quotes-section {
+            margin-top: 15px;
+        }
+
+        .quotes-label {
+            font-weight: 600;
+            color: #7f8c8d;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+        }
+
+        .quote {
+            background-color: #fafafa;
+            border-left: 3px solid #95a5a6;
+            padding: 12px 15px;
+            margin-bottom: 10px;
+            font-style: italic;
+            color: #555;
+            border-radius: 4px;
+        }
+
+        .theme-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 8px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .theme-name {
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .theme-description {
+            margin-bottom: 15px;
+            font-size: 1.05rem;
+            opacity: 0.95;
+        }
+
+        .theme-codes {
+            margin-top: 15px;
+        }
+
+        .theme-codes-label {
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            opacity: 0.9;
+        }
+
+        .code-badge {
+            display: inline-block;
+            background-color: rgba(255, 255, 255, 0.2);
+            padding: 5px 12px;
+            border-radius: 20px;
+            margin-right: 8px;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .meta-info {
+            color: #7f8c8d;
+            font-size: 0.9rem;
+            margin-bottom: 30px;
+            padding: 15px;
+            background-color: #ecf0f1;
+            border-radius: 6px;
+        }
+
+        .section-divider {
+            border-top: 2px solid #e1e8ed;
+            margin: 50px 0 30px 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>{{ pipeline.name }}</h1>
+
+        {% if pipeline.default_context %}
+        <div class="meta-info">
+            {% for k,v  in pipeline.default_context.items() %}
+            <strong>{{k}}:</strong> {{ v }}<br>
+            {% endfor %}
+        </div>
+        
+        <div class="meta-info">
+            {% for i in pipeline.config.document_paths %}
+            {{i.0}}, 
+            {% endfor %}
+        </div>
+        
+        
+        {% endif %}
+
+        <h2>Summary</h2>
+        <div class="narrative-section">
+        {% markdown %}
+{{pipeline.nodes_dict['narrative'].result().response_obj|safe}}
+        {% endmarkdown %}   
+
+        </div>
+        
+        
+        <div class="section-divider"></div>
+        
+        <style>
+            a.code-badge {
+  color: inherit;
+  text-decoration: none;
+}
+
+a.code-badge:hover {
+  text-decoration: underline;
+}
+</style>
+
+        <h2>Themes</h2>
+        {% set node_result = pipeline.nodes_dict['themes'].result().response_obj %}
+    
+        {% for theme in node_result.themes %}
+        <div class="theme-card">
+            <div class="theme-name">{{ theme.name }}</div>
+            <div class="theme-description">{{ theme.description }}</div>
+            {% if theme.code_slugs %}
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                {% for slug in theme.code_slugs %}
+                    <a href="#code-{{ slug }}" class="code-badge">{{ slug }}
+                    </a>        
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+        
+
+        <div class="section-divider"></div>
+        
+        {% set node_result = pipeline.nodes_dict['codes'].result().response_obj %}
+    
+        <h2>Codes</h2>
+        {% for code in node_result.codes %}
+        <div class="code-card" id="code-{{ code.slug }}">
+            <div class="code-name">
+                {{ code.name }}
+                <span class="code-slug">{{ code.slug }}</span>
+            </div>
+            <div class="code-description">{{ code.description }}</div>
+            {% if code.quotes %}
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes ({{ code.quotes|length }})</div>
+                {% for quote in code.quotes %}
+                <div class="quote">
+                    {{ quote }}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    
+    </div>
+</body>
+</html>

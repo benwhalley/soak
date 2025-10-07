@@ -1,0 +1,35 @@
+name: test_transform
+
+nodes:
+  - name: chunks
+    type: Split
+    split_unit: sentences
+    chunk_size: 5
+
+  - name: combined
+    type: Reduce
+    inputs:
+      - chunks
+
+  - name: multi_slot_transform
+    type: Transform
+    inputs:
+      - combined
+
+---#chunks
+{{input}}
+
+---#combined
+{{input}}
+
+---#multi_slot_transform
+
+You are analyzing text.
+
+<text>
+{{input}}
+</text>
+
+Provide a brief summary of the main topic and a one-sentence summary:
+
+[[summary]]

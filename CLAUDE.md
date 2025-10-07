@@ -1,38 +1,40 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guide for Claude Code working with this repository.
 
-## Project Overview
+## Project
 
-**soak-llm** is a Python package for LLM-based textual analysis and qualitative research. It implements a DAG (Directed Acyclic Graph) based pipeline system for processing text documents through various analysis stages using language models.
+**soak-llm**: DAG-based pipeline system for LLM-assisted qualitative text analysis.
 
-## Environment Setup
+## Environment
 
-This project uses **uv** as the package manager. Environment variables required:
-- `LLM_API_KEY`: API key for LLM provider
-- `LLM_API_BASE`: OpenAI-compatible endpoint URL (optional)
+Package manager: **uv**
 
-Install the package in development mode:
+Required environment variables:
+- `LLM_API_KEY`: API key
+- `LLM_API_BASE`: OpenAI-compatible endpoint (optional)
+
+Install:
 ```bash
 uv pip install -e .
 ```
 
-## Common Commands
+## Commands
 
-**Run a pipeline:**
+**Run pipeline:**
 ```bash
 uv run soak run <pipeline_name> <input_files> [options]
 # Example:
 uv run soak run demo data/*.txt --output results
 ```
 
-**Command options:**
-- `--output, -o`: Output file path (without extension; generates both .json and .html)
-- `--format, -f`: Output format (json or html) when writing to stdout
-- `--model-name`: LLM model to use (default: litellm/gpt-4.1-mini)
-- `--include-documents`: Include original documents in output
+**Options:**
+- `--output, -o`: Output filename (generates .json and .html)
+- `--format, -f`: Output format for stdout (json/html)
+- `--model-name`: LLM model (default: gpt-4o-mini)
+- `--include-documents`: Include source docs in output
 
-**Build package:**
+**Build:**
 ```bash
 rm -rf dist build *.egg-info
 python -m build
@@ -43,77 +45,94 @@ twine check dist/*
 
 ### Pipeline System
 
-The core architecture is a **DAG-based execution system** for text analysis:
+**Definition** (`soak/specs.py`):
+YAML format with embedded Jinja2 templates:
+```yaml
+name: pipeline_name
+default_context:
+  # context variables
+nodes:
+  - name: node_name
+    type: NodeType
+    inputs: [dependencies]
+---#node_name
+Template with {{variables}}
+```
 
-1. **Pipeline Definition** (`soak/specs.py`): Pipelines are defined in YAML files with embedded Jinja2 templates. Format:
-   ```yaml
-   name: pipeline_name
-   default_context:
-     # context variables for templates
-   nodes:
-     - name: node_name
-       type: NodeType
-       inputs: [dependency_nodes]
-   ---#node_name
-   Template content with {{variables}}
-   ```
+**Execution** (`soak/models.py`):
+- `DAG` class orchestrates node execution via anyio
+- Parallel execution in batches determined by dependencies
+- Max runtime: 30 mins (configurable via `SOAK_MAX_RUNTIME`)
 
-2. **DAG Execution** (`soak/models.py`):
-   - `DAG` class orchestrates node execution using anyio for structured concurrency
-   - Nodes execute in batches determined by dependency resolution
-   - Uses `get_execution_order()` to calculate parallel execution batches
-   - Max runtime: 3 hours (configurable via `SOAK_MAX_RUNTIME`)
+**Node Types** (`soak/models.py`):
+- `Split`: Chunk documents
+- `Map`: Apply LLM to each item in parallel
+- `Reduce`: Aggregate inputs
+- `Transform`: Single-item LLM transformation
+- `TransformReduce`: Combined transform + reduce
+- `Batch`: Group items
+- `VerifyQuotes`: Validate quotes against sources (BM25 + embeddings)
+- `Classifier`: Multi-model classification with agreement metrics
+- `Filter`: Boolean filtering with LLM
 
-3. **Node Types** (all in `soak/models.py`):
-   - `Split`: Chunks input documents into smaller pieces
-   - `Map`: Applies LLM completion to each item in parallel
-   - `Reduce`: Aggregates multiple inputs into one
-   - `Transform`: Transforms input through LLM completion
-   - `TransformReduce`: Combined transform and reduce operation
-   - `Batch`: Groups items for batch processing
-   - `VerifyQuotes`: Validates quotes against source documents
+**Templates**:
+- Jinja2 with `StrictUndefined`
+- `[[return_type]]` syntax for structured outputs (via struckdown)
+- Return types: `theme`, `code`, `themes`, `codes` (see `get_action_lookup()`)
 
-4. **Template System**:
-   - Uses Jinja2 with `StrictUndefined` mode
-   - Templates use special `[[return_type]]` syntax for structured outputs (handled by `struckdown` library)
-   - Return types map to Pydantic models: `theme`, `code`, `themes`, `codes` (defined in `get_action_lookup()`)
-
-5. **Document Processing** (`soak/document_utils.py`):
-   - Supports: PDF, Word (.docx), plain text, zip archives
-   - Auto-detects file types using `python-magic`
-   - Extracts and caches text from documents
-   - Safe zip extraction with path traversal protection
+**Document Processing** (`soak/document_utils.py`):
+- Formats: PDF, DOCX, TXT, ZIP
+- Auto-detection via python-magic
+- Caching based on mtime
 
 ### Data Models
 
 Core models (`soak/models.py`):
-- `Code`: Represents a qualitative code with name, description, and example quotes
-- `Theme`: Groups codes with name, description, and code references
-- `QualitativeAnalysis`: Complete analysis result with codes, themes, narrative
-- `DAGConfig`: Pipeline configuration including documents, model settings, chunking
-- `Document`: Source document representation
+- `Code`: Qualitative code with name, description, quotes
+- `Theme`: Groups codes
+- `QualitativeAnalysis`: Complete analysis (codes, themes, narrative)
+- `DAGConfig`: Pipeline configuration
+- `TrackedItem`: Document with provenance (source_id, metadata, lineage)
 
 ### Concurrency
 
-- Uses `anyio` for structured concurrency
-- Global semaphore limits concurrent LLM calls: `MAX_CONCURRENCY` (default: 20, set via env var)
-- Nodes in the same execution batch run concurrently within task groups
+- `anyio` for structured concurrency
+- Global semaphore: `MAX_CONCURRENCY` (default: 20)
+- Nodes in same batch run concurrently
 
 ### Caching
 
-- Embedding cache: `.embeddings/` directory (uses joblib)
-- Document text extraction cached based on file mtime
+- Embeddings: `.embeddings/` (joblib)
+- Document extraction: mtime-based
 
-### CLI Architecture
+### CLI
 
-Entry point: `soak/cli.py` → `app` (Typer instance)
-- Pipeline resolution checks: local dir first, then `soak/pipelines/`
-- Uses Trogon for TUI support
-- Output formats: JSON (model_dump_json), HTML (custom template in `soak/templates/`)
+Entry: `soak/cli.py` (Typer)
+- Pipeline resolution: local dir → `soak/pipelines/`
+- Trogon TUI support
+- Output: JSON (model_dump_json), HTML (custom template)
 
 ### Comparison System
 
-Location: `soak/comparators/`
-- `SimilarityComparator`: Compares analysis results using embeddings
-- Creates heatmaps and network plots for result comparison
-- Used for evaluating consistency across multiple analysis runs
+`soak/comparators/`:
+- `SimilarityComparator`: Compare analyses via embeddings
+- Heatmaps and network plots
+- Evaluates consistency across runs
+
+## Key Implementation Notes
+
+**Quote Verification** (models.py:2273-2876):
+- BM25-first lexical search + embedding verification
+- Handles ellipses by matching head/tail separately
+- Adaptive windowing (1.1× longest quote, 30% overlap)
+- Outputs: BM25 score, cosine similarity, source positions
+
+**Provenance Tracking** (`TrackedItem`):
+- `source_id`: Hierarchical ID (e.g., "docA__split__0")
+- `metadata`: Document properties, indices
+- Preserved through all transformations
+
+**Agreement Calculation** (`Classifier` node):
+- Multi-model support
+- Metrics: Krippendorff's alpha, Gwet's AC1, percent agreement
+- CSV/HTML export per model + combined statistics

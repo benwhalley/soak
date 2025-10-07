@@ -1,0 +1,25 @@
+name: test_map
+
+nodes:
+  - name: chunks
+    type: Split
+    split_unit: sentences
+    chunk_size: 2
+
+  - name: map_summarize
+    type: Map
+    inputs:
+      - chunks
+
+---#chunks
+{{input}}
+
+---#map_summarize
+
+Summarize this text in 5 words or less:
+
+<text>
+{{input}}
+</text>
+
+[[summary]]

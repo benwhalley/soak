@@ -1,0 +1,29 @@
+<div class="node-result">
+  <h5>{{ result.metadata.name }}</h5>
+  <p class="text-muted">Type: <code>Filter</code></p>
+
+  <p><strong>Included items:</strong> {{ result.metadata.num_included }}</p>
+  <p><strong>Excluded items:</strong> {{ result.metadata.num_excluded }}</p>
+
+  {% if result.filter_field %}
+  <p><strong>Filter field:</strong> <code>{{ result.filter_field }}</code></p>
+  {% endif %}
+
+  {% if result.included is defined and not result.included.empty %}
+  <details class="mb-3">
+    <summary><strong>Included Items</strong> (click to expand)</summary>
+    <div class="mt-2">
+      {{ result.included|df_to_html|safe }}
+    </div>
+  </details>
+  {% endif %}
+
+  {% if result.excluded is defined and not result.excluded.empty %}
+  <details>
+    <summary><strong>Excluded Items</strong> (click to expand)</summary>
+    <div class="mt-2">
+      {{ result.excluded|df_to_html|safe }}
+    </div>
+  </details>
+  {% endif %}
+</div>

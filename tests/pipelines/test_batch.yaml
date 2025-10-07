@@ -1,0 +1,25 @@
+name: test_batch
+
+nodes:
+  - name: chunks
+    type: Split
+    split_unit: sentences
+    chunk_size: 1
+
+  - name: batched
+    type: Batch
+    chunk_size: 3
+    split_unit: tokens
+    inputs:
+      - chunks
+
+---#chunks
+{{input}}
+
+---#batched
+
+Combine these items into a summary:
+
+{{input}}
+
+[[summary]]

@@ -1,0 +1,33 @@
+<div class="node-result">
+  <h5>{{ result.metadata.name }}</h5>
+  <p class="text-muted">Type: <code>Classifier</code></p>
+
+  <p><strong>Number of models:</strong> {{ result.metadata.num_models }}</p>
+  {% if result.metadata.model_names %}
+  <p><strong>Models:</strong> {{ result.metadata.model_names|join(', ') }}</p>
+  {% endif %}
+
+  {% if result.agreement_stats_df is defined and not result.agreement_stats_df.empty %}
+  <div class="card card-body mb-3">
+    <h6>Agreement Statistics</h6>
+    {% if result.metadata.agreement_fields %}
+    <p><strong>Agreement fields:</strong> {{ result.metadata.agreement_fields|join(', ') }}</p>
+    {% endif %}
+    {{ result.agreement_stats_df|df_to_html|safe }}
+  </div>
+  {% endif %}
+
+  {% if result.model_dfs %}
+  <h6>Classifications by Model</h6>
+  {% for model_name, df in result.model_dfs.items() %}
+  <details class="mb-3">
+    <summary><strong>{{ model_name }}</strong> - {{ df|length }} classifications (click to expand)</summary>
+    <div class="mt-2">
+      {{ df|df_to_html|safe }}
+    </div>
+  </details>
+  {% endfor %}
+  {% else %}
+  <p><em>No classifications</em></p>
+  {% endif %}
+</div>

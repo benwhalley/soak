@@ -1,0 +1,16 @@
+<div class="node-result">
+  <h5>{{ result.metadata.name }}</h5>
+  <p class="text-muted">Type: <code>{{ result.metadata.type }}</code></p>
+
+  {% if result.metadata.inputs %}
+  <p><strong>Inputs:</strong> {{ result.metadata.inputs|join(', ') }}</p>
+  {% endif %}
+
+  {% if result.error %}
+  <div class="alert alert-warning">
+    <strong>Error:</strong> {{ result.error }}
+  </div>
+  {% else %}
+  <pre>{{ result|tojson(indent=2) }}</pre>
+  {% endif %}
+</div>

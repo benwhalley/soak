@@ -1,0 +1,31 @@
+name: test_reduce
+
+nodes:
+  - name: chunks
+    type: Split
+    split_unit: sentences
+    chunk_size: 2
+
+  - name: summaries
+    type: Map
+    inputs:
+      - chunks
+
+  - name: combined
+    type: Reduce
+    inputs:
+      - summaries
+
+---#chunks
+{{input}}
+
+---#summaries
+
+Summarize in 5 words:
+
+{{input}}
+
+[[summary]]
+
+---#combined
+{{input}}

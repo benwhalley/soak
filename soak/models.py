@@ -9,8 +9,19 @@ import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import (TYPE_CHECKING, Annotated, Any, Callable, Dict, List,
-                    Literal, Optional, Set, Tuple, Union)
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Any,
+    Callable,
+    Dict,
+    List,
+    Literal,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 import anyio
 import nltk
@@ -19,25 +30,33 @@ import pandas as pd
 import tiktoken
 from box import Box
 from decouple import config as env_config
-from jinja2 import (Environment, FileSystemLoader, StrictUndefined,
-                    TemplateSyntaxError, meta)
+from jinja2 import (
+    Environment,
+    FileSystemLoader,
+    StrictUndefined,
+    TemplateSyntaxError,
+    meta,
+)
 from joblib import Memory
 from pydantic import BaseModel, Field, PrivateAttr, constr, model_validator
 from rank_bm25 import BM25Okapi
 from sklearn.metrics.pairwise import cosine_similarity
-from struckdown import (LLM, ChatterResult, LLMCredentials, chatter,
-                        chatter_async)
+from struckdown import LLM, ChatterResult, LLMCredentials, chatter, chatter_async
 from struckdown import get_embedding as get_embedding_
 from struckdown.parsing import parse_syntax
 from struckdown.return_type_models import ACTION_LOOKUP
 
-from .agreement import (export_agreement_stats, gwet_ac1, kripp_alpha,
-                        percent_agreement)
-from .agreement_scripts import (collect_field_categories,
-                                generate_human_rater_template,
-                                write_agreement_scripts)
-from .document_utils import (extract_text, get_scrubber,
-                             unpack_zip_to_temp_paths_if_needed)
+from .agreement import export_agreement_stats, kappam_fleiss, kripp_alpha, percent_agreement
+from .agreement_scripts import (
+    collect_field_categories,
+    generate_human_rater_template,
+    write_agreement_scripts,
+)
+from .document_utils import (
+    extract_text,
+    get_scrubber,
+    unpack_zip_to_temp_paths_if_needed,
+)
 from .export_utils import export_to_csv, export_to_html, export_to_json
 
 if TYPE_CHECKING:
@@ -628,9 +647,7 @@ class DAG(BaseModel):
                 raise Exception("LLMCredentials must be set for DAG")
             for batch in self.get_execution_order():
                 # use anyio structured concurrency - start all tasks in batch concurrently
-                with anyio.fail_after(
-                    SOAK_MAX_RUNTIME
-                ):
+                with anyio.fail_after(SOAK_MAX_RUNTIME):
                     async with anyio.create_task_group() as tg:
                         for name in batch:
                             tg.start_soon(run_node, self.nodes_dict[name])
@@ -837,11 +854,24 @@ class DAGNode(BaseModel):
 
     def result(self) -> Dict[str, Any]:
         """Extract results from this node. Override in subclasses for node-specific results."""
-        return {
+        metadata = {
             "name": self.name,
             "type": self.type,
             "inputs": self.inputs,
-            "input_items": self.get_input_items(),
+        }
+
+        # Add template text if available
+        if hasattr(self, "template_text") and self.template_text:
+            metadata["template_text"] = self.template_text
+
+        # Add model info if available
+        if hasattr(self, "model_name") and self.model_name:
+            metadata["model_name"] = self.model_name
+        if hasattr(self, "temperature") and self.temperature is not None:
+            metadata["temperature"] = self.temperature
+
+        return {
+            "metadata": metadata,
         }
 
     def export(self, folder: Path, unique_id: str = ""):
@@ -1092,8 +1122,12 @@ class Split(DAGNode):
     def token_encoder(self):
         return tiktoken.get_encoding(self.encoding_name)
 
-    def result(self) -> pd.DataFrame:
-        """Returns DataFrame of chunks with metadata and length statistics."""
+    def result(self) -> Dict[str, Any]:
+        """Returns dict with metadata and DataFrame of chunks with length statistics."""
+        # Get base metadata from parent
+        result = super().result()
+
+        # Build DataFrame of chunks
         rows = []
         for idx, chunk in enumerate(self.output or []):
             content = extract_content(chunk)
@@ -1115,7 +1149,14 @@ class Split(DAGNode):
         if not df.empty:
             df["split_unit"] = self.split_unit
             df["chunk_size"] = self.chunk_size
-        return df
+
+        # Add Split-specific data
+        result["data"] = df
+        result["metadata"]["split_unit"] = self.split_unit
+        result["metadata"]["chunk_size"] = self.chunk_size
+        result["metadata"]["num_chunks"] = len(self.output or [])
+
+        return result
 
     def export(self, folder: Path, unique_id: str = ""):
         """Export Split node details."""
@@ -1344,8 +1385,11 @@ class Map(ItemsNode, CompletionDAGNode):
             self.output = results
             return results
 
-    def result(self) -> pd.DataFrame:
-        """Returns DataFrame with one row per mapped item."""
+    def result(self) -> Dict[str, Any]:
+        """Returns dict with metadata and DataFrame of mapped items."""
+        # Get base metadata from parent
+        result = super().result()
+
         input_items = self.get_input_items()
         rows = []
 
@@ -1374,7 +1418,11 @@ class Map(ItemsNode, CompletionDAGNode):
 
             rows.append(row)
 
-        return pd.DataFrame(rows)
+        # Add Map-specific data
+        result["data"] = pd.DataFrame(rows)
+        result["metadata"]["num_items"] = len(output_list)
+
+        return result
 
     def export(self, folder: Path, unique_id: str = ""):
         """Export Map node details with numbered prompts and responses."""
@@ -1542,6 +1590,15 @@ class Classifier(ItemsNode, CompletionDAGNode):
 
         model_dfs = {}
         for model_name, results in self._model_results.items():
+            # Ensure results is a list, not a generator
+            if not isinstance(results, list):
+                results = (
+                    list(results)
+                    if hasattr(results, "__iter__")
+                    and not isinstance(results, (str, dict))
+                    else [results]
+                )
+
             rows = []
             for idx, output_item in enumerate(results):
                 # Get metadata using TrackedItem helper
@@ -1580,55 +1637,66 @@ class Classifier(ItemsNode, CompletionDAGNode):
 
         return model_dfs if model_dfs else None
 
-    def result(self) -> Dict[str, pd.DataFrame]:
-        """Returns dict of {model_name: DataFrame} with classification results."""
+    def result(self) -> Dict[str, Any]:
+        """Returns dict with metadata and classification results per model."""
+        # Get base metadata from parent
+        result = super().result()
+
         # Reconstruct _model_results if needed
-        if not self._model_results:
+        if not hasattr(self, "_model_results") or not self._model_results:
             if isinstance(self.output, dict):
                 self._model_results = self.output
             else:
                 model_name = (
                     self.model_names[0]
-                    if self.model_names
-                    else (self.model_name or "default")
+                    if hasattr(self, "model_names") and self.model_names
+                    else (self.model_name if hasattr(self, "model_name") else None)
+                    or "default"
                 )
                 self._model_results = {model_name: self.output}
 
-        if not self._model_results:
-            return {}
+        # Use the same method as export() to build DataFrames
+        model_dfs = self._build_dataframes_from_results()
 
-        model_dfs = {}
+        # Calculate agreement statistics if multiple models
+        agreement_stats = None
+        agreement_stats_df = None
+        if model_dfs and len(model_dfs) >= 2:
+            try:
+                from .agreement import calculate_agreement_from_dataframes
 
-        for model_name, results in self._model_results.items():
-            if not results:
-                continue
-
-            rows = []
-            for idx, output_item in enumerate(results):
-                row = TrackedItem.extract_export_metadata(
-                    (
-                        self._processed_items[idx]
-                        if self._processed_items and idx < len(self._processed_items)
-                        else None
-                    ),
-                    idx,
-                )
-
-                # Add classification fields
-                if hasattr(output_item, "outputs"):
-                    row.update(output_item.outputs)
-                elif isinstance(output_item, dict):
-                    row.update(
-                        {k: v for k, v in output_item.items() if not k.startswith("__")}
+                # Auto-detect agreement fields if not set
+                if not self.agreement_fields:
+                    metadata_cols = {"item_id", "document", "filename", "index"}
+                    all_fields = {c for df in model_dfs.values() for c in df.columns}
+                    self.agreement_fields = sorted(
+                        f
+                        for f in all_fields
+                        if f not in metadata_cols and not f.endswith("__evidence")
                     )
 
-                row["chatter_result"] = output_item
-                rows.append(row)
+                agreement_stats = calculate_agreement_from_dataframes(
+                    model_dfs, self.agreement_fields
+                )
 
-            if rows:
-                model_dfs[model_name] = pd.DataFrame(rows)
+                # Convert to DataFrame for easier HTML rendering
+                if agreement_stats:
+                    agreement_stats_df = pd.DataFrame(agreement_stats).T
+                    agreement_stats_df.index.name = "field"
+            except Exception as e:
+                logger.warning(f"Could not calculate agreement statistics: {e}")
+                agreement_stats = None
+                agreement_stats_df = None
 
-        return model_dfs
+        # Add Classifier-specific data
+        result["model_dfs"] = model_dfs if model_dfs else {}
+        result["agreement_stats"] = agreement_stats  # Dict format
+        result["agreement_stats_df"] = agreement_stats_df  # DataFrame format
+        result["metadata"]["num_models"] = len(model_dfs) if model_dfs else 0
+        result["metadata"]["model_names"] = list(model_dfs.keys()) if model_dfs else []
+        result["metadata"]["agreement_fields"] = self.agreement_fields or []
+
+        return result
 
     def export(self, folder: Path, unique_id: str = ""):
         """Export Classifier node with CSV output and individual responses."""
@@ -2068,7 +2136,10 @@ class Filter(ItemsNode, CompletionDAGNode):
         return self.output
 
     def result(self) -> Dict[str, Any]:
-        """Returns included/excluded items and filter statistics."""
+        """Returns dict with metadata, included/excluded items and filter statistics."""
+        # Get base metadata from parent
+        result = super().result()
+
         included_rows = []
         if self.output:
             for idx, item in enumerate(self.output):
@@ -2105,13 +2176,16 @@ class Filter(ItemsNode, CompletionDAGNode):
                     }
                 )
 
-        return {
-            "included": pd.DataFrame(included_rows),
-            "excluded": pd.DataFrame(excluded_rows),
-            "filter_field": (
-                self._identify_filter_field() if self.template_text else None
-            ),
-        }
+        # Add Filter-specific data
+        result["included"] = pd.DataFrame(included_rows)
+        result["excluded"] = pd.DataFrame(excluded_rows)
+        result["filter_field"] = (
+            self._identify_filter_field() if self.template_text else None
+        )
+        result["metadata"]["num_included"] = len(included_rows)
+        result["metadata"]["num_excluded"] = len(excluded_rows)
+
+        return result
 
     def export(self, folder: Path, unique_id: str = ""):
         """Export Filter node with included/excluded items and all prompts."""
@@ -2252,14 +2326,21 @@ class Transform(ItemsNode, CompletionDAGNode):
         return self.output
 
     def result(self) -> Dict[str, Any]:
-        """Returns prompt, response object, and raw ChatterResult."""
-        return {
-            "prompt": extract_prompt(self.output),
-            "response_obj": (
-                self.output.response if hasattr(self.output, "response") else None
-            ),
-            "chatter_result": self.output,
-        }
+        """Returns dict with metadata, prompt, response object, and raw ChatterResult."""
+        # Get base metadata from parent
+        result = super().result()
+
+        # Add Transform-specific data
+        result["prompt"] = extract_prompt(self.output)
+        result["response_obj"] = (
+            self.output.response if hasattr(self.output, "response") else None
+        )
+        result["response_text"] = (
+            str(self.output.response) if hasattr(self.output, "response") else None
+        )
+        result["chatter_result"] = self.output
+
+        return result
 
     def export(self, folder: Path, unique_id: str = ""):
         """Export Transform node details with single prompt/response."""
@@ -2343,8 +2424,15 @@ class Reduce(ItemsNode):
             return self.output
 
     def result(self) -> Dict[str, Any]:
-        """Returns reduced output."""
-        return {"output": self.output}
+        """Returns dict with metadata and reduced output."""
+        # Get base metadata from parent
+        result = super().result()
+
+        # Add Reduce-specific data
+        result["output"] = self.output
+        result["output_type"] = type(self.output).__name__ if self.output else None
+
+        return result
 
     def export(self, folder: Path, unique_id: str = ""):
         """Export Reduce node details."""
@@ -2404,7 +2492,7 @@ class QualitativeAnalysisPipeline(DAG):
         if template_path is None:
             # Use default template in soak/templates directory
             template_dir = Path(__file__).parent / "templates"
-            template_name = "default.html"
+            template_name = "pipeline.html"
         else:
             # Use provided template path
             template_path = Path(template_path)
@@ -2413,16 +2501,86 @@ class QualitativeAnalysisPipeline(DAG):
 
         # Create Jinja2 environment and load template
         env = Environment(
-            loader=FileSystemLoader(template_dir),
+            loader=FileSystemLoader([template_dir, template_dir / "nodes"]),
             extensions=["jinja_markdown.MarkdownExtension"],
         )
 
+        # Add custom filter to convert DataFrames to HTML
+        def df_to_html(df, show_index=None):
+            """Convert pandas DataFrame to HTML table.
+
+            Args:
+                df: DataFrame to convert
+                show_index: Whether to show index. If None, auto-detects based on index name or type.
+            """
+            if df is None or (hasattr(df, "empty") and df.empty):
+                return "<p><em>No data</em></p>"
+
+            # Auto-detect if index should be shown
+            if show_index is None:
+                # Show index if it has a name or is not a simple RangeIndex
+                show_index = df.index.name is not None or not isinstance(
+                    df.index, pd.RangeIndex
+                )
+
+            return df.to_html(
+                classes="table table-sm table-striped", index=show_index, escape=True
+            )
+
+        env.filters["df_to_html"] = df_to_html
+
+        # Add enumerate filter for templates
+        def enumerate_filter(iterable):
+            """Enumerate filter for Jinja2."""
+            return list(enumerate(iterable))
+
+        env.filters["enumerate"] = enumerate_filter
+
+        # Add custom function to render individual nodes
+        def render_node(node):
+            """Render a node using its type-specific template."""
+            node_template_name = f"{node.type.lower()}.html"
+            nodes_template_dir = Path(__file__).parent / "templates" / "nodes"
+
+            try:
+                # Try to load node-specific template
+                if (nodes_template_dir / node_template_name).exists():
+                    node_template = env.get_template(node_template_name)
+                else:
+                    # Fall back to default node template
+                    node_template = env.get_template("default.html")
+
+                # Get node result with metadata
+                try:
+                    node_result = node.result()
+                except Exception as e:
+                    logger.warning(f"Error getting result for node {node.name}: {e}")
+                    node_result = {
+                        "metadata": {"name": node.name, "type": node.type},
+                        "error": str(e),
+                    }
+
+                return node_template.render(node=node, result=node_result)
+            except Exception as e:
+                logger.error(f"Error rendering node {node.name}: {e}")
+                return f"<div class='alert alert-danger'>Error rendering node {node.name}: {e}</div>"
+
+        env.globals["render_node"] = render_node
+
         template = env.get_template(template_name)
+
+        # Get execution order for display
+        execution_order = self.get_execution_order()
 
         # Render template with data
         dd = self.model_dump()
         dd["config"]["documents"] = []
-        return template.render(pipeline=self, result=self.result(), detail=dd)
+        return template.render(
+            pipeline=self,
+            result=self.result(),
+            detail=dd,
+            execution_order=execution_order,
+        )
 
     def result(self):
         def safe_get_output(name):
@@ -3125,7 +3283,7 @@ def verify_quotes_bm25_first(
     return results
 
 
-class VerifyQuotes(DAGNode):
+class VerifyQuotes(CompletionDAGNode):
     """Quote verification using BM25-first matching with ellipsis support.
 
     Uses BM25 (lexical search) to identify candidate spans, including handling
@@ -3149,11 +3307,68 @@ class VerifyQuotes(DAGNode):
     trim_method: Literal["fuzzy", "sliding_bm25", "hybrid"] = "fuzzy"
     min_fuzzy_ratio: float = 0.6
     expand_window_neighbors: int = 1  # Search ±N windows around BM25 best match
+    template_text: Optional[str] = None  # Custom LLM-as-judge prompt template
 
     stats: Optional[Dict[str, Any]] = None
     original_sentences: Optional[List[str]] = None
     extracted_sentences: Optional[List[str]] = None
     sentence_matches: Optional[List[Dict[str, Union[str, Any]]]] = None
+
+    def validate_template(self):
+        """Validate template_text if provided."""
+        if self.template_text:
+            try:
+                parse_syntax(self.template_text)
+                return True
+            except Exception as e:
+                logger.error(f"Judge template syntax error: {e}")
+                return False
+        return True
+
+    async def llm_as_judge(self, quote: str, source: str) -> Dict[str, Any]:
+        """Use LLM to verify if a quote is truly contained in the source text.
+
+        This is a last-resort if the lexical and semantic matches are low. We use the LLM to verify if the quote is truly contained in the source text.
+
+        Args:
+            quote: The extracted quote to verify
+            source: The source text where the quote should appear
+
+        Returns:
+            Dict with 'explanation' and 'is_contained' keys
+        """
+        # Use custom template if provided, otherwise load default from file
+        if self.template_text:
+            prompt = self.template_text
+        else:
+            template_path = Path(__file__).parent / "templates" / "llm_as_judge.md"
+            prompt = template_path.read_text()
+
+        try:
+            result = await chatter_async(
+                multipart_prompt=prompt,
+                context={"text1": quote, "text2": source},
+                model=self.get_model(),
+                credentials=self.dag.config.llm_credentials,
+                action_lookup=get_action_lookup(),
+            )
+
+            # Extract the parsed results
+            explanation = (
+                result.results.get("explanation", {}).output
+                if hasattr(result.results.get("explanation", {}), "output")
+                else ""
+            )
+            is_contained = (
+                result.results.get("is_contained", {}).output
+                if hasattr(result.results.get("is_contained", {}), "output")
+                else None
+            )
+
+            return {"explanation": explanation, "is_contained": is_contained}
+        except Exception as e:
+            logger.error(f"Error in llm_as_judge: {e}")
+            return {"explanation": f"Error: {str(e)}", "is_contained": None}
 
     async def run(self) -> List[Any]:
         await super().run()
@@ -3248,6 +3463,36 @@ class VerifyQuotes(DAGNode):
 
         # --- Convert to dataframe and compute stats ---
         df = pd.DataFrame(matches)
+
+        # --- LLM-based verification for poor matches ---
+        # Identify poor matches based on multiple criteria
+        # TODO formalise why I picked this heuristic
+        poor_match_mask = ((df["bm25_score"] < 30) & (df["bm25_ratio"] < 2)) | (
+            (df["bm25_score"] < 20) & (df["cosine_similarity"] < 0.7)
+        )
+        poor_matches = df[poor_match_mask]
+
+        if len(poor_matches) > 0:
+            logger.info(f"Running LLM verification on {len(poor_matches)} poor matches")
+
+            # Initialize columns for all rows
+            df["llm_explanation"] = None
+            df["llm_is_contained"] = None
+
+            # Run LLM judge on poor matches in parallel
+            async with anyio.create_task_group() as tg:
+
+                async def check_match(idx, quote, span_text):
+                    async with semaphore:
+                        result = await self.llm_as_judge(quote, span_text)
+                        df.at[idx, "llm_explanation"] = result["explanation"]
+                        df.at[idx, "llm_is_contained"] = result["is_contained"]
+
+                for idx, row in poor_matches.iterrows():
+                    tg.start_soon(
+                        check_match, idx, row["quote"], row["source_doc_content"]
+                    )
+
         self.sentence_matches = df.to_dict(orient="records")
 
         # Compute statistics
@@ -3295,7 +3540,10 @@ class VerifyQuotes(DAGNode):
         return matches
 
     def result(self) -> Dict[str, Any]:
-        """Returns DataFrame of quote matches and statistics."""
+        """Returns dict with metadata, DataFrame of quote matches and statistics."""
+        # Get base metadata from parent
+        result = super().result()
+
         df = pd.DataFrame(self.sentence_matches)
 
         # Reorder columns for readability
@@ -3309,7 +3557,13 @@ class VerifyQuotes(DAGNode):
                 ascending=[True, True, True],
             )
 
-        return {"matches_df": df, "stats": self.stats}
+        # Add VerifyQuotes-specific data
+        result["matches_df"] = df
+        result["stats"] = self.stats
+        result["metadata"]["num_quotes"] = len(df)
+        result["metadata"]["min_fuzzy_ratio"] = self.min_fuzzy_ratio
+
+        return result
 
     def export(self, folder: Path, unique_id: str = ""):
         super().export(folder, unique_id=unique_id)
@@ -3332,17 +3586,39 @@ class VerifyQuotes(DAGNode):
             }
         )
 
-        # Reorder columns: text columns first, then source_doc, then metrics
+        # Reorder columns: text columns first, then source_doc, then LLM judge, then metrics
         priority_cols = [
             "extracted_quote",
             "found_in_original",
             "source_doc",
             "full_original_text",
         ]
+
+        # Add LLM columns after full_original_text if they exist
+        llm_cols = []
+        if "llm_is_contained" in df.columns:
+            llm_cols.append("llm_is_contained")
+        if "llm_explanation" in df.columns:
+            llm_cols.append("llm_explanation")
+
+        priority_cols.extend(llm_cols)
         other_cols = [col for col in df.columns if col not in priority_cols]
         df = df[priority_cols + other_cols]
 
-        # Sort by BM25 ratio (lowest confidence first) so problematic quotes appear at top
+        # Sort by LLM verification (False first) then BM25 metrics, so most problematic quotes appear at top
+        sort_cols = []
+        sort_ascending = []
+
+        if "llm_is_contained" in df.columns:
+            sort_cols.append("llm_is_contained")
+            sort_ascending.append(
+                True
+            )  # False sorts before True, putting failed verifications first
+
+        sort_cols.extend(["bm25_score", "bm25_ratio", "cosine_similarity"])
+        sort_ascending.extend([True, True, True])
+
+        df = df.sort_values(sort_cols, ascending=sort_ascending)
 
         with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
             df.to_excel(writer, sheet_name="Quote Verification", index=False)
@@ -3369,6 +3645,17 @@ class VerifyQuotes(DAGNode):
                     worksheet.column_dimensions[column_letter].width = 80
                     for cell in column:
                         cell.alignment = Alignment(wrap_text=True, vertical="top")
+                        cell.font = default_font
+                elif header_value == "llm_explanation":
+                    # LLM explanation - wide with wrapping
+                    worksheet.column_dimensions[column_letter].width = 60
+                    for cell in column:
+                        cell.alignment = Alignment(wrap_text=True, vertical="top")
+                        cell.font = default_font
+                elif header_value == "llm_is_contained":
+                    # Boolean column - narrow
+                    worksheet.column_dimensions[column_letter].width = 18
+                    for cell in column:
                         cell.font = default_font
                 elif header_value in [
                     "bm25_score",
@@ -3602,7 +3889,10 @@ class TransformReduce(CompletionDAGNode):
         return final_response
 
     def result(self) -> Dict[str, Any]:
-        """Returns reduction tree structure and final result."""
+        """Returns dict with metadata, reduction tree structure and final result."""
+        # Get base metadata from parent
+        result = super().result()
+
         # Build tree structure with DataFrames per level
         tree_dfs = []
 
@@ -3622,14 +3912,17 @@ class TransformReduce(CompletionDAGNode):
                 )
             tree_dfs.append(pd.DataFrame(level_rows))
 
-        return {
-            "tree_levels": tree_dfs,
-            "final_prompt": extract_prompt(self.output),
-            "final_response": (
-                self.output.response if hasattr(self.output, "response") else None
-            ),
-            "final_chatter_result": self.output,
-        }
+        # Add TransformReduce-specific data
+        result["tree_levels"] = tree_dfs
+        result["final_prompt"] = extract_prompt(self.output)
+        result["final_response"] = (
+            self.output.response if hasattr(self.output, "response") else None
+        )
+        result["final_chatter_result"] = self.output
+        result["metadata"]["num_levels"] = len(tree_dfs)
+        result["metadata"]["batch_size"] = self.batch_size
+
+        return result
 
     def export(self, folder: Path, unique_id: str = ""):
         """Export TransformReduce node with multi-level structure."""

@@ -1,61 +1,67 @@
+# soak-llm
 
-# soak: a DAG based method to describe text-analysis pipelines for qualitative/thematic analysis.
+DAG-based pipelines for LLM-assisted qualitative text analysis.
 
-```
-uv run soak run soak/pipelines/zspe.yaml \
-   data/5LC.docx  \
-   --output result_exercise  \
-   -t short \
-   -c excerpt_topics="Exercise and camaraderie" \
-   && open result_exercise.html
+## Quick Start
 
+```bash
+# Install
+uv pip install -e .
 
-uv run soak run soak/pipelines/zspe.yaml \
-   data/5LC.docx  \
-   --output result_fun  \
-   -t short \
-   -c excerpt_topics="Fun and family" \
-   && open result_fun.html
+# Set credentials
+export LLM_API_KEY=your_api_key
+export LLM_API_BASE=https://api.openai.com/v1
 
+# Run analysis
+uv run soak run demo data/5LC.docx --output results
+open results.html
 ```
 
+## Installation
 
+**Requirements:** Python 3.10+, [uv](https://docs.astral.sh/uv/getting-started/installation)
 
-# SETUP
-
-On OS X or linux:
-
-Install UV: https://docs.astral.sh/uv/getting-started/installation
-
-
-Clone the repo:
-
-```
-git clone https://github.com/benwhalley/llemma
-cd llemma
-```
-
-
-Install the package:
-
-```
+```bash
+git clone https://github.com/benwhalley/soak-package
+cd soak-package
 uv pip install -e .
 ```
 
-Set 2 environment variables:
+## Usage
 
-```
-export LLM_API_KEY=your_api_key
-export LLM_API_BASE=https://your-endpoint.com (any OpenAI compatible)
-```
+```bash
+uv run soak run <pipeline> <files> --output <name>
 
-
-# Running  with uv (recommended)
-
-
-```
-uv run soak run demo soak/data/yt-cfs.txt --output yt-cfs-example
+# Examples
+uv run soak run demo data/*.txt --output analysis
+uv run soak run zspe data/interviews.docx -t short --output results
 ```
 
+**Options:**
+- `--output, -o`: Output filename (generates .json and .html)
+- `--model-name`: LLM model (default: gpt-4o-mini)
+- `--format, -f`: Output format when printing to stdout
+- `-c, --context`: Pipeline context variables (e.g., `-c topic="Healthcare"`)
 
+## Pipelines
 
+Built-in pipelines in `soak/pipelines/`:
+- `demo`: Basic thematic analysis
+- `zspe`: Zero-shot with pre-extraction filtering
+- Custom pipelines: Use local YAML file path
+
+## Environment Variables
+
+```bash
+export LLM_API_KEY=sk-...           # Required
+export LLM_API_BASE=https://...     # Optional (OpenAI-compatible endpoint)
+export MAX_CONCURRENCY=20           # Optional (concurrent LLM calls)
+```
+
+## Documentation
+
+See [CLAUDE.md](CLAUDE.md) for architecture details.
+
+## License
+
+MIT

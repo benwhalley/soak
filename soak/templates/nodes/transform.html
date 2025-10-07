@@ -1,0 +1,28 @@
+<div class="node-result">
+  <h5>{{ result.metadata.name }}</h5>
+  <p class="text-muted">Type: <code>Transform</code></p>
+
+  {% if result.metadata.model_name %}
+  <p><strong>Model:</strong> <code>{{ result.metadata.model_name }}</code></p>
+  {% endif %}
+
+  {% if result.prompt %}
+  <details class="mb-3">
+    <summary><strong>Prompt</strong> (click to expand)</summary>
+    <div class="mt-2">
+      <pre class="bg-light p-3">{{ result.prompt }}</pre>
+    </div>
+  </details>
+  {% endif %}
+
+  {% if result.response_text %}
+  <div class="card card-body">
+    <h6>Response:</h6>
+    <div>
+{% markdown %}
+{{ result.response_text }}
+{% endmarkdown %}
+    </div>
+  </div>
+  {% endif %}
+</div>

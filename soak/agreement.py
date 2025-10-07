@@ -3,7 +3,7 @@
 import logging
 from pathlib import Path
 from typing import Dict, List, Union
-
+from pyirr import kappam_fleiss as kf
 import krippendorff
 import numpy as np
 import pandas as pd
@@ -11,25 +11,9 @@ from statsmodels.stats.inter_rater import aggregate_raters, fleiss_kappa
 
 logger = logging.getLogger(__name__)
 
-
-def gwet_ac1(ratings: pd.DataFrame) -> float:
-    """Calculate Fleiss' Kappa (replaced Gwet's AC1).
-
-    Args:
-        ratings: DataFrame where each row is a subject and each column is a rater
-
-    Returns:
-        Fleiss' Kappa coefficient (0-1, higher is better)
-    """
-    try:
-        # Convert to format expected by statsmodels: (n_subjects, n_categories)
-        table, _ = aggregate_raters(ratings.values)
-        kappa = fleiss_kappa(table, method="fleiss")
-        return round(float(kappa), 3)
-    except Exception as e:
-        logger.warning(f"Failed to calculate Fleiss' Kappa: {e}")
-        return float("nan")
-
+def kappam_fleiss(ratings: pd.DataFrame) -> float:
+    ratings = ratings.dropna(how="any")  # remove incomplete rows
+    return round(float(kf(ratings).to_dict()['value']), 4)
 
 def kripp_alpha(ratings: pd.DataFrame) -> float:
     """Calculate Krippendorff's Alpha coefficient.
@@ -230,7 +214,7 @@ def calculate_agreement_from_dataframes(
 
             # Calculate statistics
             stats[field] = {
-                "Fleiss_Kappa": gwet_ac1(ratings),
+                "Kappa_fleiss": kappam_fleiss(ratings),
                 "Kripp_alpha": kripp_alpha(ratings),
                 "Percent_Agreement": percent_agreement(ratings),
                 "n_items": len(ratings),
@@ -242,18 +226,20 @@ def calculate_agreement_from_dataframes(
 
     if stats:
         logger.debug(f"Calculated agreement statistics for {len(stats)} fields")
-
     return stats if stats else None
 
 
 def export_agreement_stats(
     stats: Dict[str, Dict[str, float]], output_prefix: str = "agreement_stats"
-) -> None:
+) -> pd.DataFrame:
     """Export agreement statistics to CSV and JSON files.
 
     Args:
         stats: Agreement statistics from calculate_agreement_stats()
         output_prefix: Prefix for output filenames (default: "agreement_stats")
+
+    Returns:
+        DataFrame with agreement statistics (transposed, fields as rows)
     """
     import json
 
@@ -269,3 +255,5 @@ def export_agreement_stats(
     logger.info(
         f"Exported agreement stats to {output_prefix}.csv and {output_prefix}.json"
     )
+
+    return df
