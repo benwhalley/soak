@@ -9,19 +9,8 @@ import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import (
-    TYPE_CHECKING,
-    Annotated,
-    Any,
-    Callable,
-    Dict,
-    List,
-    Literal,
-    Optional,
-    Set,
-    Tuple,
-    Union,
-)
+from typing import (TYPE_CHECKING, Annotated, Any, Callable, Dict, List,
+                    Literal, Optional, Set, Tuple, Union)
 
 import anyio
 import nltk
@@ -30,33 +19,25 @@ import pandas as pd
 import tiktoken
 from box import Box
 from decouple import config as env_config
-from jinja2 import (
-    Environment,
-    FileSystemLoader,
-    StrictUndefined,
-    TemplateSyntaxError,
-    meta,
-)
+from jinja2 import (Environment, FileSystemLoader, StrictUndefined,
+                    TemplateSyntaxError, meta)
 from joblib import Memory
 from pydantic import BaseModel, Field, PrivateAttr, constr, model_validator
 from rank_bm25 import BM25Okapi
 from sklearn.metrics.pairwise import cosine_similarity
-from struckdown import LLM, ChatterResult, LLMCredentials, chatter, chatter_async
+from struckdown import (LLM, ChatterResult, LLMCredentials, chatter,
+                        chatter_async)
 from struckdown import get_embedding as get_embedding_
 from struckdown.parsing import parse_syntax
 from struckdown.return_type_models import ACTION_LOOKUP
 
-from .agreement import export_agreement_stats, kappam_fleiss, kripp_alpha, percent_agreement
-from .agreement_scripts import (
-    collect_field_categories,
-    generate_human_rater_template,
-    write_agreement_scripts,
-)
-from .document_utils import (
-    extract_text,
-    get_scrubber,
-    unpack_zip_to_temp_paths_if_needed,
-)
+from .agreement import (export_agreement_stats, kappam_fleiss, kripp_alpha,
+                        percent_agreement)
+from .agreement_scripts import (collect_field_categories,
+                                generate_human_rater_template,
+                                write_agreement_scripts)
+from .document_utils import (extract_text, get_scrubber,
+                             unpack_zip_to_temp_paths_if_needed)
 from .export_utils import export_to_csv, export_to_html, export_to_json
 
 if TYPE_CHECKING:
