@@ -18,6 +18,8 @@ from trogon.typer import init_tui
 
 from .comparators.similarity_comparator import SimilarityComparator
 from .document_utils import unpack_zip_to_temp_paths_if_needed
+from .helpers import (format_exception_concise, hash_run_config, load_env_file,
+                      resolve_pipeline, sanitize_for_filename, save_env_file)
 from .models import QualitativeAnalysis, QualitativeAnalysisPipeline
 from .specs import load_template_bundle
 
@@ -28,128 +30,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 logger = logging.getLogger(__name__)
 
 
-def format_exception_concise(exc: Exception) -> str:
-    """Format exception with minimal context - just the error and relevant code location."""
-    tb = traceback.extract_tb(exc.__traceback__)
-
-    # Get the last frame (where the error actually occurred)
-    if tb:
-        last_frame = tb[-1]
-        error_msg = f"\n{type(exc).__name__}: {exc}\n"
-        error_msg += f"  File: {last_frame.filename}:{last_frame.lineno}\n"
-        error_msg += f"  In: {last_frame.name}\n"
-        if last_frame.line:
-            error_msg += f"    {last_frame.line}\n"
-    else:
-        error_msg = f"\n{type(exc).__name__}: {exc}\n"
-
-    return error_msg
-
-
 PIPELINE_DIR = Path(__file__).parent / "pipelines"
-
-
-def load_env_file(env_path: Path) -> dict[str, str]:
-    """Load environment variables from a .env file."""
-    env_vars = {}
-    if env_path.exists():
-        with open(env_path, "r") as f:
-            for line in f:
-                line = line.strip()
-                if line and not line.startswith("#") and "=" in line:
-                    key, value = line.split("=", 1)
-                    # Remove quotes if present
-                    value = value.strip().strip('"').strip("'")
-                    env_vars[key] = value
-    return env_vars
-
-
-def save_env_file(env_path: Path, env_vars: dict[str, str]):
-    """Save environment variables to a .env file."""
-    with open(env_path, "w") as f:
-        for key, value in env_vars.items():
-            f.write(f'{key}="{value}"\n')
-
-
-def check_and_prompt_credentials(cwd: Path) -> tuple[str | None, str | None]:
-    """Check for LLM credentials and prompt user if missing.
-
-    Returns:
-        Tuple of (api_key, base_url)
-    """
-    env_path = cwd / ".env"
-
-    # First check environment variables
-    api_key = os.getenv("LLM_API_KEY")
-    base_url = os.getenv("LLM_API_BASE")
-
-    # If not in env, check .env file
-    if not api_key or not base_url:
-        env_vars = load_env_file(env_path)
-        api_key = api_key or env_vars.get("LLM_API_KEY")
-        base_url = base_url or env_vars.get("LLM_API_BASE")
-
-    # Prompt for missing credentials
-    missing = []
-    if not api_key:
-        missing.append("LLM_API_KEY")
-    if not base_url:
-        missing.append("LLM_API_BASE")
-
-    if missing:
-        print("\n⚠️  Missing required LLM credentials:", file=sys.stderr)
-        for var in missing:
-            print(f"   - {var}", file=sys.stderr)
-        print(file=sys.stderr)
-
-        response = typer.confirm("Would you like to provide them now?", default=True)
-        if not response:
-            print("Error: Cannot proceed without LLM credentials", file=sys.stderr)
-            raise typer.Exit(1)
-
-        # Load existing .env vars to preserve them
-        env_vars = load_env_file(env_path)
-
-        if not api_key:
-            api_key = typer.prompt("Enter LLM_API_KEY")
-            env_vars["LLM_API_KEY"] = api_key
-
-        if not base_url:
-            default_url = "https://api.openai.com/v1"
-            base_url = typer.prompt("Enter LLM_API_BASE", default=default_url)
-            env_vars["LLM_API_BASE"] = base_url
-
-        # Save to .env file
-        save_env_file(env_path, env_vars)
-        print(f"\n✓ Credentials saved to {env_path}", file=sys.stderr)
-
-        # Set in current process environment
-        os.environ["LLM_API_KEY"] = api_key
-        os.environ["LLM_API_BASE"] = base_url
-
-    return api_key, base_url
-
-
-def setup_logging(verbose: int):
-
-    # map verbosity to levels
-    if verbose == 0:
-        level = logging.WARNING
-    elif verbose == 1:
-        level = logging.INFO
-    else:
-        level = logging.DEBUG
-
-    if verbose > 0:
-        logging.basicConfig(
-            level=logging.WARNING,  # Root level stays at WARNING
-            format="%(asctime)s | %(levelname)s | %(name)s - %(message)s",
-        )
-
-    # Set package-specific levels
-    pkg = __name__.split(".")[0]
-    logging.getLogger(pkg).setLevel(level)
-    logging.getLogger("struckdown").setLevel(level)
 
 
 @app.callback()
@@ -164,73 +45,6 @@ def main(
 ):
     """Global options."""
     setup_logging(verbose)
-
-
-def sanitize_for_filename(text: str) -> str:
-    """Remove or replace characters that are problematic in filenames.
-
-    Args:
-        text: Input string
-
-    Returns:
-        Sanitized string safe for use in filenames
-    """
-    # Replace problematic characters with underscores
-    dangerous_chars = ["/", "\\", ":", "*", "?", '"', "<", ">", "|", " "]
-    result = text
-    for char in dangerous_chars:
-        result = result.replace(char, "_")
-    return result
-
-
-def hash_run_config(
-    input_files: list[str],
-    model_name: str | None = None,
-    context: list[str] | None = None,
-    template: str | None = None,
-    length: int = 4,
-) -> str:
-    """Generate a short hash from run configuration.
-
-    Args:
-        input_files: List of input file paths
-        model_name: Model name if specified
-        context: Context overrides if specified
-        template: Template name if specified
-        length: Length of hash to return (default: 4)
-
-    Returns:
-        Short hash string of specified length (hex chars only - always safe)
-    """
-    # Build configuration string from all parameters
-    parts = [
-        "files:" + "|".join(sorted(input_files)),
-    ]
-    if model_name:
-        parts.append(f"model:{model_name}")
-    if context:
-        parts.append("context:" + "|".join(sorted(context)))
-    if template:
-        parts.append(f"template:{template}")
-
-    config_str = "||".join(parts)
-    hash_obj = hashlib.sha256(config_str.encode("utf-8"))
-    return hash_obj.hexdigest()[:length]
-
-
-def resolve_pipeline(pipeline: str, localdir: Path, pipelinedir: Path) -> Path:
-    candidates = [
-        localdir / pipeline,
-        localdir / f"{pipeline}.yaml",
-        localdir / f"{pipeline}.yml",
-        pipelinedir / f"{pipeline}",
-        pipelinedir / f"{pipeline}.yaml",
-        pipelinedir / f"{pipeline}.yml",
-    ]
-    for cand in candidates:
-        if cand.is_file():
-            return cand
-    raise FileNotFoundError(f"Pipeline file not found. Tried: {candidates}")
 
 
 def generate_html_output(pipeline: QualitativeAnalysisPipeline, template: str) -> str:
@@ -434,43 +248,31 @@ def run(
                 f"Error generating HTML output for template '{tmpl}':\n{error_msg}"
             )
 
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    config_hash = hash_run_config(
+        input_files=input_files,
+        model_name=model_name,
+        context=context,
+        template=template,
+    )
+
     if output is None:
-        if format == "json":
-            print(jsoncontent, file=sys.stdout)
-        elif format == "html":
-            # For stdout, use first template only
-            print(html_outputs[template[0]], file=sys.stdout)
-        else:
-            raise typer.BadParameter(
-                "Format must be 'json' or 'html' or specify output file name"
-            )
+        output = f"{timestamp}_{config_hash}"
 
-    else:
-        # Write JSON file
-        logger.info(f"Writing output to {output}.json")
-        with open(output + ".json", "w", encoding="utf-8") as f:
-            f.write(jsoncontent)
+    logger.info(f"Writing json output to {output}.json")
+    with open(output + ".json", "w", encoding="utf-8") as f:
+        f.write(jsoncontent)
 
-        # Write HTML files for each template
-        for tmpl in template:
-            template_stem = Path(resolve_template(tmpl)).stem
-            html_filename = f"{output}_{template_stem}.html"
-            logger.info(
-                f"Writing HTML output with template '{template_stem}' to {html_filename}"
-            )
-            with open(html_filename, "w", encoding="utf-8") as f:
-                f.write(html_outputs[tmpl])
-
-    # Dump execution details if requested
-    if dump:
-        # Generate unique ID for this run
-        config_hash = hash_run_config(
-            input_files=input_files,
-            model_name=model_name,
-            context=context,
-            template=template,
+    for tmpl in template:
+        template_stem = Path(resolve_template(tmpl)).stem
+        html_filename = f"{output}_{template_stem}.html"
+        logger.info(
+            f"Writing HTML output with template '{template_stem}' to {html_filename}"
         )
+        with open(html_filename, "w", encoding="utf-8") as f:
+            f.write(html_outputs[tmpl])
 
+    if dump:
         if dump_folder is None:
             if output:
                 dump_folder = f"{output}_dump"
@@ -698,6 +500,87 @@ def show(
 
     # Print contents to stdout
     print(item_path.read_text(), file=sys.stdout)
+
+
+def check_and_prompt_credentials(cwd: Path) -> tuple[str | None, str | None]:
+    """Check for LLM credentials and prompt user if missing.
+
+    Returns:
+        Tuple of (api_key, base_url)
+    """
+    env_path = cwd / ".env"
+
+    # First check environment variables
+    api_key = os.getenv("LLM_API_KEY")
+    base_url = os.getenv("LLM_API_BASE")
+
+    # If not in env, check .env file
+    if not api_key or not base_url:
+        env_vars = load_env_file(env_path)
+        api_key = api_key or env_vars.get("LLM_API_KEY")
+        base_url = base_url or env_vars.get("LLM_API_BASE")
+
+    # Prompt for missing credentials
+    missing = []
+    if not api_key:
+        missing.append("LLM_API_KEY")
+    if not base_url:
+        missing.append("LLM_API_BASE")
+
+    if missing:
+        print("\n⚠️  Missing required LLM credentials:", file=sys.stderr)
+        for var in missing:
+            print(f"   - {var}", file=sys.stderr)
+        print(file=sys.stderr)
+
+        response = typer.confirm("Would you like to provide them now?", default=True)
+        if not response:
+            print("Error: Cannot proceed without LLM credentials", file=sys.stderr)
+            raise typer.Exit(1)
+
+        # Load existing .env vars to preserve them
+        env_vars = load_env_file(env_path)
+
+        if not api_key:
+            api_key = typer.prompt("Enter LLM_API_KEY")
+            env_vars["LLM_API_KEY"] = api_key
+
+        if not base_url:
+            default_url = "https://api.openai.com/v1"
+            base_url = typer.prompt("Enter LLM_API_BASE", default=default_url)
+            env_vars["LLM_API_BASE"] = base_url
+
+        # Save to .env file
+        save_env_file(env_path, env_vars)
+        print(f"\n✓ Credentials saved to {env_path}", file=sys.stderr)
+
+        # Set in current process environment
+        os.environ["LLM_API_KEY"] = api_key
+        os.environ["LLM_API_BASE"] = base_url
+
+    return api_key, base_url
+
+
+def setup_logging(verbose: int):
+
+    # map verbosity to levels
+    if verbose == 0:
+        level = logging.WARNING
+    elif verbose == 1:
+        level = logging.INFO
+    else:
+        level = logging.DEBUG
+
+    if verbose > 0:
+        logging.basicConfig(
+            level=logging.WARNING,  # Root level stays at WARNING
+            format="%(name)s: %(message)s",
+        )
+
+    # Set package-specific levels
+    pkg = __name__.split(".")[0]
+    logging.getLogger(pkg).setLevel(level)
+    logging.getLogger("struckdown").setLevel(level)
 
 
 if __name__ == "__main__":
