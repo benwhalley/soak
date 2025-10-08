@@ -1,0 +1,2472 @@
+<!DOCTYPE html>
+<html>
+<meta charset="UTF-8">
+
+<head>
+    <title>Analysis Results - zero_shot</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/css/bootstrap.min.css"
+          integrity="sha512-rt/SrQ4UNIaGfDyEXZtNcyWvQeOq0QLygHluFQcSjaGB04IxWhal71tKuzP6K8eYXYB6vJV4pHkXcmFGGQ1/0w=="
+          crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+    <style>
+        body {
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+        }
+
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+        }
+
+        h2 {
+            color: #2c3e50;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            font-size: 1.8rem;
+        }
+
+        .narrative-section {
+            background-color: #f8f9fa;
+            padding: 30px;
+            border-radius: 8px;
+            border-left: 5px solid #3498db;
+            margin-bottom: 40px;
+            font-size: 1.05rem;
+            line-height: 1.8;
+        }
+
+        .code-card {
+            background: white;
+            border: 1px solid #e1e8ed;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            transition: box-shadow 0.2s;
+        }
+
+        .code-card:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        .code-name {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .code-slug {
+            display: inline-block;
+            background-color: #e8f4f8;
+            color: #2980b9;
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            font-family: 'Courier New', monospace;
+            margin-left: 10px;
+        }
+
+        .code-description {
+            color: #555;
+            margin-bottom: 15px;
+            font-size: 1.05rem;
+        }
+
+        .quotes-section {
+            margin-top: 15px;
+        }
+
+        .quotes-label {
+            font-weight: 600;
+            color: #7f8c8d;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+        }
+
+        .quote {
+            background-color: #fafafa;
+            border-left: 3px solid #95a5a6;
+            padding: 12px 15px;
+            margin-bottom: 10px;
+            font-style: italic;
+            color: #555;
+            border-radius: 4px;
+        }
+
+        .theme-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 8px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .theme-name {
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .theme-description {
+            margin-bottom: 15px;
+            font-size: 1.05rem;
+            opacity: 0.95;
+        }
+
+        .theme-codes {
+            margin-top: 15px;
+        }
+
+        .theme-codes-label {
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            opacity: 0.9;
+        }
+
+        .code-badge {
+            display: inline-block;
+            background-color: rgba(255, 255, 255, 0.2);
+            padding: 5px 12px;
+            border-radius: 20px;
+            margin-right: 8px;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .meta-info {
+            color: #7f8c8d;
+            font-size: 0.9rem;
+            margin-bottom: 30px;
+            padding: 15px;
+            background-color: #ecf0f1;
+            border-radius: 6px;
+        }
+
+        .section-divider {
+            border-top: 2px solid #e1e8ed;
+            margin: 50px 0 30px 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>zero_shot</h1>
+
+        
+        <div class="meta-info">
+            
+            <strong>persona:</strong> Experienced qual researcher<br>
+            
+            <strong>research_question:</strong> None<br>
+            
+        </div>
+        
+        <div class="meta-info">
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/bRidO1PiZJs.txt, 
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/aS8CQtc9DmA.txt, 
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/ba2LcetNybI.txt, 
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/acWL9FBKr3o.txt, 
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/as7I55hY29k.txt, 
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/aGKbypa8fhI.txt, 
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/README.txt, 
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/aOUUTEeIiS0.txt, 
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/aTvSX_toNL4.txt, 
+            
+        </div>
+        
+        
+        
+
+        <h2>Summary</h2>
+        <div class="narrative-section">
+        <p><strong>Experiencing relentless fatigue and energy crashes leading to debilitating daily function loss</strong>: Participants describe profound exhaustion triggered by minimal activity such as standing, resulting in complete energy depletion necessitating prolonged bed rest and inability to perform basic tasks. This fatigue often worsens through cycles of overexertion and relapse, severely disrupting daily life and independence. For instance, one shared, &ldquo;&hellip;the minute i stood up i just couldn&rsquo;t do anything i just drained of energy completely,&rdquo; and another noted, &ldquo;&hellip;walking like ten miles every day &hellip; i picked up a couple of viruses &hellip; can&rsquo;t get out of bed.&rdquo;</p>
+<p><strong>Struggling with chronic illness limits while maintaining hope and adjusting lifestyle</strong>: Participants confront the challenge of accepting the chronic nature of their illness while preserving hope and adapting their lifestyles. They emphasize learning to set personal boundaries to conserve energy and prevent relapse, underscoring the importance of positivity and self-awareness. A participant expressed, &ldquo;&hellip;i am going to have to make life changes &hellip; my life is going to have to change,&rdquo; with hope sustained by, &ldquo;&hellip;i&rsquo;m just a very positive person &hellip; also obstinate.&rdquo;</p>
+<p><strong>Embracing brain retraining and nervous system calming for symptom control and recovery</strong>: Initial skepticism toward brain retraining shifted to acceptance as participants learned these techniques address fight or flight responses controlling symptoms. Engagement in such programs fostered empowerment and symptom improvement, exemplified by, &ldquo;&hellip;contacted jason and went onto his program because it actually really made sense,&rdquo; and, &ldquo;&hellip;brain and nervous system processing stress &hellip; not sick but stressed.&rdquo;</p>
+<p><strong>Difficulties with genuine rest and relaxation practices essential for recovery</strong>: Participants struggled to attain authentic rest and relaxation, such as meditation or naps, often due to ingrained mental resistance. Yet, they recognized this as transformative for managing fatigue, sharing, &ldquo;&hellip;i&rsquo;m not good at relaxing &hellip; people say do meditation &hellip; i just struggled with it,&rdquo; and, &ldquo;&hellip;now i make myself every day lay down and take a nap or do some meditation.&rdquo;</p>
+<p><strong>Emotional struggle from social misunderstandings requiring boundaries to protect well-being</strong>: Frustrations arose when participants felt their illness was misunderstood or minimized by others, eliciting anger and emotional distress. To safeguard mental health, they described setting emotional boundaries around symptom discussions and social interactions, as expressed, &ldquo;when people say silly things sometimes &hellip; i can flare up,&rdquo; and, &ldquo;&hellip;have boundaries &hellip; not talking about old symptoms.&rdquo;</p>
+<p><strong>Valuing holistic recovery over symptom-specific treatments to foster comprehensive healing</strong>: Participants highlighted that focusing solely on symptom management offered only temporary relief, often leading to frustration. Instead, adopting a holistic approach supporting overall body health facilitated more meaningful recovery. One remarked, &ldquo;&hellip;recovery ended up being not about focusing on symptoms but on supporting my body as a whole&hellip;,&rdquo; contrasted with, &ldquo;&hellip;spent thousands of hours googling symptoms&hellip;&rdquo;</p>
+<p><strong>Recognizing the need for personalized recovery plans tailored to unique illness journeys</strong>: Participants underscored the importance of customizing recovery strategies to individual symptoms, lifestyles, and experiences. They noted that pacing and treatments must be flexible for effectiveness, stating, &ldquo;&hellip;somebody&rsquo;s recovery plan &hellip; needs to be tailored&hellip;&rdquo;</p>
+<p><strong>Deep gratitude for renewed life and profound relationship changes after illness recovery</strong>: Upon recovery, participants expressed awe and gratitude for life, describing themselves as, &ldquo;a walking miracle,&rdquo; while acknowledging difficulties reconnecting with healthy peers. One shared, &ldquo;&hellip;i have to catch myself and be like you are a walking miracle like this is incredible,&rdquo; and another noted challenges, &ldquo;&hellip;friends who&rsquo;ve never been through it &hellip; complain about their lives &hellip; detachment.&rdquo;</p>
+<p><strong>Challenge and resilience through medical misdiagnosis prompting strong self-advocacy</strong>: Participants recounted frustration with delayed or incorrect diagnoses, prompting active engagement in healthcare research and specialist consultation. This self-advocacy was vital for accessing appropriate treatments, illustrated by, &ldquo;&hellip;diagnosed with fibromyalgia ignoring fatigue&hellip; no treatment for many years&hellip;,&rdquo; and, &ldquo;&hellip;researching doctors as much as i could &hellip; moved to get better care&hellip;&rdquo;</p>
+<p><strong>Undertaking drastic lifestyle changes including diet, movement, and toxin avoidance for healing</strong>: Participants committed to major changes such as elimination diets, gentle movement rehabilitation, and toxin reduction. Overcoming challenges like sugar addiction was critical to recovery, as one related, &ldquo;Sugar was a massive one &hellip; clearly had physical addiction&hellip;,&rdquo; with rehabilitation described, &ldquo;&hellip;gradually increase ability to move &hellip; one to two minutes a day initially&hellip;&rdquo;</p>
+<p><strong>Transforming through psychological growth, spiritual awakening, and enhanced self-expression</strong>: Chronic illness fostered profound psychological and spiritual development including humility, acceptance, and authentic communication skills. While spiritual experiences sometimes destabilized daily life, they contributed significantly to healing. Participants reflected, &ldquo;It humbled me &hellip; changed me &hellip; i wouldn&rsquo;t say i had spirituality before,&rdquo; and, &ldquo;&hellip;spiritual awakening.&rdquo;</p>
+<p><strong>Managing anxiety related to pregnancy symptoms with self-compassion and cautious optimism</strong>: Participants described fear interpreting pregnancy symptoms amid potential illness relapse, learning to differentiate normal pregnancy experiences with self-compassion and hope, exemplified by, &ldquo;I keep reminding myself these are normal symptoms&hellip; fatigue or relapse?&rdquo;</p>
+<p><strong>Inspired hope and community support from witnessing others&rsquo; recoveries</strong>: Observing others&rsquo; improvements and engaging with supportive communities provided critical hope and motivation, combating isolation. One participant noted, &ldquo;&hellip;so nice to see many people getting past these things,&rdquo; and, &ldquo;&hellip;people start reaching out to me, i recovered as well&hellip;&rdquo;</p>
+<p><strong>Early illness shock and isolation amidst misunderstood symptoms and lack of diagnosis</strong>: The onset of chronic illness was described as frightening and confusing, compounded by isolation and misdiagnosis, often being mislabeled as depression, deepening loneliness. A participant recalled, &ldquo;&hellip;felt a bit fluy felt a bit strange felt a bit scared because it felt really weird,&rdquo; and, &ldquo;one of the first doctors said she just thought i was depressed.&rdquo;</p>
+<p><strong>Desperation fuels trial of varied alternative therapies seeking relief and recovery</strong>: Participants&rsquo; urgency and hope led to trying diverse complementary therapies such as acupuncture and reiki, though success varied, as shared, &ldquo;&hellip;went for reiki and this and that,&rdquo; and, &ldquo;&hellip;flew to america to work with healer.&rdquo;</p>
+<p><strong>Unlocking healing by addressing suppressed anger, trauma, and mind-body connections</strong>: Recognizing unresolved anger and trauma as roots of physical symptoms was transformative. Participants linked symptoms to emotional blocks and employed mind-body approaches for relief, as described, &ldquo;&hellip;had suppressed anger and unresolved trauma in my system,&rdquo; and, &ldquo;&hellip;impact of trauma on my system manifesting physically like a freeze response.&rdquo;</p>
+<p><strong>Engaging in emotion-focused therapy to safely process difficult emotions underlying pain</strong>: Intensive therapies like ISTDP enabled participants to confront suppressed emotions such as anger contributing to chronic pain, despite initial fear, facilitating healing. They noted, &ldquo;&hellip;core intervention is emotion focused approach &hellip; all emotions healthy,&rdquo; and, &ldquo;&hellip;therapy helps notice bodily tension often anxiety about anger or rage.&rdquo;</p>
+<p><strong>Gaining validation and hope from medical acceptance and evolving pain recovery treatments</strong>: Growing medical recognition of emotion-focused therapies provided participants with validation and optimism, enhancing trust in recovery pathways, observed in, &ldquo;&hellip;most folks come because they accept this approach,&rdquo; and, &ldquo;&hellip;training doctors in local hospital &hellip; growing recognition.&rdquo;</p>
+<p><strong>Adapting mindset to accept therapy as an integral part of chronic illness recovery</strong>: Participants emphasized the importance of shifting from viewing therapy as mere coping to embracing it as essential for recovery, integrating mental and physical health perspectives. As one expressed, &ldquo;&hellip;mental health and physical health often thought separate,&rdquo; and, &ldquo;&hellip;therapy seen as coping not to get better initially.&rdquo;</p>
+<p><strong>Living with chronic symptoms involves acceptance and developing tools to manage setbacks</strong>: Recovery is seen as ongoing management requiring acceptance of symptom fluctuations and use of coping strategies. Empowering self-talk and encouragement helped maintain progress, illustrated by, &ldquo;&hellip;it&rsquo;s a journey rather than a stuck state&hellip;,&rdquo; and, &ldquo;&hellip;great having someone who believes in you that much&hellip;&rdquo;</p>
+<p><strong>Experiencing isolation and frustration from long COVID and desire for empathy and validation</strong>: Participants with long COVID described enduring fatigue and social isolation, emphasizing a profound need for empathetic understanding to alleviate stigma and loneliness, shared as, &ldquo;&hellip;feel drained all the time &hellip; used to be active now barely manage walk&hellip;,&rdquo; and, &ldquo;&hellip;validation would mean the world &hellip; proves not making this up&hellip;&rdquo;</p>
+<p><strong>Yearning to regain physical energy and normal functioning to reclaim identity</strong>: There was a strong desire to restore energy and resume daily activities, intimately tied to coping with identity shifts wrought by chronic illness. A participant noted, &ldquo;&hellip;if i could get some energy back &hellip; feel like myself,&rdquo; while another said, &ldquo;&hellip;don’t recognize person i am now compared to before&hellip;&rdquo;</p>
+<p><strong>Struggling with medical uncertainty and frustration over normal test results despite symptoms</strong>: Participants experienced confusion and self-doubt when medical tests showed normal results despite severe symptoms, sometimes questioning mental health origins, exemplified by, &ldquo;&hellip;multiple doctors said everything was perfectly fine &hellip;,&rdquo; and, &ldquo;&hellip;thought maybe something mentally causing this.&rdquo;</p>
+<p><strong>Understanding chronic pain as a brain-embedded survival response requiring acceptance</strong>: Pain was framed as a permanent neural memory in brain circuits influenced by fight or flight physiology. Acceptance and separation from pain, rather than fighting it, were pivotal for symptom reduction, reflected in, &ldquo;&hellip;pain circuits absolutely permanent like phantom limb pain,&rdquo; and, &ldquo;&hellip;hardest part is people can&rsquo;t help but try to fix themselves.&rdquo;</p>
+<p><strong>Breaking free from negative thought cycles to reduce pain and emotional distress</strong>: Participants described how separating their identity from intrusive negative thoughts through therapies diminished anxiety and symptom exacerbation by calming physiological arousal, noting, &ldquo;&hellip;separate from the thoughts that&rsquo;s where behavior therapy comes into play.&rdquo;</p>
+<p><strong>Cultivating joy, safety, and health habits to counteract chronic stress and support healing</strong>: Joyful experiences, supportive relationships, and lifestyle habits like healthy sleep, diet, and exercise were vital for nervous system calming and fostering healing, as shared, &ldquo;&hellip;nurture joy if you’re fighting stress not possible,&rdquo; and, &ldquo;&hellip;address sleep is number one&hellip;&rdquo;</p>
+<p><strong>Discovering hope and new perspectives through transformational recovery literature</strong>: Influential books offering mind-body explanations for chronic pain inspired hope and therapeutic career paths, serving as anchors in recovery, illustrated by, &ldquo;&hellip;book by john sono &hellip; back pain gone &hellip; health problems went away,&rdquo; and, &ldquo;&hellip;personality characteristics true for me and most clients.&rdquo;</p>   
+
+        </div>
+        
+        
+        <div class="section-divider"></div>
+        
+        <style>
+            a.code-badge {
+  color: inherit;
+  text-decoration: none;
+}
+
+a.code-badge:hover {
+  text-decoration: underline;
+}
+</style>
+
+        <h2>Themes</h2>
+        
+    
+        
+        <div class="theme-card">
+            <div class="theme-name">experiencing relentless fatigue and energy crashes leading to debilitating daily function loss</div>
+            <div class="theme-description">Participants describe severe exhaustion triggered by minimal physical activity, such as standing, causing complete energy depletion that leads to prolonged bed rest and inability to perform basic tasks. This relentless fatigue often worsens through overexertion, causing relapses that significantly disrupt their day-to-day functioning and independence.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-persistent-fatigue-energy" class="code-badge">persistent-fatigue-energy
+                    </a>        
+                
+                    <a href="#code-overexertion-relapse-cycle" class="code-badge">overexertion-relapse-cycle
+                    </a>        
+                
+                    <a href="#code-pushing-through-fatigue" class="code-badge">pushing-through-fatigue
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">struggling with chronic illness limits while maintaining hope and adjusting lifestyle</div>
+            <div class="theme-description">Participants experience tension between initially denying their condition and accepting the need for significant lifestyle changes. They emphasize maintaining positive, hopeful mindsets and learning to set personal boundaries to manage energy, avoid overcommitment, and prevent relapse while gradually adapting to the chronic illness realities.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-acceptance-lifestyle-changes" class="code-badge">acceptance-lifestyle-changes
+                    </a>        
+                
+                    <a href="#code-hope-positivity-chronic-illness" class="code-badge">hope-positivity-chronic-illness
+                    </a>        
+                
+                    <a href="#code-self-awareness-overexertion" class="code-badge">self-awareness-overexertion
+                    </a>        
+                
+                    <a href="#code-setting-boundaries-energy" class="code-badge">setting-boundaries-energy
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">embracing brain retraining and nervous system calming for symptom control and recovery</div>
+            <div class="theme-description">Skepticism shifts to trust in brain retraining programs that address fight or flight responses embedded in the nervous system, enabling participants to gain control, reduce anxiety, and observe improvements. These approaches are embraced as fundamental parts of recovery, complementing emotional regulation and nervous system calming strategies.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-brain-retraining-recovery" class="code-badge">brain-retraining-recovery
+                    </a>        
+                
+                    <a href="#code-brain-nervous-sys-fatigue" class="code-badge">brain-nervous-sys-fatigue
+                    </a>        
+                
+                    <a href="#code-skepticism-brain-retraining" class="code-badge">skepticism-brain-retraining
+                    </a>        
+                
+                    <a href="#code-skepticism-starting-point-healing" class="code-badge">skepticism-starting-point-healing
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">difficulties with genuine rest and relaxation practices essential for recovery</div>
+            <div class="theme-description">Participants struggle to implement real rest and authentic relaxation, such as meditation or naps, finding it challenging to override ingrained habits and mental resistance. Learning to genuinely relax is necessary and transformative but remains a persistent challenge in managing ongoing fatigue and symptoms.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-difficulty-relaxing-rest" class="code-badge">difficulty-relaxing-rest
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">emotional struggle from social misunderstandings requiring boundaries to protect well-being</div>
+            <div class="theme-description">Frustrations arise from others’ misunderstanding and minimizing of their illness, often triggering anger and emotional distress. Participants describe the necessity of setting emotional boundaries around discussing symptoms and managing social interactions to protect mental health and maintain recovery progress.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-anger-misunderstanding-others" class="code-badge">anger-misunderstanding-others
+                    </a>        
+                
+                    <a href="#code-emotional-boundaries-symptoms" class="code-badge">emotional-boundaries-symptoms
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">valuing holistic recovery over symptom-specific treatments to foster comprehensive healing</div>
+            <div class="theme-description">Participants highlight that focusing exclusively on symptom management offers only temporary relief. Embracing a holistic approach supporting the entire body leads to more meaningful recovery. Symptom-specific fixes are often frustrating and disillusioning, emphasizing the need for integrated, personalized recovery strategies.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-holistic-recovery-focus" class="code-badge">holistic-recovery-focus
+                    </a>        
+                
+                    <a href="#code-symptom-management-palliation" class="code-badge">symptom-management-palliation
+                    </a>        
+                
+                    <a href="#code-frustration-symptom-fix" class="code-badge">frustration-symptom-fix
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">recognizing the need for personalized recovery plans tailored to unique illness journeys</div>
+            <div class="theme-description">Recovery must be individually customized considering unique symptoms, lifestyles, and wellness paths. Participants stress that pacing, treatments, and strategies must be flexible and personally relevant to empower their healing journey effectively, avoiding generic or one-size-fits-all approaches.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-personalized-recovery-plans" class="code-badge">personalized-recovery-plans
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">deep gratitude for renewed life and profound relationship changes after illness recovery</div>
+            <div class="theme-description">Experiencing recovery, participants express overwhelming gratitude and awe, describing feelings like a “walking miracle.” They reflect joy and appreciation for daily life and relationships while acknowledging challenges in reconnecting with healthy peers and adjusting social dynamics post-illness.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-walking-miracle-gratitude" class="code-badge">walking-miracle-gratitude
+                    </a>        
+                
+                    <a href="#code-difficulty-relating-healthy" class="code-badge">difficulty-relating-healthy
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">challenge and resilience through medical misdiagnosis prompting strong self-advocacy</div>
+            <div class="theme-description">Frustration from delayed or incorrect diagnoses leads participants to take active roles in their healthcare by researching providers, seeking knowledgeable specialists, and discovering underlying conditions. This self-advocacy is crucial to accessing effective treatments and regaining control over their health.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-diagnosis-delay-misdiagnosis" class="code-badge">diagnosis-delay-misdiagnosis
+                    </a>        
+                
+                    <a href="#code-self-advocacy-healthcare" class="code-badge">self-advocacy-healthcare
+                    </a>        
+                
+                    <a href="#code-genetic-mitochondrial-treatment" class="code-badge">genetic-mitochondrial-treatment
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">undertaking drastic lifestyle changes including diet, movement, and toxin avoidance for healing</div>
+            <div class="theme-description">Participants commit to significant life alterations, such as elimination diets, gentle movement therapy, and reducing environmental toxins. Overcoming challenges like sugar addiction, they carefully pace their rehabilitation to support inflammation reduction and sustainable recovery.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-drastic-lifestyle-changes" class="code-badge">drastic-lifestyle-changes
+                    </a>        
+                
+                    <a href="#code-overcoming-sugar-addiction" class="code-badge">overcoming-sugar-addiction
+                    </a>        
+                
+                    <a href="#code-movement-therapy-gentle-rehab" class="code-badge">movement-therapy-gentle-rehab
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">transforming through psychological growth, spiritual awakening, and enhanced self-expression</div>
+            <div class="theme-description">The chronic illness journey fosters deep psychological and spiritual transformation. Participants gain humility, acceptance, and a renewed sense of self, employing authentic communication and boundary-setting skills. Spiritual experiences sometimes challenge daily life but contribute significantly to healing and personal development.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-psychological-growth-illness" class="code-badge">psychological-growth-illness
+                    </a>        
+                
+                    <a href="#code-spiritual-experience-healing" class="code-badge">spiritual-experience-healing
+                    </a>        
+                
+                    <a href="#code-authentic-self-expression" class="code-badge">authentic-self-expression
+                    </a>        
+                
+                    <a href="#code-self-empowerment-knowledge-faith" class="code-badge">self-empowerment-knowledge-faith
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">managing anxiety related to pregnancy symptoms with self-compassion and cautious optimism</div>
+            <div class="theme-description">Participants face fear and anxious uncertainty interpreting pregnancy symptoms through the lens of past illness. They learn to differentiate normal pregnancy experiences from relapse signs, cultivating self-kindness and cautious hope to navigate this emotional terrain safely.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-pregnancy-anxiety-relapse" class="code-badge">pregnancy-anxiety-relapse
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">inspired hope and community support from witnessing others' recoveries</div>
+            <div class="theme-description">Seeing others improve and connect with supportive communities provides vital hope to participants, reducing loneliness and sustaining motivation. Shared experiences validate their journey, fostering perseverance and faith in eventual improvements despite chronic challenges.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-hope-positivity-others-recover" class="code-badge">hope-positivity-others-recover
+                    </a>        
+                
+                    <a href="#code-validation-hope-connection" class="code-badge">validation-hope-connection
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">early illness shock and isolation amidst misunderstood symptoms and lack of diagnosis</div>
+            <div class="theme-description">Participants recount a frightening onset of chronic fatigue characterized by confusion, isolation from friends and usual environments, and emotional distress. Misdiagnoses and being dismissed as depressed amplify feelings of misunderstanding and loneliness during critical early stages.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-scary-confusing-early-illness" class="code-badge">scary-confusing-early-illness
+                    </a>        
+                
+                    <a href="#code-feeling-isolated-illness" class="code-badge">feeling-isolated-illness
+                    </a>        
+                
+                    <a href="#code-reject-depression-diagnosis" class="code-badge">reject-depression-diagnosis
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">desperation fuels trial of varied alternative therapies seeking relief and recovery</div>
+            <div class="theme-description">Driven by urgency and hope, participants experiment with multiple complementary therapies including acupuncture, reiki, nutrition, and colon hydrotherapy. Though outcomes vary, this exploration reflects a willingness to try diverse methods amid limited conventional options.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-desperation-trying-therapies" class="code-badge">desperation-trying-therapies
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">unlocking healing by addressing suppressed anger, trauma, and mind-body connections</div>
+            <div class="theme-description">Recognition and processing of unresolved anger, trauma, and stress patterns emerge as central to recovery. Participants link physical symptoms to emotional blocks and trauma manifestations, employing mind-body frameworks to facilitate breakthroughs and alleviate symptom severity.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-suppressed-anger-trauma" class="code-badge">suppressed-anger-trauma
+                    </a>        
+                
+                    <a href="#code-mindbody-trauma-understanding" class="code-badge">mindbody-trauma-understanding
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">engaging in emotion-focused therapy to safely process difficult emotions underlying pain</div>
+            <div class="theme-description">Participants engage in intensive therapeutic approaches such as ISTDP to access and work through suppressed emotions like anger and rage. Despite fears and trust barriers, gradually confronting these feelings reveals their role in physical pain and supports emotional and physical healing.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-emotion-focused-pain-therapy" class="code-badge">emotion-focused-pain-therapy
+                    </a>        
+                
+                    <a href="#code-therapy-engagement-barriers" class="code-badge">therapy-engagement-barriers
+                    </a>        
+                
+                    <a href="#code-emotions-source-physical-pain" class="code-badge">emotions-source-physical-pain
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">gaining validation and hope from medical acceptance and evolving pain recovery treatments</div>
+            <div class="theme-description">Increasing recognition of emotion-focused therapy within medical communities provides participants with critical validation and optimism. Growing professional acceptance and scientific support enhance trust in therapies targeting emotional causes of chronic pain, positively influencing recovery experiences.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-professional-acceptance-therapy" class="code-badge">professional-acceptance-therapy
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">adapting mindset to accept therapy as an integral part of chronic illness recovery</div>
+            <div class="theme-description">Participants describe a challenging but vital mental shift from viewing therapy as coping to embracing it as essential for true recovery. This shift bridges perceived divides between mental and physical health, fostering commitment to holistic healing beyond symptom management.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-mindset-shift-therapy-acceptance" class="code-badge">mindset-shift-therapy-acceptance
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">living with chronic symptoms involves acceptance and developing tools to manage setbacks</div>
+            <div class="theme-description">Participants acknowledge that recovery is an ongoing journey requiring acceptance of fluctuating symptoms. They rely on coping strategies, empowering self-statements, and supportive encouragement to maintain progress, regain confidence, and face challenges without fear or frustration.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-recovery-is-journey" class="code-badge">recovery-is-journey
+                    </a>        
+                
+                    <a href="#code-mental-stamina-recovery" class="code-badge">mental-stamina-recovery
+                    </a>        
+                
+                    <a href="#code-empowering-self-statements" class="code-badge">empowering-self-statements
+                    </a>        
+                
+                    <a href="#code-supportive-encouragement" class="code-badge">supportive-encouragement
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">experiencing isolation and frustration from long COVID and desire for empathy and validation</div>
+            <div class="theme-description">Long COVID participants report persistent fatigue limiting activities, leading to isolation and emotional distress. A strong desire for empathetic recognition and validation from others underscores their need for acknowledgment of their struggles and supports to mitigate stigma and loneliness.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-long-covid-frustration-isolation" class="code-badge">long-covid-frustration-isolation
+                    </a>        
+                
+                    <a href="#code-desire-understanding-validation" class="code-badge">desire-understanding-validation
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">yearning to regain physical energy and normal functioning to reclaim identity</div>
+            <div class="theme-description">Participants express deep longing to restore lost energy and perform daily activities without exhaustion. This desire is connected to coping with identity shifts caused by chronic illness, reflecting a struggle to accept new limitations and reclaim a sense of self.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-regain-physical-energy" class="code-badge">regain-physical-energy
+                    </a>        
+                
+                    <a href="#code-coping-identity-changes" class="code-badge">coping-identity-changes
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">struggling with medical uncertainty and frustration over normal test results despite symptoms</div>
+            <div class="theme-description">Participants experience doubt and confusion when extensive medical tests show normal results despite debilitating symptoms. This leads to questioning the nature of their illness and considering mental health explanations, highlighting challenges in diagnosis and validation.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-frustration-medical-tests" class="code-badge">frustration-medical-tests
+                    </a>        
+                
+                    <a href="#code-energy-loss-fatigue" class="code-badge">energy-loss-fatigue
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">understanding chronic pain as a brain-embedded survival response requiring acceptance</div>
+            <div class="theme-description">Pain is perceived as a persistent neural memory embedded in the brain's pain circuits. Participants find that fighting pain reinforces it, while acceptance and separation from pain facilitate creating new neural pathways, enabling life despite chronic symptoms driven by autonomic threat responses.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-pain-memory-neuroplasticity" class="code-badge">pain-memory-neuroplasticity
+                    </a>        
+                
+                    <a href="#code-anger-fight-flight" class="code-badge">anger-fight-flight
+                    </a>        
+                
+                    <a href="#code-letting-go-fighting-pain" class="code-badge">letting-go-fighting-pain
+                    </a>        
+                
+                    <a href="#code-threat-physiology-chronic-symptoms" class="code-badge">threat-physiology-chronic-symptoms
+                    </a>        
+                
+                    <a href="#code-physiology-over-consciousness" class="code-badge">physiology-over-consciousness
+                    </a>        
+                
+                    <a href="#code-unconscious-brain-survival" class="code-badge">unconscious-brain-survival
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">breaking free from negative thought cycles to reduce pain and emotional distress</div>
+            <div class="theme-description">Participants describe battling negative repetitive thoughts that aggravate anxiety and symptoms. Learning to separate self-identity from these intrusive thoughts through behavioral and expressive therapies reduces distress and supports healing by calming physiological arousal.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-separating-negative-thoughts" class="code-badge">separating-negative-thoughts
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">cultivating joy, safety, and health habits to counteract chronic stress and support healing</div>
+            <div class="theme-description">Joyful experiences, positive relationships, and lifestyle factors like sleep, diet, and exercise foster nervous system calm and create conditions conducive to healing. Participants emphasize balancing physiological safety and nurturance to overcome chronic illness and thrive despite past pain and stress.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-nurturing-joy-healing" class="code-badge">nurturing-joy-healing
+                    </a>        
+                
+                    <a href="#code-sleep-diet-exercise-nervous-system" class="code-badge">sleep-diet-exercise-nervous-system
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">discovering hope and new perspectives through transformational recovery literature</div>
+            <div class="theme-description">Key books such as Dr. John Sarno's work resonate deeply with participants, offering explanation, hope, and practical recovery approaches. These writings introduce mind-body concepts that inspire therapeutic career paths and provide foundational knowledge supporting recovery.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-book-key-pain-recovery" class="code-badge">book-key-pain-recovery
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        
+
+        <div class="section-divider"></div>
+        
+        
+    
+        <h2>Codes</h2>
+        
+        <div class="code-card" id="code-persistent-fatigue-energy">
+            <div class="code-name">
+                Persistent fatigue and energy drain on standing
+                <span class="code-slug">persistent-fatigue-energy</span>
+            </div>
+            <div class="code-description">Participant describes extreme exhaustion and complete energy drain when standing after lying down, causing prolonged bedbound state and lasting impact on daily functioning.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...the minute i stood up i just couldn't do anything i just drained of energy completely'
+                </div>
+                
+                <div class="quote">
+                    '...always tired constantly tired'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-overexertion-relapse-cycle">
+            <div class="code-name">
+                Overexertion leading to relapse and worsening symptoms
+                <span class="code-slug">overexertion-relapse-cycle</span>
+            </div>
+            <div class="code-description">Participant explains the cycle of pushing beyond limits, subsequent virus contraction, and severe relapse, resulting in retirement and major activity limitations.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...walking like ten miles every day ... i picked up a couple of viruses ... can't get out of bed'
+                </div>
+                
+                <div class="quote">
+                    '...had to retire at that stage ... kept pushing myself'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-pushing-through-fatigue">
+            <div class="code-name">
+                Relentless pushing through fatigue despite physical limits
+                <span class="code-slug">pushing-through-fatigue</span>
+            </div>
+            <div class="code-description">Despite exhaustion and inability to perform simple tasks, participant continually pushed themselves to walk and exercise daily, worsening energy depletion.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    'i wouldn't let myself not go ... i'd wake up at five o'clock ... just went walking'
+                </div>
+                
+                <div class="quote">
+                    'then i couldn't do anything for myself ... had to lie down because no energy to cook'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-acceptance-lifestyle-changes">
+            <div class="code-name">
+                Realization and acceptance of necessary lifestyle changes
+                <span class="code-slug">acceptance-lifestyle-changes</span>
+            </div>
+            <div class="code-description">Participant initially in denial later recognized the need for significant lifestyle changes to manage illness instead of hoping to return to previous activity levels.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...i am going to have to make life changes ... my life is going to have to change'
+                </div>
+                
+                <div class="quote">
+                    'part of it was just ignorance be part of it'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-brain-retraining-recovery">
+            <div class="code-name">
+                Embracing brain retraining as a key to recovery
+                <span class="code-slug">brain-retraining-recovery</span>
+            </div>
+            <div class="code-description">Skepticism about brain retraining shifted to acceptance after learning it addresses protective responses and mental 'fight or flight' state, leading to program participation and positive results.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...when he explaining ... your body has switched down some of the genes ... fight too much ... made sense'
+                </div>
+                
+                <div class="quote">
+                    '...contacted jason and went onto his program because it actually really made sense'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-setting-boundaries-energy">
+            <div class="code-name">
+                Learning to set boundaries to manage energy and avoid overcommitment
+                <span class="code-slug">setting-boundaries-energy</span>
+            </div>
+            <div class="code-description">Participant emphasizes importance of personal boundaries like letting calls go to voicemail to prevent energy drain and managing social demands by self-monitoring exhaustion.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    'if my phone rings i let it go to voicemail so i can deal with it when i want to'
+                </div>
+                
+                <div class="quote">
+                    'learning boundaries the hardest for me was learning boundaries'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-difficulty-relaxing-rest">
+            <div class="code-name">
+                Difficulty with relaxation and understanding true rest
+                <span class="code-slug">difficulty-relaxing-rest</span>
+            </div>
+            <div class="code-description">Participant struggles with relaxation practices like meditation and needs to relearn the concept and practice of 'real rest' familiar to healthy individuals but hard for her to implement.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...i'm not good at relaxing ... people say do meditation ... i just struggled with it'
+                </div>
+                
+                <div class="quote">
+                    '...now i make myself every day lay down and take a nap or do some meditation'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-anger-misunderstanding-others">
+            <div class="code-name">
+                Frustration and occasional anger toward others’ misunderstanding of illness
+                <span class="code-slug">anger-misunderstanding-others</span>
+            </div>
+            <div class="code-description">Participant feels annoyance and flares when others minimize or misunderstand her illness or recovery, particularly those who never had the illness or pass unfair judgment, showing emotional toll of misunderstanding.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    'when people say silly things sometimes ... i can flare up'
+                </div>
+                
+                <div class="quote">
+                    '...when somebody minimizes it you can think no'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-hope-positivity-chronic-illness">
+            <div class="code-name">
+                Maintaining hope and positivity despite chronic illness challenges
+                <span class="code-slug">hope-positivity-chronic-illness</span>
+            </div>
+            <div class="code-description">Participant’s positive and obstinate personality is key to refusing acceptance of permanent disability and sustaining belief in recovery and improvement despite long-term severe illness.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...i'm just a very positive person ... also obstinate'
+                </div>
+                
+                <div class="quote">
+                    'never ever felt ... i was almost like in denial'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-self-awareness-overexertion">
+            <div class="code-name">
+                Developing self-awareness to avoid overexertion and manage symptoms
+                <span class="code-slug">self-awareness-overexertion</span>
+            </div>
+            <div class="code-description">Participant stresses importance of listening to body, recognizing triggers, and adjusting activities timely to prevent relapse and maintain health improvements.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...i've learnt to listen to myself listen to my body ... work out what my triggers are'
+                </div>
+                
+                <div class="quote">
+                    'i can stop myself before i actually get to the stage where i'm really pushing boundaries'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-holistic-recovery-focus">
+            <div class="code-name">
+                Focusing on holistic recovery instead of individual symptoms
+                <span class="code-slug">holistic-recovery-focus</span>
+            </div>
+            <div class="code-description">Participants emphasize prioritizing overall body support and holistic healing in managing ME/CFS rather than treating isolated symptoms, which was overwhelming and ineffective, whereas holistic approach contributed to gradual recovery.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...recovery ended up being not about focusing on symptoms but on supporting my body as a whole...'
+                </div>
+                
+                <div class="quote">
+                    '...as i slowly improved overall my symptoms slowly decreased...'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-symptom-comparison-limit">
+            <div class="code-name">
+                Desire for symptom comparison but finding it unhelpful
+                <span class="code-slug">symptom-comparison-limit</span>
+            </div>
+            <div class="code-description">Participants want to compare symptoms for reassurance but find it unhelpful or misleading due to wide symptom variation among individuals, making direct comparison counterproductive.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...people want to compare their symptoms against mine... to see if we're the same...'
+                </div>
+                
+                <div class="quote">
+                    '...don't get too caught up on comparing symptoms...'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-symptom-management-palliation">
+            <div class="code-name">
+                Using symptom management mainly for comfort rather than recovery
+                <span class="code-slug">symptom-management-palliation</span>
+            </div>
+            <div class="code-description">Symptom management is described as largely palliative to ease discomfort, with treatments alleviating suffering temporarily but not addressing underlying illness, which needs broader healing strategies.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...symptom management that i did was more palliative not about recovery...'
+                </div>
+                
+                <div class="quote">
+                    '...if i had pain i might take painkillers or see doctor for sedatives...'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-personalized-recovery-plans">
+            <div class="code-name">
+                Need to tailor recovery plans individually to person's lifestyle and journey
+                <span class="code-slug">personalized-recovery-plans</span>
+            </div>
+            <div class="code-description">Participants highlight importance of personalized recovery plans adapted to individual's unique symptoms, lifestyle and disease experience, as pacing and treatments vary between individuals.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...somebody's recovery plan ... needs to be tailored...'
+                </div>
+                
+                <div class="quote">
+                    '...pacing has to be tailored individually because their life is so different...'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-frustration-symptom-fix">
+            <div class="code-name">
+                Frustration and disappointment from focusing on symptom-specific fixes
+                <span class="code-slug">frustration-symptom-fix</span>
+            </div>
+            <div class="code-description">Participants report desperation and disillusionment from searching for symptom fixes, spending extensive time and money on treatments without holistic healing, leading to emotional exhaustion and need for alternative strategies.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...spent thousands of hours googling symptoms...', '...almost poisoning myself by buying organic elderberries...'
+                </div>
+                
+                <div class="quote">
+                    '...needed a more comprehensive strategy rather than symptom by symptom fixes...'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-emotional-boundaries-symptoms">
+            <div class="code-name">
+                Setting emotional boundaries around discussing past symptoms
+                <span class="code-slug">emotional-boundaries-symptoms</span>
+            </div>
+            <div class="code-description">Participants set limits on discussing past symptoms and one-on-one symptom troubleshooting to avoid trauma and overwhelm, preserving well-being while sharing recovery stories positively.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...have boundaries ... not talking about old symptoms ...'
+                </div>
+                
+                <div class="quote">
+                    '...writing my story took forever because it's traumatizing going back...'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-walking-miracle-gratitude">
+            <div class="code-name">
+                Walking miracle gratitude for life after chronic illness
+                <span class="code-slug">walking-miracle-gratitude</span>
+            </div>
+            <div class="code-description">Participant expresses deep appreciation for recovering to a life once only dreamed of, enjoying life with childlike wonder and daily gratitude despite occasional setbacks.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...i have to catch myself and be like you are a walking miracle like this is incredible'
+                </div>
+                
+                <div class="quote">
+                    'It's like being like when you watch a six year old wandering...'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-difficulty-relating-healthy">
+            <div class="code-name">
+                Difficulty relating to healthy friends post illness
+                <span class="code-slug">difficulty-relating-healthy</span>
+            </div>
+            <div class="code-description">Participant struggles maintaining friendships with healthy friends who complain or take health for granted, experiencing detachment and missing activities like working out.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...friends who've never been through it ... complain about their lives ... detachment'
+                </div>
+                
+                <div class="quote">
+                    '...i really struggle with people who seem physically able but choose not to...'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-diagnosis-delay-misdiagnosis">
+            <div class="code-name">
+                Frustration with delayed diagnosis and misdiagnosis
+                <span class="code-slug">diagnosis-delay-misdiagnosis</span>
+            </div>
+            <div class="code-description">Participant recounts initial fibromyalgia diagnosis ignoring fatigue, leading to delayed appropriate diagnosis and frustration with medical system's lack of understanding and care.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...diagnosed with fibromyalgia ignoring fatigue... no treatment for many years...'
+                </div>
+                
+                <div class="quote">
+                    'It took a while before chronic fatigue diagnosis...'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-self-advocacy-healthcare">
+            <div class="code-name">
+                Self advocacy and research to access better healthcare
+                <span class="code-slug">self-advocacy-healthcare</span>
+            </div>
+            <div class="code-description">Participant actively researched and managed health, connecting with knowledgeable providers who identified underlying infections, aiding diagnosis and treatment.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...researching doctors as much as i could ... moved to get better care...'
+                </div>
+                
+                <div class="quote">
+                    '...linked with doctors testing underlying infections...'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-genetic-mitochondrial-treatment">
+            <div class="code-name">
+                Discovery and treatment of genetic mitochondrial disease
+                <span class="code-slug">genetic-mitochondrial-treatment</span>
+            </div>
+            <div class="code-description">Diagnosis of mitochondrial DNA depletion syndrome explained infections and fatigue; treatment focused on mitochondrial support helped regain strength and combat infections, marking recovery progress.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...mitochondrial disease called mitochondrial dna depletion syndrome...'
+                </div>
+                
+                <div class="quote">
+                    '...put on cocktail to boost mitochondria and fight infections...'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-drastic-lifestyle-changes">
+            <div class="code-name">
+                Drastic lifestyle changes including diet and environment for recovery
+                <span class="code-slug">drastic-lifestyle-changes</span>
+            </div>
+            <div class="code-description">Significant lifestyle changes like elimination diet, gradual movement rehab, and removing toxins were key to healing, with dietary modifications reducing inflammation and aiding recovery.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...dramatically change diet using food as medicine...'
+                </div>
+                
+                <div class="quote">
+                    '...removed toxic ingredients and used water filtration...'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-overcoming-sugar-addiction">
+            <div class="code-name">
+                Overcoming intense sugar addiction to support healing
+                <span class="code-slug">overcoming-sugar-addiction</span>
+            </div>
+            <div class="code-description">Participant overcame physical sugar addiction disrupting health and sleep through gut healing and probiotics, resulting in diminished cravings and healthier eating habits.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    'Sugar was a massive one ... clearly had physical addiction...'
+                </div>
+                
+                <div class="quote">
+                    '...up in middle of night every night and eat sugar'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-movement-therapy-gentle-rehab">
+            <div class="code-name">
+                Movement therapy as gentle rehabilitation rather than exercise
+                <span class="code-slug">movement-therapy-gentle-rehab</span>
+            </div>
+            <div class="code-description">Participant emphasizes very gradual, gentle movement for rehabilitation rather than typical exercise, balancing activity with rest to avoid relapse.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...gradually increase ability to move ... one to two minutes a day initially...'
+                </div>
+                
+                <div class="quote">
+                    '...couldn't rest my way out of this i couldn't just lay in bed...'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-psychological-growth-illness">
+            <div class="code-name">
+                Psychological impact and personal growth from chronic illness experience
+                <span class="code-slug">psychological-growth-illness</span>
+            </div>
+            <div class="code-description">Participant reflects on how illness changed identity, values, spirituality, fostering humility, acceptance, spiritual growth, gratitude and deeper appreciation for life and relationships.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    'It humbled me ... changed me ... i wouldn't say i had spirituality before'
+                </div>
+                
+                <div class="quote">
+                    '...illness catapults our growth and puts us in a better direction'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-pregnancy-anxiety-relapse">
+            <div class="code-name">
+                Fear and anxiety about pregnancy symptoms being illness relapse
+                <span class="code-slug">pregnancy-anxiety-relapse</span>
+            </div>
+            <div class="code-description">Participant describes anxiety and uncertainty distinguishing pregnancy symptoms from illness relapse, learning self-compassion and cautious optimism about health journey.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    'I keep reminding myself these are normal symptoms... fatigue or relapse?'
+                </div>
+                
+                <div class="quote">
+                    '...normal to have headaches when pregnant, normal to feel tired...'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-hope-positivity-others-recover">
+            <div class="code-name">
+                Hope and positivity through seeing others recover from chronic illness
+                <span class="code-slug">hope-positivity-others-recover</span>
+            </div>
+            <div class="code-description">Participant gains essential hope and motivation by seeing recovery stories, highlighting importance of community and shared experience to sustain perseverance through chronic illness.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...so nice to see many people getting past these things'
+                </div>
+                
+                <div class="quote">
+                    '...people start reaching out to me, i recovered as well...'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-self-empowerment-knowledge-faith">
+            <div class="code-name">
+                Self empowerment through knowledge acquisition and faith in recovery
+                <span class="code-slug">self-empowerment-knowledge-faith</span>
+            </div>
+            <div class="code-description">Participant credits self-education on illness combined with spiritual trust and faith as key to recovery, emphasizing trust in healing process and rejection of limiting prognoses.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...had to go through years of research and learning'
+                </div>
+                
+                <div class="quote">
+                    'It was like getting a bachelor’s degree in chronic illness'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-scary-confusing-early-illness">
+            <div class="code-name">
+                Scary and confusing early illness experience
+                <span class="code-slug">scary-confusing-early-illness</span>
+            </div>
+            <div class="code-description">Participant describes onset of chronic fatigue as frightening and confusing, with overwhelming health decline requiring university leave and grieving process.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...felt a bit fluy felt a bit strange felt a bit scared because it felt really weird'
+                </div>
+                
+                <div class="quote">
+                    '...didn't know what was going on ... really scary time'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-feeling-isolated-illness">
+            <div class="code-name">
+                Feeling isolated due to illness
+                <span class="code-slug">feeling-isolated-illness</span>
+            </div>
+            <div class="code-description">Participant felt lonely after returning home separated from university friends, relying primarily on family for support during tough times.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...all my friends from home had gone to university ... didn't really have anyone other than family'
+                </div>
+                
+                <div class="quote">
+                    '...it was a very tough time'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-reject-depression-diagnosis">
+            <div class="code-name">
+                Rejection of depression diagnosis and emotional awareness
+                <span class="code-slug">reject-depression-diagnosis</span>
+            </div>
+            <div class="code-description">Participant rejected doctor depression diagnosis, believing deeper physical illness despite emotional challenges and depression related to illness.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    'one of the first doctors said she just thought i was depressed'
+                </div>
+                
+                <div class="quote">
+                    'i knew it wasn't just depression i knew there was emotion about feeling unwell'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-hope-meditation-yoga">
+            <div class="code-name">
+                Hope from meditation and yoga practices
+                <span class="code-slug">hope-meditation-yoga</span>
+            </div>
+            <div class="code-description">Early meditation, yoga and breath work brought some relief and hope though benefits were sometimes temporary and inconsistent during long recovery.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...perhaps meditation and yoga can help me heal'
+                </div>
+                
+                <div class="quote">
+                    '...felt different after doing alternate nostril breathing'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-desperation-trying-therapies">
+            <div class="code-name">
+                Desperation leads to trying various alternative therapies
+                <span class="code-slug">desperation-trying-therapies</span>
+            </div>
+            <div class="code-description">Participant tried multiple alternative therapies such as acupuncture, reiki, nutrition, colon hydrotherapy out of desperation, with limited or mixed success.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...went for reiki and this and that'
+                </div>
+                
+                <div class="quote">
+                    '...flew to america to work with healer'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-suppressed-anger-trauma">
+            <div class="code-name">
+                Realization of suppressed anger and unresolved trauma
+                <span class="code-slug">suppressed-anger-trauma</span>
+            </div>
+            <div class="code-description">Participant recognized suppressed anger and trauma affecting recovery, identifying emotional blocks and unresolved feelings contributing to physical symptoms.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...had suppressed anger and unresolved trauma in my system'
+                </div>
+                
+                <div class="quote">
+                    '...avoiding conflict at all costs'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-mindbody-trauma-understanding">
+            <div class="code-name">
+                Mind-body connection and trauma understanding
+                <span class="code-slug">mindbody-trauma-understanding</span>
+            </div>
+            <div class="code-description">Participant found healing by exploring mind-body link, viewing symptoms as trauma manifestations such as freeze response, and identifying emotional triggers.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...looking at symptoms ... emotion underlying this symptom'
+                </div>
+                
+                <div class="quote">
+                    '...impact of trauma on my system manifesting physically like a freeze response'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-authentic-self-expression">
+            <div class="code-name">
+                Learning authentic self-expression and setting boundaries
+                <span class="code-slug">authentic-self-expression</span>
+            </div>
+            <div class="code-description">Recovery involved learning to express authentic emotions and needs without fear, employing communication skills to balance self-care and relationships.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    'learning to be more myself more authentic'
+                </div>
+                
+                <div class="quote">
+                    'learning non violent communication...'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-spiritual-experience-healing">
+            <div class="code-name">
+                Spiritual experience as part of healing journey
+                <span class="code-slug">spiritual-experience-healing</span>
+            </div>
+            <div class="code-description">Spiritual awakening, meditation, and mystical experiences were deep and sometimes destabilizing parts of recovery, requiring balance of spiritual insight and daily functioning.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...spiritual awakening'
+                </div>
+                
+                <div class="quote">
+                    '...felt like connecting with the whole universe'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-ongoing-self-care-post-recovery">
+            <div class="code-name">
+                Ongoing self-care and regulation post recovery
+                <span class="code-slug">ongoing-self-care-post-recovery</span>
+            </div>
+            <div class="code-description">Participant manages emotional and trauma symptoms post-recovery with self-regulation strategies including nature exposure and therapeutic work to maintain well-being.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...periodically trauma type symptoms'
+                </div>
+                
+                <div class="quote">
+                    '...go do work with a practitioner or spend night time in nature'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-career-shift-healing">
+            <div class="code-name">
+                Career shift driven by healing experience
+                <span class="code-slug">career-shift-healing</span>
+            </div>
+            <div class="code-description">Healing journey influenced career towards coaching and therapeutic work, integrating personal recovery insights professionally while continuing learning and practices.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...lots of therapeutic and coaching trainings'
+                </div>
+                
+                <div class="quote">
+                    '...nearly twenty years working in this field'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-familial-ancestral-trauma">
+            <div class="code-name">
+                Recognizing familial and ancestral trauma impact on health
+                <span class="code-slug">familial-ancestral-trauma</span>
+            </div>
+            <div class="code-description">Participant recognizes ancestral and family trauma influencing illness patterns and wider systemic generational factors contributing to chronic fatigue symptoms.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...a lot of my trauma wasn't personal but was ancestral ... from family line'
+                </div>
+                
+                <div class="quote">
+                    '...illness in one person might be a wider family system issue'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-trauma-sudden-crisis">
+            <div class="code-name">
+                Trauma leading to sudden health crisis and exhaustion
+                <span class="code-slug">trauma-sudden-crisis</span>
+            </div>
+            <div class="code-description">Sexual assault and subsequent infection triggered severe exhaustion and ME/CFS symptoms like insomnia, brain fog and digestive issues lasting years.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...sexually assaulted and that led to urinary tract infection ... system blacked out ... flu twenty four seven'
+                </div>
+                
+                <div class="quote">
+                    '...digestive issues ... hot flashes even though young'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-fear-uncertainty-diagnosis">
+            <div class="code-name">
+                Fear and uncertainty following chronic fatigue syndrome diagnosis
+                <span class="code-slug">fear-uncertainty-diagnosis</span>
+            </div>
+            <div class="code-description">Diagnosis brought relief and devastating fear likened to death or life sentence with no cure, causing significant emotional distress.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...so scared ... it was such a death sentence but also a life sentence'
+                </div>
+                
+                <div class="quote">
+                    '...relieved to have diagnosis ... no cure'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-resentment-diets-treatment">
+            <div class="code-name">
+                Resentment towards restrictive diets imposed in treatment
+                <span class="code-slug">resentment-diets-treatment</span>
+            </div>
+            <div class="code-description">Participant resented elimination diets imposed without collaboration, feeling miserable and disempowered rather than active in the healing process.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...totally miserable ... taking away anything you enjoy eating'
+                </div>
+                
+                <div class="quote">
+                    '...felt it was being done to me ... perpetuating trauma'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-regaining-agency-healing">
+            <div class="code-name">
+                Regaining personal agency and control in healing journey
+                <span class="code-slug">regaining-agency-healing</span>
+            </div>
+            <div class="code-description">Participant emphasizes reclaiming power and collaborating actively in healing process to avoid resentment and improve progress.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...have to regain my agency and collaboration in healing'
+                </div>
+                
+                <div class="quote">
+                    '...started realizing with diet ... otherwise i was resenting it'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-mental-peace-symptoms">
+            <div class="code-name">
+                Experiencing mental peace while symptoms persist
+                <span class="code-slug">mental-peace-symptoms</span>
+            </div>
+            <div class="code-description">Despite severe symptoms, participant achieved mental peace and nonresistance through meditation and spiritual connection, aiding emotional adaptation and recovery progress.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...internal state of nonresistance or peace ... it just kind of happened'
+                </div>
+                
+                <div class="quote">
+                    '...watching symptoms but felt peace'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-brain-nervous-sys-fatigue">
+            <div class="code-name">
+                Adopting brain and nervous system explanation for ME/CFS symptoms
+                <span class="code-slug">brain-nervous-sys-fatigue</span>
+            </div>
+            <div class="code-description">Learning symptoms result from brain and nervous system stress response shifted participant from helplessness to empowerment to calm nervous system and improve symptoms.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...brain and nervous system processing stress ... not sick but stressed'
+                </div>
+                
+                <div class="quote">
+                    '...brain generates pain fatigue because it senses danger'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-self-compassion-recovery">
+            <div class="code-name">
+                Cultivating self-compassion to manage symptoms and aid recovery
+                <span class="code-slug">self-compassion-recovery</span>
+            </div>
+            <div class="code-description">Self-compassion reduces self-criticism that triggers stress and perpetuates symptoms, enabling emotional regulation and physical improvement.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...self criticism activates danger alarm in brain ... feeds symptoms'
+                </div>
+                
+                <div class="quote">
+                    '...talk to myself in a compassionate way ... what do you want right now'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-personality-traits-illness">
+            <div class="code-name">
+                Role of personality traits like perfectionism in illness experience
+                <span class="code-slug">personality-traits-illness</span>
+            </div>
+            <div class="code-description">Traits like perfectionism, people-pleasing, conscientiousness and emotional suppression contribute to chronic stress and symptom perpetuation through internal pressure and unexpressed emotions.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    'perfectionist check, people pleasers check ... really conscientious'
+                </div>
+                
+                <div class="quote">
+                    'holding the emotions ... like a pressure cooker'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-emotional-processing-key">
+            <div class="code-name">
+                Acknowledging and processing emotions as key to recovery
+                <span class="code-slug">emotional-processing-key</span>
+            </div>
+            <div class="code-description">Therapeutic practices like journaling and psychotherapy help express anger, grief and trauma, releasing emotional pressure contributing to nervous system hypervigilance and symptom worsening.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...some psychotherapy was helpful ... talk through griefs'
+                </div>
+                
+                <div class="quote">
+                    '...journaling your anger ... bottled up anger can be very harmful'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-validation-hope-connection">
+            <div class="code-name">
+                Finding validation and hope through empathetic connection
+                <span class="code-slug">validation-hope-connection</span>
+            </div>
+            <div class="code-description">Talking with someone who understood illness and brain-based mechanisms offered crucial validation and hope, triggering energy and belief in recovery.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...spent three hours on phone ... finally heard the truth ... gave me hope'
+                </div>
+                
+                <div class="quote">
+                    '...got up and ran around the block like never before'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-energy-loss-fatigue">
+            <div class="code-name">
+                Energy loss and fatigue reducing daily activity
+                <span class="code-slug">energy-loss-fatigue</span>
+            </div>
+            <div class="code-description">Participant experienced drop in energy and motivation, leading to extended rest periods and physical symptoms reflecting debilitating impact of CFS/long COVID.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...started to get really tired ... no motivation to do activities...'
+                </div>
+                
+                <div class="quote">
+                    '...laying in bed would get canker sores ... not feeling the best'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-frustration-medical-tests">
+            <div class="code-name">
+                Frustration from inconclusive medical investigations
+                <span class="code-slug">frustration-medical-tests</span>
+            </div>
+            <div class="code-description">Participant felt uncertain and doubtful when tests showed normal despite symptoms, leading to exploration of mental health explanations and self-doubt.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...multiple doctors said everything was perfectly fine ...'
+                </div>
+                
+                <div class="quote">
+                    '...thought maybe something mentally causing this'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-skepticism-brain-retraining">
+            <div class="code-name">
+                Initial skepticism towards brain retraining techniques
+                <span class="code-slug">skepticism-brain-retraining</span>
+            </div>
+            <div class="code-description">Participant doubted brain retraining programs at first, but upon commitment found them effective for symptom management and anxiety reduction.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...program has hypnosis type of effect ... initially skeptical'
+                </div>
+                
+                <div class="quote">
+                    '...committed and made a difference'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-mental-stamina-recovery">
+            <div class="code-name">
+                Importance of mental stamina for physical activity recovery
+                <span class="code-slug">mental-stamina-recovery</span>
+            </div>
+            <div class="code-description">Mental stamina and positive mindset were crucial for progressing from basic function to running a 10k and training for a marathon, highlighting mental role in physical recovery.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...didn't have mental stamina to do that before...'
+                </div>
+                
+                <div class="quote">
+                    '...positive affirmations and growth mindset...'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-supportive-encouragement">
+            <div class="code-name">
+                Valuing supportive and personal encouragement during recovery
+                <span class="code-slug">supportive-encouragement</span>
+            </div>
+            <div class="code-description">Encouragement and belief from recovery coach Jason boosted motivation and aided healing, illustrating importance of personal connection in recovery journey.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...text messages saying i climbed mountain ... i know you can do it'
+                </div>
+                
+                <div class="quote">
+                    '...great having someone who believes in you that much...'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-empowering-self-statements">
+            <div class="code-name">
+                Developing empowering self-statements to combat anxiety
+                <span class="code-slug">empowering-self-statements</span>
+            </div>
+            <div class="code-description">Participant learned to replace disempowering anxiety statements with growth-oriented affirmations fostering positive and hopeful mindset for emotional resilience.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...saying i am anxious is disempowering ... say i am on my way to getting better'
+                </div>
+                
+                <div class="quote">
+                    '...it's a journey rather than a stuck state...'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-recovery-is-journey">
+            <div class="code-name">
+                Recognizing recovery as a journey, not a fixed state
+                <span class="code-slug">recovery-is-journey</span>
+            </div>
+            <div class="code-description">Recovery involves ongoing management and coping rather than symptom absence, using tools to handle fluctuations and maintain progress without fear.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...have tools to fix that ... life is stressful ... i can refocus'
+                </div>
+                
+                <div class="quote">
+                    '...journey ... can't keep comparing yourself...'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-long-covid-frustration-isolation">
+            <div class="code-name">
+                Feeling frustrated and isolated due to long COVID limitations
+                <span class="code-slug">long-covid-frustration-isolation</span>
+            </div>
+            <div class="code-description">Participants express frustration with ongoing symptoms and limitations from long COVID, feeling isolated and disconnected from prior healthy life and social connections.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...feel drained all the time ... used to be active now barely manage walk...'
+                </div>
+                
+                <div class="quote">
+                    '...people don’t see struggle you go through ... makes you feel alone...'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-desire-understanding-validation">
+            <div class="code-name">
+                Desire for understanding and validation from others
+                <span class="code-slug">desire-understanding-validation</span>
+            </div>
+            <div class="code-description">Participants strongly desire acknowledgement and belief in their long COVID and ME/CFS experience to reduce stigma and obtain emotional support.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...sometimes it feels like people think it’s in your head...'
+                </div>
+                
+                <div class="quote">
+                    '...validation would mean the world ... proves not making this up...'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-regain-physical-energy">
+            <div class="code-name">
+                Need to regain physical energy and return to normal function
+                <span class="code-slug">regain-physical-energy</span>
+            </div>
+            <div class="code-description">Participants express longing to regain physical energy and resume routine activities without debilitating fatigue, describing simple tasks as exhausting.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...if i could get some energy back ... feel like myself'
+                </div>
+                
+                <div class="quote">
+                    '...fatigue so overwhelming even making meal feels like climbing mountain...'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-search-effective-treatment">
+            <div class="code-name">
+                Search for effective treatment and cures for symptom relief
+                <span class="code-slug">search-effective-treatment</span>
+            </div>
+            <div class="code-description">Participants discuss ongoing search for treatments that relieve symptoms or bring recovery, facing frustration with lack of clear options and trial and error approaches.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...tried so many treatments but nothing works...'
+                </div>
+                
+                <div class="quote">
+                    '...keep hoping for a cure to move on with life...'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-coping-identity-changes">
+            <div class="code-name">
+                Coping with changes to identity and sense of self
+                <span class="code-slug">coping-identity-changes</span>
+            </div>
+            <div class="code-description">Participants mourn their previous healthy self and struggle with new limitations and changed roles, affecting identity and self-concept.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...don’t recognize person i am now compared to before...'
+                </div>
+                
+                <div class="quote">
+                    '...hard to accept not doing what used to do...'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-anger-fight-flight">
+            <div class="code-name">
+                Anger as fight or flight physiology driving chronic pain
+                <span class="code-slug">anger-fight-flight</span>
+            </div>
+            <div class="code-description">Anger is a survival physiological response generated by fight or flight sensations causing chronic pain deeply wired in nervous system, uncontrollable by conscious mind.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...biggest factor keeping people in pain is anger ... fight or flight sensation'
+                </div>
+                
+                <div class="quote">
+                    'anger and anxiety are physiological survival responses ... no control'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-pain-memory-neuroplasticity">
+            <div class="code-name">
+                Chronic pain as embedded memory in neuroplastic pain circuits
+                <span class="code-slug">pain-memory-neuroplasticity</span>
+            </div>
+            <div class="code-description">Chronic pain seen as permanent brain memory in pain circuits that cannot be erased; fighting pain reinforces it; acceptance allows separation and symptom reduction.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...pain circuits absolutely permanent like phantom limb pain'
+                </div>
+                
+                <div class="quote">
+                    '...fighting pain reinforces it; you learn to separate yourself from pain'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-unconscious-brain-survival">
+            <div class="code-name">
+                Unconscious brain drives survival responses and chronic symptoms
+                <span class="code-slug">unconscious-brain-survival</span>
+            </div>
+            <div class="code-description">Unconscious brain processes vast information to keep alive, chronic symptoms arise from physiological threat states beyond conscious control, explaining difficulty managing illness consciously.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...unconscious brain keeps you alive ... conscious brain only small part'
+                </div>
+                
+                <div class="quote">
+                    '...can't control it like dragging with handbrakes'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-letting-go-fighting-pain">
+            <div class="code-name">
+                Letting go of fighting pain as crucial to healing process
+                <span class="code-slug">letting-go-fighting-pain</span>
+            </div>
+            <div class="code-description">Healing requires shifting from fighting pain to letting go and acceptance, reducing reinforcement of pain circuits and creating new neural pathways supporting life on own terms.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...hardest part is people can't help but try to fix themselves'
+                </div>
+                
+                <div class="quote">
+                    '...learn to separate yourself from pain and get on with life'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-threat-physiology-chronic-symptoms">
+            <div class="code-name">
+                Threat physiology underlies chronic mental and physical symptoms
+                <span class="code-slug">threat-physiology-chronic-symptoms</span>
+            </div>
+            <div class="code-description">Chronic symptoms including pain, anxiety and depression stem from sustained threat physiology causing nervous system hyperactivity and inflammation, requiring calming physiology rather than only treating symptoms.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...every chronic disease related to chronic stress'
+                </div>
+                
+                <div class="quote">
+                    '...anxiety depression bipolar ocd schizophrenia are metabolic inflammatory disorders'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-separating-negative-thoughts">
+            <div class="code-name">
+                Separating oneself from negative and repetitive thoughts
+                <span class="code-slug">separating-negative-thoughts</span>
+            </div>
+            <div class="code-description">Separating identity from negative intrusive thoughts using therapies reduces physiological arousal caused by thoughts that fuel anxiety and pain.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...separate from the thoughts that's where behavior therapy comes into play'
+                </div>
+                
+                <div class="quote">
+                    '...direct relationship between thoughts and suicide attempts'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-nurturing-joy-healing">
+            <div class="code-name">
+                Nurturing joy as a vital part of healing journey
+                <span class="code-slug">nurturing-joy-healing</span>
+            </div>
+            <div class="code-description">Joy through positive experiences and relationships supports healing by building new neural pathways, countering threat physiology and enabling flourishing beyond pain.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...nurture joy if you’re fighting stress not possible'
+                </div>
+                
+                <div class="quote">
+                    '...good food good wine good friends promote healing'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-sleep-diet-exercise-nervous-system">
+            <div class="code-name">
+                Importance of sleep diet and exercise for calming nervous system
+                <span class="code-slug">sleep-diet-exercise-nervous-system</span>
+            </div>
+            <div class="code-description">Sleep, diet and exercise foundational for calming nervous system, regulating physiology, reducing inflammation and supporting healing and regeneration.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...address sleep is number one...'
+                </div>
+                
+                <div class="quote">
+                    '...lack of sleep causes chronic back pain not the way around'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-physiology-over-consciousness">
+            <div class="code-name">
+                Physiology's dominance over conscious brain in symptom experience
+                <span class="code-slug">physiology-over-consciousness</span>
+            </div>
+            <div class="code-description">Physiological nervous system responses overpower conscious brain’s control of symptoms; fight or flight inhibits cognitive function, making conscious efforts insufficient alone.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...half a million times stronger than conscious brain'
+                </div>
+                
+                <div class="quote">
+                    '...highest thinking brain neocortex doesn’t work in fight or flight'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-skepticism-starting-point-healing">
+            <div class="code-name">
+                Using skepticism as a starting point to engage in healing
+                <span class="code-slug">skepticism-starting-point-healing</span>
+            </div>
+            <div class="code-description">Skepticism is a valid initial stance for learning new healing approaches, encouraging connection to experience and curiosity rather than blind belief to gradually shift physiology and symptoms.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...don't believe me ... connect to skepticism ... starting point'
+                </div>
+                
+                <div class="quote">
+                    '...start doing the work now letting your brain change'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-book-key-pain-recovery">
+            <div class="code-name">
+                Book as key to chronic pain recovery approach
+                <span class="code-slug">book-key-pain-recovery</span>
+            </div>
+            <div class="code-description">A specific book was pivotal for understanding and recovery from chronic pain, resonating with symptoms and personality, influencing therapeutic career choice.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...book by john sono ... back pain gone ... health problems went away'
+                </div>
+                
+                <div class="quote">
+                    '...personality characteristics true for me and most clients'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-emotion-focused-pain-therapy">
+            <div class="code-name">
+                Emotion-focused therapy as core to pain recovery process
+                <span class="code-slug">emotion-focused-pain-therapy</span>
+            </div>
+            <div class="code-description">Intensive Short-Term Dynamic Psychotherapy (ISTDP) is central for chronic pain recovery, focusing on accessing and processing suppressed emotions like anger and rage causing physical pain.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...core intervention is emotion focused approach ... all emotions healthy'
+                </div>
+                
+                <div class="quote">
+                    '...therapy helps notice bodily tension often anxiety about anger or rage'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-therapy-engagement-barriers">
+            <div class="code-name">
+                Barriers to engaging with emotion-focused therapy include fear and trust issues
+                <span class="code-slug">therapy-engagement-barriers</span>
+            </div>
+            <div class="code-description">Patients face fears and defenses that hinder engagement with emotion-focused therapy; require gradual emotional exposure and support to lower defenses and benefit from treatment.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...some folks work quickly others more complicated with challenges'
+                </div>
+                
+                <div class="quote">
+                    '...ISTDP difficult but supportive ... gradual emotional threshold building'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-professional-acceptance-therapy">
+            <div class="code-name">
+                Growing acceptance of emotion-focused therapy among medical professionals
+                <span class="code-slug">professional-acceptance-therapy</span>
+            </div>
+            <div class="code-description">Medical community increasingly recognizes and integrates emotion-focused therapy for chronic pain, with training, referrals, and scientific support increasing over time.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...most folks come because they accept this approach'
+                </div>
+                
+                <div class="quote">
+                    '...training doctors in local hospital ... growing recognition'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-mindset-shift-therapy-acceptance">
+            <div class="code-name">
+                Mindset shift required for accepting therapy as part of recovery
+                <span class="code-slug">mindset-shift-therapy-acceptance</span>
+            </div>
+            <div class="code-description">Acceptance of therapy requires paradigm shift from seeing mental health as separate to integrating physical and emotional health, moving from coping to true recovery path.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...mental health and physical health often thought separate'
+                </div>
+                
+                <div class="quote">
+                    '...therapy seen as coping not to get better initially'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-emotions-source-physical-pain">
+            <div class="code-name">
+                Understanding emotions as the source of physical pain
+                <span class="code-slug">emotions-source-physical-pain</span>
+            </div>
+            <div class="code-description">Emotions, especially unacceptable or dangerous ones, are converted into physical symptoms such as chronic pain; MRI research supports this process, validating psychological origins and need for emotional therapy.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    '...strategies to ward off dangerous emotions turned into physical pain'
+                </div>
+                
+                <div class="quote">
+                    '...chronic pain brains light up amygdala responsible for anger and rage'
+                </div>
+                
+            </div>
+            
+        </div>
+        
+    
+    </div>
+</body>
+</html>

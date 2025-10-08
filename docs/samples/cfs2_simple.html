@@ -1,0 +1,754 @@
+<!DOCTYPE html>
+<html>
+<meta charset="UTF-8">
+
+<head>
+    <title>Analysis Results - zero_shot</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/css/bootstrap.min.css"
+          integrity="sha512-rt/SrQ4UNIaGfDyEXZtNcyWvQeOq0QLygHluFQcSjaGB04IxWhal71tKuzP6K8eYXYB6vJV4pHkXcmFGGQ1/0w=="
+          crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+    <style>
+        body {
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+        }
+
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+        }
+
+        h2 {
+            color: #2c3e50;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            font-size: 1.8rem;
+        }
+
+        .narrative-section {
+            background-color: #f8f9fa;
+            padding: 30px;
+            border-radius: 8px;
+            border-left: 5px solid #3498db;
+            margin-bottom: 40px;
+            font-size: 1.05rem;
+            line-height: 1.8;
+        }
+
+        .code-card {
+            background: white;
+            border: 1px solid #e1e8ed;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            transition: box-shadow 0.2s;
+        }
+
+        .code-card:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        .code-name {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .code-slug {
+            display: inline-block;
+            background-color: #e8f4f8;
+            color: #2980b9;
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            font-family: 'Courier New', monospace;
+            margin-left: 10px;
+        }
+
+        .code-description {
+            color: #555;
+            margin-bottom: 15px;
+            font-size: 1.05rem;
+        }
+
+        .quotes-section {
+            margin-top: 15px;
+        }
+
+        .quotes-label {
+            font-weight: 600;
+            color: #7f8c8d;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+        }
+
+        .quote {
+            background-color: #fafafa;
+            border-left: 3px solid #95a5a6;
+            padding: 12px 15px;
+            margin-bottom: 10px;
+            font-style: italic;
+            color: #555;
+            border-radius: 4px;
+        }
+
+        .theme-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 8px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .theme-name {
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .theme-description {
+            margin-bottom: 15px;
+            font-size: 1.05rem;
+            opacity: 0.95;
+        }
+
+        .theme-codes {
+            margin-top: 15px;
+        }
+
+        .theme-codes-label {
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            opacity: 0.9;
+        }
+
+        .code-badge {
+            display: inline-block;
+            background-color: rgba(255, 255, 255, 0.2);
+            padding: 5px 12px;
+            border-radius: 20px;
+            margin-right: 8px;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .meta-info {
+            color: #7f8c8d;
+            font-size: 0.9rem;
+            margin-bottom: 30px;
+            padding: 15px;
+            background-color: #ecf0f1;
+            border-radius: 6px;
+        }
+
+        .section-divider {
+            border-top: 2px solid #e1e8ed;
+            margin: 50px 0 30px 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>zero_shot</h1>
+
+        
+        <div class="meta-info">
+            
+            <strong>persona:</strong> Experienced qual researcher<br>
+            
+            <strong>research_question:</strong> None<br>
+            
+        </div>
+        
+        <div class="meta-info">
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/bRidO1PiZJs.txt, 
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/aS8CQtc9DmA.txt, 
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/ba2LcetNybI.txt, 
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/acWL9FBKr3o.txt, 
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/as7I55hY29k.txt, 
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/aGKbypa8fhI.txt, 
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/README.txt, 
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/aOUUTEeIiS0.txt, 
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/aTvSX_toNL4.txt, 
+            
+        </div>
+        
+        
+        
+
+        <h2>Summary</h2>
+        <div class="narrative-section">
+        <p><strong>Clinging to inner hope and refusing to accept illness as a permanent fate shapes every step of recovery</strong>
+Participants persistently maintained a belief in the possibility of improvement despite prolonged illness and repeated setbacks, describing hope as a &ldquo;practical and emotional lifeline.&rdquo; This stubborn optimism fueled engagement with therapies, connection with others, and resilience in daily life. As one participant reflected, &ldquo;I never ever felt in fact I was almost like in denial&hellip;&rdquo; and another asserted, &ldquo;You’re not going to tell me how I’m going to be for the rest of my life&hellip;&rdquo;. Success stories of fellow patients further inspired ongoing hope and efforts toward healing.</p>
+<p><strong>Profound emotional isolation, loss, and longing for validation after misunderstood illness</strong>
+Many participants described deep emotional isolation and grief resulting from friends, family, and medical professionals minimizing or misunderstanding their illness, which increased the need for validation and occasional detachment. The struggle was illustrated by statements such as &ldquo;Mustn&rsquo;t isolate yourself&hellip;&rdquo; and &ldquo;They never understood it then&hellip;&rdquo;. Emotional triggers from disbelief led to feelings of invisibility and distress, with one admitting, &ldquo;I can flare up when people say silly things&hellip;&rdquo;.</p>
+<p><strong>Radical transformation of identity and self-worth after losing achievements and confronting change</strong>
+Illness forced a shift away from achievement-based self-worth to greater self-acceptance and humility. Transformation involved listening to bodily signals and acknowledging personal limits, with participants revealing, &ldquo;I&rsquo;ve learnt to listen to myself&hellip;&rdquo; and &ldquo;It&rsquo;s been a journey of getting to know myself&hellip;&rdquo;. Fear of lost identity also emerged, yet for many, the process offered a deeper connection to intrinsic value and authenticity.</p>
+<p><strong>Learning boundaries, self-care, and letting go of ingrained habits for lasting wellbeing</strong>
+Chronic fatigue and recovery reflected a constant struggle with overexertion, people-pleasing, and attaining genuine rest. Participants worked to retrain habits and establish boundaries to protect wellness, captured by, &ldquo;I kept pushing myself&hellip;&rdquo; and &ldquo;The hardest for me was learning boundaries&hellip;&rdquo;. Intentionally prioritizing restful habits and disengaging from emotional triggers proved critical for stability and resilience.</p>
+<p><strong>Desperation, loss of agency, and willingness to radically change life for recovery</strong>
+Periods of desperation spurred dramatic lifestyle changes, often in response to diminished agency and devastating diagnoses. Reliance on others and abrupt shifting of priorities were common, highlighting emotional vulnerability. One participant shared, &ldquo;I had quite a support group&hellip;&rdquo; and another noted, &ldquo;When I had to start doing my own cooking&hellip;&rdquo;. Grief and loss marked a willingness to experiment widely to regain control and hope.</p>
+<p><strong>Discovering the mind-body connection and healing suppressed emotions as key to recovery</strong>
+Lasting recovery was closely linked to expressing emotions previously suppressed, particularly anger and grief. Participants described how therapy and mind-body practices facilitated psychological and physical healing. Quotes such as &ldquo;A lot of people with chronic fatigue are people pleasers&hellip;&rdquo; and &ldquo;I&rsquo;ve learnt to listen to myself&hellip;&rdquo; emphasized the process, with some realizing, &ldquo;I actually smile and I say to myself&hellip;real rest&hellip;&rdquo; and another recounting &ldquo;Such a crazy mix of symptoms&hellip;can be overwhelming and confusing and scary&hellip;&rdquo;.</p>
+<p><strong>Reclaiming personal agency and finding empowerment through self-directed, skill-based healing</strong>
+Participants described a pivotal shift from medical dependence to self-directed healing, building confidence, emotional regulation skills, and rejecting quick fixes. &ldquo;I kept pushing myself&hellip;&rdquo; and &ldquo;I&rsquo;m not good at resting&hellip;&rdquo; illustrated these struggles, but ultimately, the adoption of new techniques and support networks enabled sustainable progress. Empowerment and connection with growth-minded peers played vital roles.</p>
+<p><strong>Longing for genuine connection and community with others who share the journey</strong>
+The need to connect with others who share the chronic illness experience emerged as a cornerstone of emotional support and hope, making peer validation especially valuable. Many expressed, &ldquo;Mustn&rsquo;t isolate yourself&hellip;&rdquo; and &ldquo;They never understood it then&hellip;&rdquo;, emphasizing the importance of shared understanding and helping others on similar paths.</p>
+<p><strong>Embracing imperfection, joy, and appreciation for everyday life after recovery</strong>
+After periods of loss and transformation, participants reported newfound joy and gratitude for daily experiences, coupled with self-compassion through setbacks. &ldquo;I had quite a support group&hellip;&rdquo; and &ldquo;I&rsquo;ve learnt to listen to myself&hellip;&rdquo; typified this acceptance, with life after recovery marked by ongoing spiritual and emotional growth.</p>
+<p><strong>Managing emotional overwhelm and uncertainty in coping with unpredictable symptoms</strong>
+The diversity and severity of symptoms were described as confusing and overwhelming, prompting distress and increased efforts to seek reassurance. &ldquo;Such a crazy mix of symptoms&hellip;can be overwhelming and confusing and scary&hellip;&rdquo; and &ldquo;I actually smile and I say to myself&hellip;real rest&hellip;&rdquo; showcased ongoing struggles with uncertainty and the use of individualized coping strategies.</p>   
+
+        </div>
+        
+        
+        <div class="section-divider"></div>
+        
+        <style>
+            a.code-badge {
+  color: inherit;
+  text-decoration: none;
+}
+
+a.code-badge:hover {
+  text-decoration: underline;
+}
+</style>
+
+        <h2>Themes</h2>
+        
+    
+        
+        <div class="theme-card">
+            <div class="theme-name">Clinging to inner hope and refusing to accept illness as a permanent fate shapes every step of recovery</div>
+            <div class="theme-description">Participants hold an unwavering belief in the possibility of improvement, even in the face of prolonged illness and repeated setbacks. This stubborn optimism and refusal to be defined by diagnoses fuel their engagement with therapies and new approaches. The drive to witness others’ success stories and persistent hope creates ongoing resilience, making hope itself a practical and emotional lifeline that influences all efforts toward healing.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-hope-refusal-illness-final" class="code-badge">hope-refusal-illness-final
+                    </a>        
+                
+                    <a href="#code-hope-recovery-others-inspiration" class="code-badge">hope-recovery-others-inspiration
+                    </a>        
+                
+                    <a href="#code-desire-for-hope-and-possibility-of-recovery" class="code-badge">desire-for-hope-and-possibility-of-recovery
+                    </a>        
+                
+                    <a href="#code-connection-community-survivors" class="code-badge">connection-community-survivors
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">Profound emotional isolation, loss, and longing for validation after misunderstood illness</div>
+            <div class="theme-description">Participants wrestle with feelings of grief and isolation as the impact of chronic illness is frequently minimized or misunderstood by friends, family, and medical professionals. The struggle to be believed and emotionally understood creates a powerful need for validation. Emotional triggers lead to detachment from previously close relationships, amplifying distress and the sense of being ‘just sick’ and invisible.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-isolation-misunderstanding" class="code-badge">isolation-misunderstanding
+                    </a>        
+                
+                    <a href="#code-manage-frustration-others" class="code-badge">manage-frustration-others
+                    </a>        
+                
+                    <a href="#code-detachment-friends-chronic-illness" class="code-badge">detachment-friends-chronic-illness
+                    </a>        
+                
+                    <a href="#code-need-for-validation-and-being-believed" class="code-badge">need-for-validation-and-being-believed
+                    </a>        
+                
+                    <a href="#code-despair-grief-not-understood-medical-disbelief" class="code-badge">despair-grief-not-understood-medical-disbelief
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">Radical transformation of identity and self-worth after losing achievements and confronting change</div>
+            <div class="theme-description">Illness forces a dramatic shift away from achievement-based self-worth toward unconditional acceptance, humility, and self-discovery. Participants describe learning to listen to bodily signals, transforming how they relate to themselves, and moving through fear that their old selves are lost. This transformation is marked by deeper connection to intrinsic value, authenticity, and recognition of personal limits and needs.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-identity-change-self-discovery" class="code-badge">identity-change-self-discovery
+                    </a>        
+                
+                    <a href="#code-identity-self-worth-achievement-loss" class="code-badge">identity-self-worth-achievement-loss
+                    </a>        
+                
+                    <a href="#code-fear-of-losing-identity-during-illness" class="code-badge">fear-of-losing-identity-during-illness
+                    </a>        
+                
+                    <a href="#code-learning-authentic-self-expression-self-care" class="code-badge">learning-authentic-self-expression-self-care
+                    </a>        
+                
+                    <a href="#code-personal-growth-gift-trauma" class="code-badge">personal-growth-gift-trauma
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">Learning boundaries, self-care, and letting go of ingrained habits for lasting wellbeing</div>
+            <div class="theme-description">Chronic fatigue and recovery journeys reveal a persistent struggle with people-pleasing, overexertion, and difficulty attaining genuine rest. Participants actively work to retrain rest habits and set boundaries, both to protect emotional capacity and to support ongoing wellbeing. Coping tools and conscious behavioral changes bring stability and allow sustainable progress, enabling resilience through setbacks and daily challenges.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-overexertion-learning-rest" class="code-badge">overexertion-learning-rest
+                    </a>        
+                
+                    <a href="#code-boundaries-people-pleasing" class="code-badge">boundaries-people-pleasing
+                    </a>        
+                
+                    <a href="#code-real-rest-habits-struggle" class="code-badge">real-rest-habits-struggle
+                    </a>        
+                
+                    <a href="#code-incomplete-recovery-tools-coping" class="code-badge">incomplete-recovery-tools-coping
+                    </a>        
+                
+                    <a href="#code-emotional-cost-of-symptom-discussion" class="code-badge">emotional-cost-of-symptom-discussion
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">Desperation, loss of agency, and willingness to radically change life for recovery</div>
+            <div class="theme-description">The emotional extremes of desperation push participants to endure significant lifestyle changes, often motivated by diminished agency and devastating diagnoses. They pursue every possible avenue—from trying novel therapies to making abrupt modifications—to regain a sense of control and autonomy. These periods are marked by heightened vulnerability, reliance on others, grief, and loss, as participants struggle for hope amidst emotional turmoil.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-difficulty-accepting-help" class="code-badge">difficulty-accepting-help
+                    </a>        
+                
+                    <a href="#code-devastation-diagnosis-life-sentence" class="code-badge">devastation-diagnosis-life-sentence
+                    </a>        
+                
+                    <a href="#code-powerlessness-medical-system-agency" class="code-badge">powerlessness-medical-system-agency
+                    </a>        
+                
+                    <a href="#code-grief-loss-career-relationships" class="code-badge">grief-loss-career-relationships
+                    </a>        
+                
+                    <a href="#code-lifestyle-modification-desperation" class="code-badge">lifestyle-modification-desperation
+                    </a>        
+                
+                    <a href="#code-desperate-search-healing-experiments-trials" class="code-badge">desperate-search-healing-experiments-trials
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">Discovering the mind-body connection and healing suppressed emotions as key to recovery</div>
+            <div class="theme-description">Participants recognize that lasting recovery hinges on understanding and expressing emotions previously suppressed—especially anger, grief, and avoidance of conflict. Emotional processing is seen as vital, with therapy and specific practices helping bridge psychological and physical healing. The importance of integrated mind-body approaches, trauma healing, and spiritual work emerges as a turning point in recovery, challenging compartmentalized treatment.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-recognizing-suppressed-emotions-key-recovery" class="code-badge">recognizing-suppressed-emotions-key-recovery
+                    </a>        
+                
+                    <a href="#code-exploring-mind-body-connection-physical-symptoms" class="code-badge">exploring-mind-body-connection-physical-symptoms
+                    </a>        
+                
+                    <a href="#code-healing-trauma-mind-body" class="code-badge">healing-trauma-mind-body
+                    </a>        
+                
+                    <a href="#code-craving-professional-understanding-scientific-legitimacy" class="code-badge">craving-professional-understanding-scientific-legitimacy
+                    </a>        
+                
+                    <a href="#code-yearning-integrated-mind-body-healing" class="code-badge">yearning-integrated-mind-body-healing
+                    </a>        
+                
+                    <a href="#code-expression-of-emotions-release" class="code-badge">expression-of-emotions-release
+                    </a>        
+                
+                    <a href="#code-desire-for-treatment-tailored-emotional-barriers" class="code-badge">desire-for-treatment-tailored-emotional-barriers
+                    </a>        
+                
+                    <a href="#code-needing-supportive-challenge-in-therapy" class="code-badge">needing-supportive-challenge-in-therapy
+                    </a>        
+                
+                    <a href="#code-searching-validation-recovery-path" class="code-badge">searching-validation-recovery-path
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">Reclaiming personal agency and finding empowerment through self-directed, skill-based healing</div>
+            <div class="theme-description">A meaningful outcome for participants is the shift from passive medical dependence to active engagement with self-directed healing. Learning skills to regulate physiology, build emotional resilience, and challenge limiting beliefs fosters agency. By rejecting ‘quick fixes’ and symptom chasing, participants describe gaining confidence and empowerment that, together with supportive coaching and peer validation, enable sustainable recovery.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-self-directed-healing-and-agency" class="code-badge">self-directed-healing-and-agency
+                    </a>        
+                
+                    <a href="#code-letting-go-of-pain-identity" class="code-badge">letting-go-of-pain-identity
+                    </a>        
+                
+                    <a href="#code-empowerment-language-shift" class="code-badge">empowerment-language-shift
+                    </a>        
+                
+                    <a href="#code-growth-mindset-affiliations" class="code-badge">growth-mindset-affiliations
+                    </a>        
+                
+                    <a href="#code-importance-personal-support-program" class="code-badge">importance-personal-support-program
+                    </a>        
+                
+                    <a href="#code-skepticism-brain-retraining-techniques" class="code-badge">skepticism-brain-retraining-techniques
+                    </a>        
+                
+                    <a href="#code-positive-affect-techniques-rapid-progress" class="code-badge">positive-affect-techniques-rapid-progress
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">Longing for genuine connection and community with others who share the journey</div>
+            <div class="theme-description">The need for connection with peers who have faced similar health challenges emerges as a vital source of emotional support and validation. Participants value stories of recovery, community spaces, and supportive relationships that foster hope and resilience. Sharing experiences with and helping others, either through mutual support or coaching, becomes an important outcome and source of meaning after hardship.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-doctor-dismissal-frustration" class="code-badge">doctor-dismissal-frustration
+                    </a>        
+                
+                    <a href="#code-desire-validation-peer-support" class="code-badge">desire-validation-peer-support
+                    </a>        
+                
+                    <a href="#code-desire-to-help-community" class="code-badge">desire-to-help-community
+                    </a>        
+                
+                    <a href="#code-connection-community-survivors" class="code-badge">connection-community-survivors
+                    </a>        
+                
+                    <a href="#code-hope-recovery-others-inspiration" class="code-badge">hope-recovery-others-inspiration
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">Embracing imperfection, joy, and appreciation for everyday life after recovery</div>
+            <div class="theme-description">Following profound loss and transformation, participants describe a renewed sense of joy, gratitude, and wonder for everyday experiences. Acceptance of imperfection in health, self-compassion in setbacks, and a commitment to lifelong growth bring ongoing fulfillment. Stories reveal how reclaiming life, embracing spiritual and emotional growth, and celebrating ‘small wins’ are not only markers of recovery, but enduring sources of satisfaction.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-second-chance-at-life-renewed-gratitude" class="code-badge">second-chance-at-life-renewed-gratitude
+                    </a>        
+                
+                    <a href="#code-accepting-imperfection-health" class="code-badge">accepting-imperfection-health
+                    </a>        
+                
+                    <a href="#code-positive-growth-spirituality-illness" class="code-badge">positive-growth-spirituality-illness
+                    </a>        
+                
+                    <a href="#code-joyful-appreciation-after-recovery" class="code-badge">joyful-appreciation-after-recovery
+                    </a>        
+                
+                    <a href="#code-long-term-personal-growth-ongoing-joy-curiosity" class="code-badge">long-term-personal-growth-ongoing-joy-curiosity
+                    </a>        
+                
+                    <a href="#code-giving-up-control-pregnancy-anxiety" class="code-badge">giving-up-control-pregnancy-anxiety
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">Managing emotional overwhelm and uncertainty in coping with unpredictable symptoms</div>
+            <div class="theme-description">Participants experience persistent overwhelm, fear, and confusion due to the diversity and severity of chronic illness symptoms. This drives a quest for reassurance and hope, often through comparison with peers and searching for approaches matched to their unique needs. The process of learning to emotionally regulate through coping skills, personalized recovery plans, and acceptance of setbacks is central in handling distress and uncertainty.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-overwhelmed-symptom-diversity" class="code-badge">overwhelmed-symptom-diversity
+                    </a>        
+                
+                    <a href="#code-search-for-reassurance-by-comparing" class="code-badge">search-for-reassurance-by-comparing
+                    </a>        
+                
+                    <a href="#code-individualised-approach-to-recovery" class="code-badge">individualised-approach-to-recovery
+                    </a>        
+                
+                    <a href="#code-excessive-symptom-focus-is-unhelpful" class="code-badge">excessive-symptom-focus-is-unhelpful
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        
+
+        <div class="section-divider"></div>
+        
+        
+    
+        <h2>Codes</h2>
+        
+        <div class="code-card" id="code-hope-refusal-illness-final">
+            <div class="code-name">
+                Relentless hope and refusal to accept illness as permanent fate
+                <span class="code-slug">hope-refusal-illness-final</span>
+            </div>
+            <div class="code-description">Captures enduring belief in the possibility of recovery, even after long-term illness and discouragement. Hope, positivity, and a refusal to accept health limitations motivate ongoing self-advocacy and pursuit of healing.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    I never ever felt in fact I was almost like in denial...
+                </div>
+                
+                <div class="quote">
+                    You’re not going to tell me how I’m going to be for the rest of my life...
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-overexertion-learning-rest">
+            <div class="code-name">
+                Constant struggle with overexertion and learning boundaries for rest
+                <span class="code-slug">overexertion-learning-rest</span>
+            </div>
+            <div class="code-description">Describes repeated patterns of pushing past physical limits due to personality or habit, followed by gradual recognition of the need for restorative rest and setting personal boundaries.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    I kept pushing myself...
+                </div>
+                
+                <div class="quote">
+                    The hardest for me was learning boundaries...
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-difficulty-accepting-help">
+            <div class="code-name">
+                Difficulty accepting and needing help during severe illness
+                <span class="code-slug">difficulty-accepting-help</span>
+            </div>
+            <div class="code-description">Experiences of emotional conflict, discomfort, and necessity when reliant on others for daily care during severe illness periods. Reflects struggles with dependency and the challenge of letting go of independence.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    I had quite a support group...
+                </div>
+                
+                <div class="quote">
+                    When I had to start doing my own cooking...
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-isolation-misunderstanding">
+            <div class="code-name">
+                Emotional impacts of isolation and being misunderstood by others
+                <span class="code-slug">isolation-misunderstanding</span>
+            </div>
+            <div class="code-description">Highlights feelings of social isolation, judgment, or frustration when others minimize or misunderstand chronic illness, with significant emotional and psychological effects.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    Mustn't isolate yourself...
+                </div>
+                
+                <div class="quote">
+                    They never understood it then...
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-identity-change-self-discovery">
+            <div class="code-name">
+                Identity change through self-discovery and listening to body
+                <span class="code-slug">identity-change-self-discovery</span>
+            </div>
+            <div class="code-description">Narrates personal transformation as participants learn to listen to their bodies, recognize triggers, and honor their limits, marking lifestyle and identity shifts focused on authentic wellbeing.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    I've learnt to listen to myself...
+                </div>
+                
+                <div class="quote">
+                    It's been a journey of getting to know myself...
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-trusting-new-healing">
+            <div class="code-name">
+                Challenge of trusting and engaging with new healing approaches
+                <span class="code-slug">trusting-new-healing</span>
+            </div>
+            <div class="code-description">Describes skepticism and resistance toward novel therapeutic methods, especially psychological or neurological frameworks, and the journey toward finding hope and improvement through unfamiliar practices.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    My first reaction was oh no Raylan no...
+                </div>
+                
+                <div class="quote">
+                    Then working with Jason...
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-boundaries-people-pleasing">
+            <div class="code-name">
+                Developing boundaries against ingrained people-pleasing tendencies
+                <span class="code-slug">boundaries-people-pleasing</span>
+            </div>
+            <div class="code-description">Identifies lifelong people-pleasing habits as recovery barriers, with participants actively cultivating boundaries to prioritize self-care and well-being over social or external demands.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    A lot of people with chronic fatigue are people pleasers...
+                </div>
+                
+                <div class="quote">
+                    Now I do let my phone go to voicemail...
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-real-rest-habits-struggle">
+            <div class="code-name">
+                Difficulty attaining real rest and actively retraining rest habits
+                <span class="code-slug">real-rest-habits-struggle</span>
+            </div>
+            <div class="code-description">Explores the challenge of achieving genuinely restorative rest versus habitual distraction, requiring conscious behavioral change and mindful habits for true rejuvenation.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    I'm not good at resting...
+                </div>
+                
+                <div class="quote">
+                    I actually smile and I say to myself...real rest...
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-manage-frustration-others">
+            <div class="code-name">
+                Managing frustration and emotional reactions when others don’t understand
+                <span class="code-slug">manage-frustration-others</span>
+            </div>
+            <div class="code-description">Reflects experiences of emotional triggers, irritation, and attempts at disengagement when confronted by ignorance, skepticism, or minimization of chronic illness by others.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (2)</div>
+                
+                <div class="quote">
+                    I can flare up when people say silly things...
+                </div>
+                
+                <div class="quote">
+                    Why are you even pretending to try and understand...
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-overwhelmed-symptom-diversity">
+            <div class="code-name">
+                Feeling overwhelmed and scared by diversity of symptoms
+                <span class="code-slug">overwhelmed-symptom-diversity</span>
+            </div>
+            <div class="code-description">Explains the distress, fear, and confusion caused by the unpredictable mix and intensity of chronic illness symptoms, complicating management and emotional responses.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (1)</div>
+                
+                <div class="quote">
+                    Such a crazy mix of symptoms...can be overwhelming and confusing and scary...
+                </div>
+                
+            </div>
+            
+        </div>
+        
+    
+    </div>
+</body>
+</html>
