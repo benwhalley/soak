@@ -5,10 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "soak-llm"
 version = "0.2.8b"
-description = "soak: LLM based tools for textual analysis and qualitative research"
+description = "Soak: graph-based pipelines for LLM-assisted qualitative text analysis"
 authors = [
   { name = "Ben Whalley", email = "ben.whalley@plymouth.ac.uk" }
 ]
+license = { text = "AGPL-3.0-or-later" }
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
 dependencies = [
