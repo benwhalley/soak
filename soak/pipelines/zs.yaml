@@ -1,10 +1,4 @@
 name: zero_shot
-config:
-  model_name: openai/gpt-4.1-mini
-  llm_credentials:
-    api_key: "sk-WXeBBXp6MV21Dn8F71z7TQ"
-    base_url: http://litellm.llemma.net/v1
-
 default_context:
   persona: Experienced qual researcher
   research_question: None
