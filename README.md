@@ -14,9 +14,9 @@ Input text from [patient interviews](soak/data/cfs/):
 
 ![raw data](docs/images/cfstext.png)
 
-Sample themes extracted: 
+Sample theme extracted: 
 
-![themes extracted](docs/images/themes.png)
+![themes extracted](docs/images/theme.png)
 
 Matching LLM extracted quotes to source text to detect hallucinations:
 
@@ -42,20 +42,19 @@ Similarity statistics quantify the similarity between sets of themes created by 
 
 ### Sample outouts
 
-- [cfs1_simple.html](docs/samples/cfs1_simple.html) shows a thematic analysis of transcripts of 8 patients with ME/CFS or Long COVID.
+- [cfs1_simple.html](https://benwhalley.github.io/soak/samples/cfs1_simple.html) shows a thematic analysis of transcripts of 8 patients with ME/CFS or Long COVID.
 
-- [cfs2_pipeline.html](docs/samples/cfs2_simple.html)  shows the same analysis using a different LLM model, and in extended HTML format.
+- [cfs2_pipeline.html](https://benwhalley.github.io/soak/samples/cfs2_simple.html)  shows the same analysis using a different LLM model, and in extended HTML format.
 
-- [comparison.html](docs/samples/comparison.html) shows the comparison of these two analyses.
+- [comparison.html](https://benwhalley.github.io/soak/samples/comparison.html) shows the comparison of these two analyses.
 
-- [20251008_085446_5db6_pipeline.html](docs/samples/20251008_085446_5db6_pipeline.html) shows the result of a different pipeline extracting structured data from the transcripts.
-
+- [20251008_085446_5db6_pipeline.html](https://benwhalley.github.io/soak/samples/classifier/20251008_085446_5db6_pipeline.html) shows the result of a different pipeline extracting structured data from the transcripts (results are also available as json and csv).
 
 ### Example pipeline specifications
 
 - [soak/pipelines/zs.yaml](soak/pipelines/zs.yaml) is the Zero-shot pipeline used in the sample outputs above.
 
-- [classifier.yaml](soak/docs/samples/classifier/classifier.yaml) is the classifier pipeline used in the sample output above.
+- [classifier.yaml](docs/samples/classifier/classifier.yaml) is the classifier pipeline used in the sample output above.
 
 ## Quick Start
 
