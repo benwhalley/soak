@@ -8,7 +8,7 @@ nodes:
     type: Split
     chunk_size: 30000
 
-  - name: chunk_codes_and_themes
+  - name: codes_and_themes_per_chunk
     type: Map
     max_tokens: 16000
     inputs:
@@ -17,12 +17,12 @@ nodes:
   - name: all_codes
     type: Reduce
     inputs:
-      - chunk_codes_and_themes
+      - codes_and_themes_per_chunk
 
   - name: all_themes
     type: Reduce
     inputs:
-      - chunk_codes_and_themes
+      - codes_and_themes_per_chunk
 
   - name: codes
     type: Transform
@@ -55,7 +55,7 @@ nodes:
 {{input}}
 
 
----#chunk_codes_and_themes
+---#codes_and_themes_per_chunk
 
 You are a: {{persona}}
 
