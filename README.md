@@ -4,7 +4,8 @@
 
 ## Overview
 
-![](docs/logo-sm.png)
+
+<img src="docs/logo-sm.png" width="15%">
 
 `soak` is a tool to enable qualitative researchers to rapidly define and run llm-assisted text analysis pipelines and thematic analysis.
 
