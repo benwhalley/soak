@@ -99,120 +99,17 @@ uv run soak run zspe data/interviews.docx -t simple --output analysis2
 - `--model-name`: LLM model (default: gpt-4o-mini)
 - `-c, --context`: Pipeline context variables (e.g., `-c research_question="Experiences of patients with COVID-19"`)
 
-## Pipelines
-
-Built-in pipelines in `soak/pipelines/`:
-- `zs`: Zero shot thematic analysis, adapted from Raza et al.
-- `zspe`: Zero-shot with pre-extraction filtering
-
-For custom pipelines, use the local YAML file path. See notes on adapting/writing pipelines below.
-
-
-## Settings/environment variables
-
-```bash
-# required
-export LLM_API_KEY=sk-...           
-
-# optional
-export LLM_API_BASE=https://...     # OpenAI-compatible endpoint
-export MAX_CONCURRENCY=20           # number of concurrent LLM calls
-export DEFAULT_LLM=gpt-4.1-mini 
-export DEFAULT_EMBEDDING_MODEL=text-embedding-3-large
-```
-
-
-## Adapting/writing pipelines
-
-It's probably best to start from an existing pipeline.
-Export a copy to a local file like this:
-
-```bash
-soak show pipeline zs > my_pipeline.yaml
-```
-
-
-```
-
-
-Pipeline consist of 2 pars:
-
-- a YAML header, which defines each node, its type, and other configuration
-- a series of markdown templates, one for each Node that uses an LLM
-
-
-The start of the zero shot pipeline is:
-
-```yaml
-name: zero_shot
-
-default_context:
-  persona: Experienced qual researcher
-  research_question: None
-
-nodes:
-  - name: chunks
-    type: Split
-    chunk_size: 30000
-
-  - name: codes_and_themes_per_chunk
-    type: Map
-    max_tokens: 16000
-    inputs:
-      - chunks
-
-...
-```
-
-
-And an example of a prompt template is:
-
-
-```md
----#codes_and_themes_per_chunk
-
-You are a: {{persona}}
-This is the initial coding stage of a qualitative analysis.
-Your research question is: {{research_question}}
-
-In this stage, you will generate codes. Codes are ...
-
-... instructions omitted ...
-
-The text to read is:
-
-<text>
-{{input}}
-</text>
-
-Identify all relevant codes in the text, provide a Name 
-for each code in 8 to 15 words in sentence case.
-
-[[codes:codes]]
-
-Next is the theme identification stage. 
-Your task is to group the codes into distinct themes.
-A 'theme' related to the wants, needs, meaningful outcomes, 
-and lived experiences of participants.
-
-... further instructions omitted ...
-
-Create themes from the codes above
-
-[[themes:themes]]
-```
-
-The [[codes:codes]] and [[themes:themes]] placeholders are used to identify that LLM completions of specific types (codes/themes) should be extracted from the LLM output. That is, it's a prompt to soak to request structured data from the LLM.
-
-To adapt the pipeline to your needs, simple edit the YAML file to add your own nodes and prompts. See the documentation for details of all the node types and options.
-
 
 ## Documentation
 
-In progress, but see [CLAUDE.md](CLAUDE.md) for architecture details.
+- [Docs index](docs/index.md)
+- [Getting started](docs/tutorials/getting-started.md)
+
+See [CLAUDE.md](CLAUDE.md) for architecture details.
+
 
 ## License
 
 AGPL v3 or later
 
-Please cite: TODO ADD ZENODO DOI
+Please cite: Ben Whalley. (2025). benwhalley/soak: Initial release (v0.3.0). Zenodo. https://doi.org/10.5281/zenodo.17293023
