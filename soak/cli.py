@@ -209,9 +209,24 @@ def run(
         base_url=base_url,
     )
 
-    with unpack_zip_to_temp_paths_if_needed(input_files) as docfiles:
-        pipeline.config.document_paths = docfiles
-        pipeline.config.documents = pipeline.config.load_documents()
+    try:
+        with unpack_zip_to_temp_paths_if_needed(input_files) as docfiles:
+            if not docfiles:
+                print(
+                    f"Error: No files found matching input patterns: {', '.join(input_files)}",
+                    file=sys.stderr,
+                )
+                print(
+                    "Tip: Check file paths exist in current directory or package data",
+                    file=sys.stderr,
+                )
+                raise typer.Exit(1)
+
+            pipeline.config.document_paths = docfiles
+            pipeline.config.documents = pipeline.config.load_documents()
+    except FileNotFoundError as e:
+        print(f"Error: {e}", file=sys.stderr)
+        raise typer.Exit(1)
 
     try:
         analysis, errors = asyncio.run(pipeline.run())

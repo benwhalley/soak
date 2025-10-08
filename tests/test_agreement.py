@@ -1,7 +1,5 @@
-from pyirr import read_data, kappam_fleiss
 import pandas as pd
-
-
+from pyirr import kappam_fleiss, read_data
 
 # --- Example data (moderate agreement) ---
 ratings = [

@@ -7,3 +7,4 @@ data-private/
 *.pyc
 *_dump
 uv.lock
+uv.lock

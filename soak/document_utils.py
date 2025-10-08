@@ -15,6 +15,39 @@ import magic
 logger = logging.getLogger(__name__)
 
 
+def resolve_path_with_package_data(path_pattern: str) -> list[str]:
+    """Resolve a file path or glob pattern, checking package data if not found locally.
+
+    Args:
+        path_pattern: File path or glob pattern (e.g., 'data/cfs/*.txt')
+
+    Returns:
+        List of resolved file paths
+
+    Raises:
+        FileNotFoundError: If pattern matches no files in either location
+    """
+    # First try current working directory
+    matches = glob.glob(path_pattern)
+
+    if matches:
+        return matches
+
+    # If no matches, try package data directory
+    package_dir = Path(__file__).parent
+    package_pattern = str(package_dir / path_pattern)
+    package_matches = glob.glob(package_pattern)
+
+    if package_matches:
+        logger.info(f"Using package data files: {path_pattern}")
+        return package_matches
+
+    # No matches in either location
+    raise FileNotFoundError(
+        f"No files found matching '{path_pattern}' in current directory or package data"
+    )
+
+
 def strip_null_bytes(obj):
     """
     Recursively strip null bytes (\\u0000) from strings in nested structures.
@@ -112,22 +145,46 @@ def unpack_zip_to_temp_paths_if_needed(paths: list[str]) -> list[tuple[str, dict
 
     try:
         for path in paths:
-            if path.endswith(".zip") and os.path.isfile(path):
-                zip_stem = Path(path).stem  # "archive.zip" -> "archive"
-                with zipfile.ZipFile(path, "r") as zip_ref:
-                    tmpdir = tempfile.mkdtemp(prefix="unpacked_zip_")
-                    temp_dirs.append(tmpdir)
-                    safer_extract(zip_ref, tmpdir)
-                    for root, _, files in os.walk(tmpdir):
-                        for f in files:
-                            file_path = os.path.join(root, f)
-                            metadata = {"zip_source": zip_stem, "zip_path": path}
-                            expanded_items.append((file_path, metadata))
+            # Check if it's a zip file (in current dir or package data)
+            if path.endswith(".zip"):
+                zip_path = None
+                if os.path.isfile(path):
+                    zip_path = path
+                else:
+                    # Try package data
+                    package_dir = Path(__file__).parent
+                    package_zip = package_dir / path
+                    if package_zip.is_file():
+                        zip_path = str(package_zip)
+                        logger.info(f"Using package data zip: {path}")
+
+                if zip_path:
+                    zip_stem = Path(zip_path).stem  # "archive.zip" -> "archive"
+                    with zipfile.ZipFile(zip_path, "r") as zip_ref:
+                        tmpdir = tempfile.mkdtemp(prefix="unpacked_zip_")
+                        temp_dirs.append(tmpdir)
+                        safer_extract(zip_ref, tmpdir)
+                        for root, _, files in os.walk(tmpdir):
+                            for f in files:
+                                file_path = os.path.join(root, f)
+                                metadata = {"zip_source": zip_stem, "zip_path": zip_path}
+                                expanded_items.append((file_path, metadata))
+                    continue
+
+                # Zip file not found
+                logger.warning(f"Zip file not found: {path}")
             else:
-                # Expand globs
-                for expanded_path in glob.glob(path):
-                    metadata = {"zip_source": None, "zip_path": None}
-                    expanded_items.append((expanded_path, metadata))
+                # Expand globs, checking package data if not found locally
+                try:
+                    resolved_paths = resolve_path_with_package_data(path)
+                    for expanded_path in resolved_paths:
+                        metadata = {"zip_source": None, "zip_path": None}
+                        expanded_items.append((expanded_path, metadata))
+                except FileNotFoundError:
+                    # If no matches found, add the original path anyway
+                    # This allows proper error messages from downstream code
+                    logger.warning(f"No files found for pattern: {path}")
+                    # Don't add anything - will cause empty list if all patterns fail
 
         yield expanded_items
 

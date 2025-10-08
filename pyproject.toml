@@ -46,7 +46,7 @@ dependencies = [
 ]
 
 [tool.setuptools.package-data]
-soak = ["templates/*.html", "templates/*.md", "pipelines/*.yaml", "data/*"]
+soak = ["templates/*.html", "templates/*.md", "pipelines/*.yaml", "data/**/*"]
 
 [tool.setuptools.packages.find]
 where = ["."]
