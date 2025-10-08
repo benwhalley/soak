@@ -1,0 +1,216 @@
+name: classifier_simple
+default_context:
+  persona: Experienced researcher
+default_config:
+  model_name: litellm/gpt-4.1
+
+nodes:
+  - name: splits
+    type: Split
+    chunk_size: 10000
+    split_by: paragraph
+  
+  - name: classify
+    type: Classifier
+    model_names:
+      - litellm/gpt-4.1
+      - litellm/gpt-4.1-mini
+    
+    inputs:
+      - splits
+      
+
+---#classify
+
+This is text from a transcript of a patient who has recovered from CFS/ME. We will ask a number of questions about the transcript to categorise the person's background and experience.
+
+Read it carefully and answer the questions below.
+
+<transcript>
+
+{{input}}
+
+</transcript>
+
+¡BEGIN
+
+Did this patient suffer from CFS/ME or long covid?
+ 
+Some interviews were with professionals who were not themselves ill (they help people who are unwell). These should be classified as `notapatient`.
+
+Extract a quote or quotes from the transcript would help us make this classification. If it's unclear from the text, say why and what the best evidence is given the transcript.
+
+[[cfs__evidence]]
+
+Now pick an option. Did the patient suffer from CFS/ME or long covid? 
+Only classify as CFS or Covid if the transcript explicitly shows that they had a diagnosis of these conditions. 
+
+Unclear means it's hard to tell which they suffered from. No evidence means the transcript does not refer to any illness.
+
+[[pick:diagnosis|cfs,covid,both,none,notapatient,unclear,no_evidence]]
+
+¡OBLIVIATE
+
+Is the patient now a professional helping other people recover from CFS/ME or long covid? Extract a quote or quotes from the transcript would help us make this classification. If it's unclear from the text, say why and what the best evidence is given the transcript.
+
+[[is_professional__evidence]]
+
+Now pick an option. Is the patient now a professional helping other people recover from CFS/ME or long covid? Only use the unclear category if it's genuinely unclear from the text. If there is no mention of being a professional, assume they are not.
+
+[[pick:is_professional|professional,not_a_professional,unclear,no_evidence]]
+
+
+¡OBLIVIATE
+
+
+Did the patient make a full or partial recovery?
+
+Extract a quote or quotes from the transcript would help us make this classification. ONLY INCLUDE QUOTES FROM THE TEXT ABOVE. DO NOT FABRICATE QUOTES. If it's unclear from the text, say why and what the best evidence is given the transcript.
+
+[[recovery__evidence]]
+
+Now pick an option. Did the patient make a full or partial recovery? Respond unclear if the text is confusing or doesn't make it clear. Say no evidence if this topic isn't mentioned in the text.
+
+[[pick:recovery|full,partial,not_recovered,unclear,no_evidence]]
+
+
+¡OBLIVIATE
+
+Was the patient bed-bound or so severely affected such that they could not leave their house?
+
+Extract a quote or quotes from the transcript would help us make this classification. ONLY INCLUDE QUOTES FROM THE TEXT ABOVE. DO NOT FABRICATE QUOTES. If it's unclear from the text, say why and what the best evidence is given the transcript.
+
+[[bedbound__evidence]]
+
+Now pick an option. Was the patient bed-bound or very severely affected such that they could not leave their house? Respond unclear if the text is confusing or doesn't make it clear. Say no evidence if this topic isn't mentioned in the text.
+
+[[pick:bedbound|bedbound,housebound,neither,unclear,no_evidence]]
+
+
+¡OBLIVIATE
+
+Was the patient suicidal at any point, because of their condition?
+
+Extract a quote or quotes from the transcript would help us make this classification. ONLY INCLUDE QUOTES FROM THE TEXT ABOVE. DO NOT FABRICATE QUOTES. If it's unclear from the text, say why and what the best evidence is given the transcript.
+
+[[suicide__evidence]]
+
+Now pick an option. Was the patient suicidal at any point? 
+Did they contemplate taking their life? 
+If there is no evidence, then assume "no". If the text is confusing or doesn't make it clear, respond `unclear`.
+
+[[pick:suicide|yes,no,unclear,no_evidence]]
+
+
+¡OBLIVIATE
+
+Did the patient find advice and prescriptions from conventional medical practictioners helpful? 
+
+By conventional medical practictioners, we mean doctors, nurses, and other healthcare professionals, or clinical psychologists working within conventional medical settings.
+
+Extract a quote or quotes from the transcript would help us make this classification. ONLY INCLUDE QUOTES FROM THE TEXT ABOVE. DO NOT FABRICATE QUOTES. If it's unclear from the text, say why and what the best evidence is given the transcript.
+
+[[conventional__evidence]]
+
+Now pick an option. Did they find conventional medical practice helpful in their recovery? If any of the conventional methods were helpful, reply `helpful`. If some were helpful but only helped a little, reply `partially`. If none were helpful reply `unhelpful`. If the text is confusing or doesn't make it clear, respond `unclear`.
+
+[[pick:conventional|helpful,partially_helpful,unhelpful,unclear,no_evidence]]
+
+
+¡OBLIVIATE
+
+Did the patient find complementary and alternative medicine (CAM) helpful in their recovery? For CAM we use the NCCIH (US National Center for Complementary and Integrative Health) definition:
+
+> “Complementary and alternative medicine (CAM) is a broad domain of healing resources that encompasses all health systems, modalities, and practices and their accompanying theories and beliefs, other than those intrinsic to the politically dominant health system of a particular society or culture in a given historical period.”
+
+Extract a quote or quotes from the transcript would help us make this classification. ONLY INCLUDE QUOTES FROM THE TEXT ABOVE. DO NOT FABRICATE QUOTES. If it's unclear from the text, say why and what the best evidence is given the transcript.
+
+[[cam__evidence]]
+
+Now pick an option. Did the patient find complementary and alternative medicine helpful in their recovery? If any of the CAM methods were helpful, reply `helpful`. If some were helpful but only helped a little, reply `partially`. If none were helpful reply `unhelpful`. If the text is confusing or doesn't make it clear, respond `unclear`.
+
+[[pick:cam|helpful,partially_helpful,unhelpful,unclear,no_evidence]]
+
+
+What type of CAM did the patient find helpful? Respond in a few words or short phrase describing the CAM they used. If no CAM was mentioned, respond `none`. Respond only with the word or phrase.
+
+[[cam_type]]
+
+
+¡OBLIVIATE
+
+We want to classify the type of CAM a patient describes as helpful.
+
+Possible categories are:
+
+Here’s a compact but inclusive classification scheme (≤10 categories) that captures all the CAM types you listed. It avoids redundancy by grouping overlapping interventions under broader but meaningful headings:
+
+1. **Dietary & Nutritional Interventions**
+   – dietary modification (e.g., AIP diet, Gerson therapy, elimination diets)
+   – supplements, herbal teas, fermented foods, essential oils, hydrotherapy, parasite cleansing
+
+2. **Traditional & Naturopathic Medicine**
+   – naturopathy, ayurveda, herbal medicine, home remedies, health coaching
+
+3. **Mind–Body Therapies**
+   – Internal Family Systems, Dr. Sarno’s approach, somatic tracking, trauma release, polyvagal-informed strategies, somatics, relaxation techniques
+
+4. **Meditation & Mindfulness Practices**
+   – meditation, mindfulness, breathwork, visualization, mantras, sound therapy, nature therapy
+
+5. **Brain Retraining & Psychological Conditioning**
+   – DNRS, “I can thrive,” mindset programs, tapping (EFT), self-regulation practices
+
+6. **Bodywork & Physical Therapies**
+   – massage, yoga, physiotherapy, breathing exercises, ear wiggling, cold therapy
+
+7. **Psychological & Psychotherapeutic Approaches**
+   – psychotherapy, counselling, trauma-focused therapies
+
+8. **Energy & Frequency-Based Therapies**
+   – acupuncture, frequency therapy (Rife, zapping, Spooky Two), environmental modification
+
+9. **Shamanic & Non-Western Ritual Therapies**
+   – Kambo (frog poison), ceremonial/spiritual practices
+
+10. **Other / Unclear**
+    – unspecified or unclear interventions
+
+
+This patient says they found this CAM helpful:
+
+<INPUT>
+{{cam_type}}
+</INPUT>
+
+These quotes are from an interview with the patient:
+<evidenc>
+{{cam__evidence}}
+</evidenc>
+
+Now choose options. Classify the CAM types they found helpful. If no CAM was mentioned, respond `none`.
+
+[[pick*:cam_classes|diet,naturopathy,mindbody,meditation,brain_retrain,bodywork,psychology,energy,shamanic,other,unclear,none]]
+
+Which was the primary or most helpful CAM type?  Choose based on the main type of CAM described as helpful. If no CAM was mentioned, respond `none`.
+
+[[pick:cam_main_class|diet,naturopathy,mindbody,meditation,brain_retrain,bodywork,psychology,energy,shamanic,other,unclear,none]]
+
+
+¡OBLIVIATE
+
+Did an individual professional help the patient recover from CFS/ME or long covid? For example this might be a doctor, therapist, coach or some other person who is trained to deliver any kind of care intended to be therapeutic.
+
+Extract a quote or quotes from the transcript would help us make this classification. ONLY INCLUDE QUOTES FROM THE TEXT ABOVE. DO NOT FABRICATE QUOTES. If it's unclear from the text, say why and what the best evidence is given the transcript.
+
+[[professional_helped__evidence]]
+
+Now pick an option. Did an individual professional help the patient recover? If no professional was mentioned, respond `none`.
+Only respond yes if the individual mentions a specific professional of any kind who was instrumental in their recovery.
+
+[[pick:professional_helped|yes,no,unclear,no_evidence]]
+
+What type of professional helped the patient? Respond in a word or short phrase describing the professional. If no professional was mentioned, respond `none`. Respond only with the word or phrase.
+
+[[professional_type]]
+

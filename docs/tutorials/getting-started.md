@@ -10,17 +10,15 @@ This tutorial walks you through installing soak and running your first thematic 
 
 ## Installation
 
-Clone the repository:
+**Requirements:** Python 3.11+, [uv](https://docs.astral.sh/uv/getting-started/installation)
 
 ```bash
 git clone https://github.com/benwhalley/soak-package
 cd soak-package
-```
+uv tool install .
 
-Install the package:
-
-```bash
-uv pip install -e .
+# or for development
+# uv pip install -e .
 ```
 
 Set environment variables:
@@ -36,7 +34,7 @@ export LLM_API_BASE=https://api.openai.com/v1  # Optional
 
 Create a text file with some interview data. For this example, create `data/interview.txt`:
 
-```
+```txt
 I started feeling ill about two years ago. At first it was just fatigue,
 but then I couldn't get out of bed. The doctors didn't know what was wrong.
 
@@ -52,7 +50,7 @@ But this is different - it's like my body just stopped working properly.
 Use the built-in `zs` (zero-shot) pipeline for thematic analysis:
 
 ```bash
-uv run soak run zs data/interview.txt --output my_first_analysis
+soak run zs data/interview.txt --output my_first_analysis
 ```
 
 This will:
@@ -63,7 +61,8 @@ This will:
 - Verify quotes
 - Write a narrative report
 
-The process takes a few minutes depending on text length.
+The process takes a few minutes depending on text length of the interview.
+
 
 ### 3. View Results
 
@@ -78,17 +77,21 @@ You'll see:
 - **Themes**: Broader patterns grouping codes
 - **Narrative**: A written report of findings
 
-JSON output is also available:
+A JSON file containing all the model output and logging all LLM calls is also available:
 
 ```bash
 cat my_first_analysis.json | jq '.codes'
 ```
+
+
+
 
 ## Understanding the Output
 
 ### Codes
 
 Each code has:
+
 - **slug**: Short identifier (e.g., `illness_onset`)
 - **name**: Descriptive name (e.g., "Gradual onset of unexplained symptoms")
 - **description**: What the code represents
@@ -121,7 +124,7 @@ Themes group related codes:
 
 ### Narrative
 
-A written report ready for your results section:
+A written report (sort of) ready for your results section:
 
 > **Living with chronic illness uncertainty**: Participants described a gradual
 > onset of symptoms that were initially unexplained. As one participant noted,
@@ -131,20 +134,6 @@ A written report ready for your results section:
 
 - **Customize the analysis**: See [Customizing Your Analysis](customizing-analysis.md)
 - **Understand the pipeline**: See [Thematic Analysis How-to](../how-to/thematic-analysis.md)
-- **Work with multiple files**: `uv run soak run zs data/*.txt --output results`
+- **Work with multiple files**: `soak run zs data/*.txt --output results`
 - **Try classification**: See [Build a Classifier](../how-to/build-classifier.md)
 
-## Troubleshooting
-
-**Error: "LLM_API_KEY not set"**
-- Export your API key: `export LLM_API_KEY=sk-...`
-
-**Error: "No module named 'soak'"**
-- Make sure you installed: `uv pip install -e .`
-
-**Pipeline runs but produces empty results**
-- Check your API key is valid
-- Try a different model: `--model-name openai/gpt-4o`
-
-**Out of memory**
-- Reduce chunk size in pipeline or use fewer files
