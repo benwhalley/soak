@@ -372,7 +372,9 @@ class DAGConfig(BaseModel):
     temperature: float = 1.0
     chunk_size: int = 20000  # characters, so ~5k tokens or ~4k English words
     extra_context: Dict[str, Any] = {}
-    llm_credentials: LLMCredentials = Field(default_factory=get_default_llm_credentials, repr=False, exclude=True)
+    llm_credentials: LLMCredentials = Field(
+        default_factory=get_default_llm_credentials, repr=False, exclude=True
+    )
     scrub_pii: bool = False
     scrubber_model: str = "en_core_web_md"
     scrubber_salt: Optional[str] = Field(default="42", exclude=True)

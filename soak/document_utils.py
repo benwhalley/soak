@@ -167,7 +167,10 @@ def unpack_zip_to_temp_paths_if_needed(paths: list[str]) -> list[tuple[str, dict
                         for root, _, files in os.walk(tmpdir):
                             for f in files:
                                 file_path = os.path.join(root, f)
-                                metadata = {"zip_source": zip_stem, "zip_path": zip_path}
+                                metadata = {
+                                    "zip_source": zip_stem,
+                                    "zip_path": zip_path,
+                                }
                                 expanded_items.append((file_path, metadata))
                     continue
 
