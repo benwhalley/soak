@@ -1,13 +1,8 @@
-# Soak: Get to saturation faster 
-#### Graph-based pipelines for LLM-assisted qualitative text analysis
-
-
-## Overview
-
+# Get to saturation faster!
 
 <img src="docs/logo-sm.png" width="15%">
 
-`soak` is a tool to enable qualitative researchers to rapidly define and run llm-assisted text analysis pipelines and thematic analysis.
+**`soak` is a tool to enable qualitative researchers to rapidly define and run llm-assisted text analysis pipelines and thematic analysis.**
 
 The easiest way to see what `soak` does is to see sample outputs from the system.
 
