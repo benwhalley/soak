@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html>
+<meta charset="UTF-8">
+
+<head>
+    <title>Analysis Results - Raza-style zero shot TA</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/css/bootstrap.min.css"
+          integrity="sha512-rt/SrQ4UNIaGfDyEXZtNcyWvQeOq0QLygHluFQcSjaGB04IxWhal71tKuzP6K8eYXYB6vJV4pHkXcmFGGQ1/0w=="
+          crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+    <style>
+        body {
+            max-width: 900px;
+            margin: 40px auto;
+            padding: 20px;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            color: #333;
+        }
+
+        h1 {
+            color: #2c3e50;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 15px;
+            margin-bottom: 30px;
+        }
+
+        h2 {
+            color: #2c3e50;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            font-size: 1.8rem;
+        }
+
+        .narrative-section {
+            background-color: #f8f9fa;
+            padding: 30px;
+            border-radius: 8px;
+            border-left: 5px solid #3498db;
+            margin-bottom: 40px;
+            font-size: 1.05rem;
+            line-height: 1.8;
+        }
+
+        .code-card {
+            background: white;
+            border: 1px solid #e1e8ed;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            transition: box-shadow 0.2s;
+        }
+
+        .code-card:hover {
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+
+        .code-name {
+            font-size: 1.3rem;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 10px;
+        }
+
+        .code-slug {
+            display: inline-block;
+            background-color: #e8f4f8;
+            color: #2980b9;
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-size: 0.85rem;
+            font-family: 'Courier New', monospace;
+            margin-left: 10px;
+        }
+
+        .code-description {
+            color: #555;
+            margin-bottom: 15px;
+            font-size: 1.05rem;
+        }
+
+        .quotes-section {
+            margin-top: 15px;
+        }
+
+        .quotes-label {
+            font-weight: 600;
+            color: #7f8c8d;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 10px;
+        }
+
+        .quote {
+            background-color: #fafafa;
+            border-left: 3px solid #95a5a6;
+            padding: 12px 15px;
+            margin-bottom: 10px;
+            font-style: italic;
+            color: #555;
+            border-radius: 4px;
+        }
+
+        .theme-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 8px;
+            padding: 25px;
+            margin-bottom: 25px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .theme-name {
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin-bottom: 12px;
+        }
+
+        .theme-description {
+            margin-bottom: 15px;
+            font-size: 1.05rem;
+            opacity: 0.95;
+        }
+
+        .theme-codes {
+            margin-top: 15px;
+        }
+
+        .theme-codes-label {
+            font-weight: 600;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 8px;
+            opacity: 0.9;
+        }
+
+        .code-badge {
+            display: inline-block;
+            background-color: rgba(255, 255, 255, 0.2);
+            padding: 5px 12px;
+            border-radius: 20px;
+            margin-right: 8px;
+            margin-bottom: 8px;
+            font-size: 0.9rem;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .meta-info {
+            color: #7f8c8d;
+            font-size: 0.9rem;
+            margin-bottom: 30px;
+            padding: 15px;
+            background-color: #ecf0f1;
+            border-radius: 6px;
+        }
+
+        .section-divider {
+            border-top: 2px solid #e1e8ed;
+            margin: 50px 0 30px 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Raza-style zero shot TA</h1>
+
+        
+        <div class="meta-info">
+            
+            <strong>persona:</strong> Experienced researcher.<br>
+            
+            <strong>research_question:</strong> Our research question is to understand the experience of patients who have recovered (either partially or fully) from CFS or ME.<br>
+            
+        </div>
+        
+        <div class="meta-info">
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/bRidO1PiZJs.txt, 
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/aS8CQtc9DmA.txt, 
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/ba2LcetNybI.txt, 
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/acWL9FBKr3o.txt, 
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/as7I55hY29k.txt, 
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/aGKbypa8fhI.txt, 
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/README.txt, 
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/aOUUTEeIiS0.txt, 
+            
+            /Users/benwhalley/dev/soak-package/soak/data/cfs/aTvSX_toNL4.txt, 
+            
+        </div>
+        
+        
+        
+
+        <h2>Summary</h2>
+        <div class="narrative-section">
+        <p><strong>Whole life transformation and redefinition of identity after CFS/ME:</strong>
+Participants described dramatic shifts in identity and daily life resulting from the sudden onset and persistence of CFS/ME. Many recounted a rapid and complete loss of physical energy that changed routines and activities: &ldquo;halfway up the hill I thought I don&rsquo;t know what&rsquo;s wrong with me I just can&rsquo;t go any further&rdquo;; &ldquo;I was there for the next eighteen months was in bed&rdquo;. These disruptions prompted a reevaluation of career, purpose, and relationships, with some experiencing loss and grief for former selves, yet also discovering new meaning and gratitude. One participant noted, &ldquo;I typically am a very active person &hellip; but there is a phase in my life where I just started to get really tired and I didn&rsquo;t have the motivation to go out and do as many activities,&rdquo; illustrating the profound impact of illness on functioning and identity.</p>
+<p><strong>Inner conflict accepting diagnosis, labels, and uncertainty of recovery:</strong>
+The process of accepting the CFS/ME diagnosis was often marked by ambivalence and uncertainty. Participants oscillated between denying and reluctantly accepting medical labels, with feelings ranging from relief to discomfort. One shared, &ldquo;I&rsquo;ve never been one to actually accept that that&rsquo;s going to be the rest of my life&rdquo;; another reflected, &ldquo;I just wasn&rsquo;t going to have it.&rdquo; Validation from loved ones contrasted sharply with frustration encountered from outsiders and professionals. The tension between internal understanding and external recognition was a recurring experience: &ldquo;I mean I knew I had it &hellip; part of it was probably just ignorance.&rdquo;</p>
+<p><strong>Family, social support, and isolation in the recovery process:</strong>
+Support networks emerged as vital during illness, providing practical help and emotional stability. Loved ones were described as instrumental in maintaining family routines: &ldquo;I had quite a support group lovely support group who fetched and carried and did everything for me,&rdquo; and &ldquo;the children were well looked after and they used to come home in the afternoons and sit in the bed with me.&rdquo; Yet, participants often felt misunderstood by those outside their immediate circle, leading to emotional isolation and a sense of detachment: &ldquo;had a lady that used to do the cooking.&rdquo; These dynamics highlighted both the central role and limitations of social support during recovery.</p>
+<p><strong>Relentless drive, overexertion, and necessity of boundaries in recovery:</strong>
+A persistent compulsion to maintain activity despite exhaustion was common, frequently leading to overexertion and severe relapse. &ldquo;I kept pushing myself pushing myself&rdquo; and &ldquo;even when I was tired I wouldn&rsquo;t let myself not go,&rdquo; described the internal drive that often exacerbated symptoms. The process of recovery demanded learning and maintaining strict boundaries: &ldquo;The hardest for me was learning boundaries&rdquo; and &ldquo;I&rsquo;ve had to put in place where &hellip; I let my phone go to voicemail.&rdquo; These new limits were difficult to negotiate but central to ongoing improvement.</p>
+<p><strong>Emotional and psychological transformation through healing:</strong>
+Recovery was also described as a journey through emotional and psychological adjustment, involving trauma work, increased self-awareness, and authentic expression of needs. One participant discussed the need for emotional processing: &ldquo;I kept pushing myself pushing myself,&rdquo; while another described realizing the value of boundaries and emotional honesty: &ldquo;I&rsquo;ve had to put in place where &hellip; I let my phone go to voicemail.&rdquo; Learning to interpret bodily signals and addressing emotional suppression provided a new sense of agency and empowerment.</p>
+<p><strong>Hope, resilience, and self-empowerment as foundations for recovery:</strong>
+Resilience and hope were consistently described as foundational to the recovery journey. Participants maintained an unwavering belief in the possibility of improvement: &ldquo;I&rsquo;m just a very positive person I think I&rsquo;m also obstinate,&rdquo; and &ldquo;I&rsquo;ve never ever thought I&rsquo;m not going to get better you know I&rsquo;ve always thought I know I can I can get on top of it maybe not be healed from it.&rdquo; Gratitude and empowering self-talk were recurring strategies that facilitated progress, with a focus on daily small gains and mutual support.</p>
+<p><strong>Holistic, spiritual, and neurocognitive approaches to recovery:</strong>
+Participants reported that shifting beyond symptom management towards holistic wellness was transformative for recovery. Engagement in brain retraining generated newfound hope and confidence: &ldquo;I was not impressed I thought no I&rsquo;m going to find somebody else to watch,&rdquo; later changing to &ldquo;then working with Jason &hellip; it was quite soon &hellip; I am confident that this is this is going to work this is a good thing.&rdquo; Spiritual healing, mindset shifts, and neurocognitive techniques opened novel pathways for ongoing self-regulation and personal growth.</p>   
+
+        </div>
+        
+        
+        <div class="section-divider"></div>
+        
+        <style>
+            a.code-badge {
+  color: inherit;
+  text-decoration: none;
+}
+
+a.code-badge:hover {
+  text-decoration: underline;
+}
+</style>
+
+        <h2>Themes</h2>
+        
+    
+        
+        <div class="theme-card">
+            <div class="theme-name">Whole life transformation and redefinition of identity after CFS/ME</div>
+            <div class="theme-description">Participants experienced dramatic shifts in identity, daily functioning, and personal values as a result of CFS/ME. These changes were marked by sudden loss of energy, career disruptions, and transformation of relationships with work, food, and purpose. Many found meaning and new worth beyond prior achievements. The illness forced deep reflection, ongoing adaptation, and growth beyond previous personal limits.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-loss-energy-daily-life-change" class="code-badge">loss-energy-daily-life-change
+                    </a>        
+                
+                    <a href="#code-struggle-rest-meditation" class="code-badge">struggle-rest-meditation
+                    </a>        
+                
+                    <a href="#code-shift-career-purpose" class="code-badge">shift-career-purpose
+                    </a>        
+                
+                    <a href="#code-transformation-food-relation" class="code-badge">transformation-food-relation
+                    </a>        
+                
+                    <a href="#code-fear-pregnancy-illness" class="code-badge">fear-pregnancy-illness
+                    </a>        
+                
+                    <a href="#code-loss-identity-purpose" class="code-badge">loss-identity-purpose
+                    </a>        
+                
+                    <a href="#code-shock-grief-loss-identity" class="code-badge">shock-grief-loss-identity
+                    </a>        
+                
+                    <a href="#code-discover-new-purpose-gratitude" class="code-badge">discover-new-purpose-gratitude
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">Inner conflict accepting diagnosis, labels, and uncertainty of recovery</div>
+            <div class="theme-description">A recurring ambivalence marked participants’ experience of their diagnosis and recovery. Some vacillated between accepting and denying the label of ME/CFS, questioning its meaning and long-term significance. Receiving validation brought relief, but also confusion, frustration with outsiders, and discomfort with medical labels. Hope was maintained in the face of skepticism, medical uncertainty, and fluctuating symptom explanation.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-ambivalence-acceptance-diagnosis" class="code-badge">ambivalence-acceptance-diagnosis
+                    </a>        
+                
+                    <a href="#code-discomfort-diagnostic-labels" class="code-badge">discomfort-diagnostic-labels
+                    </a>        
+                
+                    <a href="#code-validation-loved-ones-frustration-outsiders" class="code-badge">validation-loved-ones-frustration-outsiders
+                    </a>        
+                
+                    <a href="#code-skepticism-defending-reality-recovery" class="code-badge">skepticism-defending-reality-recovery
+                    </a>        
+                
+                    <a href="#code-experiencing-relief-devastation-diagnosis" class="code-badge">experiencing-relief-devastation-diagnosis
+                    </a>        
+                
+                    <a href="#code-feeling-invalidated-doctors" class="code-badge">feeling-invalidated-doctors
+                    </a>        
+                
+                    <a href="#code-desiring-recognition-validation-doctors-community" class="code-badge">desiring-recognition-validation-doctors-community
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">Family, social support, and isolation in the recovery process</div>
+            <div class="theme-description">Support networks played a vital role in maintaining family life and facilitating recovery. Participants leaned on loved ones for practical and emotional help. However, they also faced misunderstanding and emotional isolation from outsiders and friends, underscoring both the importance and limits of social support during chronic illness and recovery.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-support-networks-family-life" class="code-badge">support-networks-family-life
+                    </a>        
+                
+                    <a href="#code-family-recognizes-supports-recovery-outsiders-misunderstand-me" class="code-badge">family-recognizes-supports-recovery-outsiders-misunderstand-me
+                    </a>        
+                
+                    <a href="#code-validation-loved-ones-frustration-outsiders" class="code-badge">validation-loved-ones-frustration-outsiders
+                    </a>        
+                
+                    <a href="#code-feeling-detachment-alienation-friends" class="code-badge">feeling-detachment-alienation-friends
+                    </a>        
+                
+                    <a href="#code-feeling-emotionally-isolated-university" class="code-badge">feeling-emotionally-isolated-university
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">Relentless drive, overexertion, and necessity of boundaries in recovery</div>
+            <div class="theme-description">A persistent compulsion to ‘keep going’ led participants to overexert themselves, often triggering relapses and setbacks. The hardest aspect of recovery was learning to set and maintain strict physical, emotional, and social boundaries. Acknowledging limits became essential, even when driven to maintain normalcy or productivity.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-persistent-drive-exhaustion" class="code-badge">persistent-drive-exhaustion
+                    </a>        
+                
+                    <a href="#code-overexertion-relapse" class="code-badge">overexertion-relapse
+                    </a>        
+                
+                    <a href="#code-learning-boundaries-health" class="code-badge">learning-boundaries-health
+                    </a>        
+                
+                    <a href="#code-learning-boundaries-trauma-prior-symptoms" class="code-badge">learning-boundaries-trauma-prior-symptoms
+                    </a>        
+                
+                    <a href="#code-struggling-normalcy-identity-work" class="code-badge">struggling-normalcy-identity-work
+                    </a>        
+                
+                    <a href="#code-longing-return-normal-routines-daily-life" class="code-badge">longing-return-normal-routines-daily-life
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">Emotional and psychological transformation through healing</div>
+            <div class="theme-description">Recovery journeys involved deep emotional processing, including trauma work, emotional suppression, and increased self-awareness. Many learned to authentically express needs and emotions, interpreting bodily signals as emotional messages. Acceptance of emotional work fostered empowerment, internal peace, and a new sense of control and agency over recovery.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-discover-importance-emotional-processing-trauma-work-healing" class="code-badge">discover-importance-emotional-processing-trauma-work-healing
+                    </a>        
+                
+                    <a href="#code-learning-express-needs-emotions-authentically-recovery" class="code-badge">learning-express-needs-emotions-authentically-recovery
+                    </a>        
+                
+                    <a href="#code-recognizing-impact-emotional-suppression-stress-chronic-symptoms" class="code-badge">recognizing-impact-emotional-suppression-stress-chronic-symptoms
+                    </a>        
+                
+                    <a href="#code-reclaim-agency-empowerment-intuitive-healing-self-compassion" class="code-badge">reclaim-agency-empowerment-intuitive-healing-self-compassion
+                    </a>        
+                
+                    <a href="#code-internal-peace-nonresistance-ongoing-symptoms" class="code-badge">internal-peace-nonresistance-ongoing-symptoms
+                    </a>        
+                
+                    <a href="#code-separating-self-identity-stress-pain-reactions-lessens-burden" class="code-badge">separating-self-identity-stress-pain-reactions-lessens-burden
+                    </a>        
+                
+                    <a href="#code-acknowledging-role-perfectionism-people-pleasing-self-criticism-perpetuate-symptoms" class="code-badge">acknowledging-role-perfectionism-people-pleasing-self-criticism-perpetuate-symptoms
+                    </a>        
+                
+                    <a href="#code-discovering-patterns-intergenerational-familial-trauma-influencing-illness" class="code-badge">discovering-patterns-intergenerational-familial-trauma-influencing-illness
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">Hope, resilience, and self-empowerment as foundations for recovery</div>
+            <div class="theme-description">An unwavering sense of hope and belief in recovery persisted even in periods of desperation. Participants clung to positive mindsets, found motivation in small improvements and stories of others, and adopted active self-monitoring and self-management practices. Resilience—through gratitude, empowering self-talk, and sharing hope—underpinned their progress and ability to sustain recovery.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-innate-positivity-recovery" class="code-badge">innate-positivity-recovery
+                    </a>        
+                
+                    <a href="#code-clinging-hope-intuitive-belief-eventual-recovery" class="code-badge">clinging-hope-intuitive-belief-eventual-recovery
+                    </a>        
+                
+                    <a href="#code-vital-role-hope-recovery-stories-motivation" class="code-badge">vital-role-hope-recovery-stories-motivation
+                    </a>        
+                
+                    <a href="#code-providing-validation-hope-others-facing-cfs-me-recovery" class="code-badge">providing-validation-hope-others-facing-cfs-me-recovery
+                    </a>        
+                
+                    <a href="#code-daily-gratitude-refusal-take-health-granted" class="code-badge">daily-gratitude-refusal-take-health-granted
+                    </a>        
+                
+                    <a href="#code-searching-meaning-understanding-illness-experience" class="code-badge">searching-meaning-understanding-illness-experience
+                    </a>        
+                
+                    <a href="#code-active-self-monitoring-management-prevents-relapse-recovery" class="code-badge">active-self-monitoring-management-prevents-relapse-recovery
+                    </a>        
+                
+                    <a href="#code-belief-individualized-recovery-plans-tailored-personal-circumstances" class="code-badge">belief-individualized-recovery-plans-tailored-personal-circumstances
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        <div class="theme-card">
+            <div class="theme-name">Holistic, spiritual, and neurocognitive approaches to recovery</div>
+            <div class="theme-description">Participants described how recovery was fostered by shifting focus beyond symptom management toward holistic wellness, spiritual healing, and neurocognitive retraining. Engagement in practices like brain retraining, spiritual awakening, and emotion-focused psychotherapy facilitated novel, transformative experiences of recovery, opening new avenues for self-regulation and ongoing personal growth.</div>
+            
+            <div class="theme-codes">
+                <div class="theme-codes-label">Related Codes:</div>
+                
+                    <a href="#code-brain-retraining-hope" class="code-badge">brain-retraining-hope
+                    </a>        
+                
+                    <a href="#code-shifting-focus-holistic-support-whole-body-recovery" class="code-badge">shifting-focus-holistic-support-whole-body-recovery
+                    </a>        
+                
+                    <a href="#code-discovery-deepening-spiritual-healing-faith" class="code-badge">discovery-deepening-spiritual-healing-faith
+                    </a>        
+                
+                    <a href="#code-navigating-spiritual-awakening-integrating-mystical-experiences-post-illness" class="code-badge">navigating-spiritual-awakening-integrating-mystical-experiences-post-illness
+                    </a>        
+                
+                    <a href="#code-experiencing-rapid-physical-mental-transformation-engaging-recovery" class="code-badge">experiencing-rapid-physical-mental-transformation-engaging-recovery
+                    </a>        
+                
+                    <a href="#code-healing-promoted-cultivating-joy-deep-self-induced-healing" class="code-badge">healing-promoted-cultivating-joy-deep-self-induced-healing
+                    </a>        
+                
+                    <a href="#code-reframing-illness-stress-driven-spontaneous-relief" class="code-badge">reframing-illness-stress-driven-spontaneous-relief
+                    </a>        
+                
+                    <a href="#code-recovery-hinges-changing-relationship-pain-memory-neuroplasticity" class="code-badge">recovery-hinges-changing-relationship-pain-memory-neuroplasticity
+                    </a>        
+                
+                    <a href="#code-emotion-focused-psychotherapy-deeper-healing" class="code-badge">emotion-focused-psychotherapy-deeper-healing
+                    </a>        
+                
+            </div>
+            
+        </div>
+        
+        
+
+        <div class="section-divider"></div>
+        
+        
+    
+        <h2>Codes</h2>
+        
+        <div class="code-card" id="code-loss-energy-daily-life-change">
+            <div class="code-name">
+                Sudden loss of physical energy completely changed daily functioning
+                <span class="code-slug">loss-energy-daily-life-change</span>
+            </div>
+            <div class="code-description">Participants describe a rapid and total depletion of physical energy, dramatically changing their ability to engage in daily activities and routines. This sudden loss led to a transition from active living to being bedbound or withdrawing, highlighting the severe functional impact of CFS/ME onset.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (3)</div>
+                
+                <div class="quote">
+                    halfway up the hill I thought I don't know what's wrong with me I just can't go any further
+                </div>
+                
+                <div class="quote">
+                    I was there for the next eighteen months was in bed
+                </div>
+                
+                <div class="quote">
+                    I typically am a very active person ... but there is a phase in my life where I just started to get really tired and I didn't have the motivation to go out and do as many activities
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-support-networks-family-life">
+            <div class="code-name">
+                Support networks were fundamental for maintaining family life
+                <span class="code-slug">support-networks-family-life</span>
+            </div>
+            <div class="code-description">Having supportive networks of family and friends was pivotal for maintaining daily life and caring for loved ones during the most severe periods of illness. Outside assistance provided practical help and emotional stability, underscoring its central role in survival and family continuity.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (3)</div>
+                
+                <div class="quote">
+                    I had quite a support group lovely support group who fetched and carried and did everything for me
+                </div>
+                
+                <div class="quote">
+                    had a lady that used to do the cooking
+                </div>
+                
+                <div class="quote">
+                    the children were well looked after and they used to come home in the afternoons and sit in the bed with me
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-overexertion-relapse">
+            <div class="code-name">
+                Repeated overexertion led to severe relapses and forced life changes
+                <span class="code-slug">overexertion-relapse</span>
+            </div>
+            <div class="code-description">Unrelenting physical activity despite worsening symptoms triggered major relapses, leading to drastic life adjustments such as retirement and dependence. These acute episodes marked a clear turning point, forcing reconsideration of personal limits and lifestyle changes.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (3)</div>
+                
+                <div class="quote">
+                    I was walking like ten miles every day just to try and get exercise
+                </div>
+                
+                <div class="quote">
+                    I picked up two viruses ... I just can't get out of bed I can't do this again
+                </div>
+                
+                <div class="quote">
+                    then I couldn't really do anything for myself
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-persistent-drive-exhaustion">
+            <div class="code-name">
+                Persistent drive to function despite chronic exhaustion
+                <span class="code-slug">persistent-drive-exhaustion</span>
+            </div>
+            <div class="code-description">Participants describe an ongoing internal compulsion to remain active, productive, or exercise rigorously despite continued exhaustion. This drive often exacerbated their illness, leading to repeated collapses and setbacks in recovery.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (3)</div>
+                
+                <div class="quote">
+                    I kept pushing myself pushing myself
+                </div>
+                
+                <div class="quote">
+                    even when I was tired I wouldn't let myself not go
+                </div>
+                
+                <div class="quote">
+                    I'd wake up in the morning at five o'clock ... grab my bag and I was gone before I'd had anything to drink or eat or anything
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-ambivalence-acceptance-diagnosis">
+            <div class="code-name">
+                Ambivalence between acceptance and denial of CFS/ME diagnosis
+                <span class="code-slug">ambivalence-acceptance-diagnosis</span>
+            </div>
+            <div class="code-description">Throughout illness, participants vacillate between denial and reluctant acceptance of the CFS/ME diagnosis, sometimes refusing to believe it defines their futures. Their feelings fluctuate from dismissing severity to accepting the need for self-management and pacing.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (3)</div>
+                
+                <div class="quote">
+                    I've never been one to actually accept that that's going to be the rest of my life
+                </div>
+                
+                <div class="quote">
+                    I mean I knew I had it ... part of it was probably just ignorance
+                </div>
+                
+                <div class="quote">
+                    I just wasn't going to have it
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-brain-retraining-hope">
+            <div class="code-name">
+                Brain retraining shifted perspective and generated hope for recovery
+                <span class="code-slug">brain-retraining-hope</span>
+            </div>
+            <div class="code-description">Learning about brain retraining, stress responses, and participation in targeted programs transformed participants’ perspectives. Initial skepticism gave way to practical hope and belief in possible recovery, altering self-management and daily experiences.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (3)</div>
+                
+                <div class="quote">
+                    I was not impressed I thought no I'm going to find somebody else to watch
+                </div>
+                
+                <div class="quote">
+                    then working with Jason ... it was quite soon ... I am confident that this is this is going to work this is a good thing
+                </div>
+                
+                <div class="quote">
+                    having done worked with him I found it really really helpful
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-learning-boundaries-health">
+            <div class="code-name">
+                Learning to set boundaries was the hardest process for recovery
+                <span class="code-slug">learning-boundaries-health</span>
+            </div>
+            <div class="code-description">Participants discovered the necessity—and challenge—of setting boundaries to prevent overcommitment and relapse. Struggles included ignoring requests or saying no, with strong personal limits seen as crucial for sustained health.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (3)</div>
+                
+                <div class="quote">
+                    I've had to put in place where ... I let my phone go to voicemail
+                </div>
+                
+                <div class="quote">
+                    they might be watching ... I just did it go to voicemail because I can deal with it when I want to
+                </div>
+                
+                <div class="quote">
+                    The hardest for me was learning boundaries
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-innate-positivity-recovery">
+            <div class="code-name">
+                Never gave up belief in recovery due to positivity and obstinacy
+                <span class="code-slug">innate-positivity-recovery</span>
+            </div>
+            <div class="code-description">Throughout years of illness, participants retained hope and determination to improve, fueled by an innate positivity and stubbornness. This resilient mindset prevented resignation and encouraged engagement with new recovery approaches.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (3)</div>
+                
+                <div class="quote">
+                    I'm just a very positive person I think I'm also obstinate
+                </div>
+                
+                <div class="quote">
+                    you're not going to tell me how I'm going to be for the rest of my life
+                </div>
+                
+                <div class="quote">
+                    I've never ever thought I'm not going to get better you know I've always thought I know I can I can get on top of it maybe not be healed from it
+                </div>
+                
+            </div>
+            
+        </div>
+        
+        <div class="code-card" id="code-struggle-rest-meditation">
+            <div class="code-name">
+                Struggling to achieve real restorative rest and relaxation
+                <span class="code-slug">struggle-rest-meditation</span>
+            </div>
+            <div class="code-description">Participants report difficulties attaining genuine relaxation or restful recovery, often undermined by habits like phone use or challenges with meditation. True restorative practices required conscious effort and remained hard despite other improvements.</div>
+            
+            <div class="quotes-section">
+                <div class="quotes-label">Supporting Quotes (3)</div>
+                
+                <div class="quote">
+                    The problem I have is the one full relaxation I'm not good at relaxing I'm really really not good at relaxing
+                </div>
+                
+                <div class="quote">
+                    meditation is something I just ... I've always struggled with it
+                </div>
+                
+                <div class="quote">
+                    I'm not good at resting I really am not ... I'll sit there for a bit and then I think let me just see what's on my phone
+                </div>
+                
+            </div>
+            
+        </div>
+        
+    
+    </div>
+</body>
+</html>
