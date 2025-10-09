@@ -10,11 +10,13 @@ nodes:
 
   - name: extract_relevant_excepts
     type: Map
+    temperature: 0.3
     inputs:
       - chunks
       
   - name: codes_and_themes_per_chunk
     type: Map
+    temperature: 0.5
     max_tokens: 16000
     inputs:
       - extract_relevant_excepts
@@ -31,12 +33,14 @@ nodes:
 
   - name: codes
     type: Transform
+    temperature: 0.5
     max_tokens: 32000
     inputs:
       - all_codes
 
   - name: themes
     type: Transform
+    temperature: 0.8
     max_tokens: 32000
     inputs:
       - codes
@@ -49,6 +53,7 @@ nodes:
 
   - name: narrative
     type: Transform
+    temperature: 0.8
     inputs:
       - themes
       - codes
