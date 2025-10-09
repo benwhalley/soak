@@ -61,6 +61,38 @@ def generate_html_output(pipeline: QualitativeAnalysisPipeline, template: str) -
     return pipeline.to_html(template_path=str(template_path))
 
 
+def load_pipeline_json(input_json: str) -> QualitativeAnalysisPipeline:
+    """Load and validate a pipeline from a JSON file.
+
+    Args:
+        input_json: Path to JSON file
+
+    Returns:
+        QualitativeAnalysisPipeline instance
+
+    Raises:
+        typer.Exit: If file not found or validation fails
+    """
+    input_path = Path(input_json)
+    if not input_path.exists():
+        print(f"Error: File not found: {input_json}", file=sys.stderr)
+        raise typer.Exit(1)
+
+    
+    with open(input_json, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    logger.info(f"Read pipeline from {input_json}")
+    
+    
+    try:
+        pipeline = QualitativeAnalysisPipeline.model_validate(data)
+        logger.info(f"Loaded pipeline: {pipeline.name}")
+        return pipeline
+    except Exception as e:
+        error_msg = format_exception_concise(e)
+        raise typer.BadParameter(f"Could not load as pipeline:\n{error_msg}")
+
+
 def resolve_template(template: str) -> Path:
     """Resolve template name or path to actual template file path.
 
@@ -190,6 +222,7 @@ def run(
         raise typer.BadParameter(f"Pipeline validation error: {e}")
 
     # Override default_context with CLI-provided values
+    logger.info(f"Setting params: {context}")
     if context:
         for item in context:
             if "=" not in item:
@@ -334,6 +367,140 @@ def run(
         logger.info(f"Dumping execution details to {dump_path}")
         analysis.export_execution(dump_path, metadata=metadata)
         print(f"✓ Execution dump saved to: {str(dump_path)}", file=sys.stderr)
+
+
+@app.command()
+def export(
+    input_json: str = typer.Argument(
+        ..., help="Path to JSON file containing QualitativeAnalysisPipeline"
+    ),
+    output: str = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Output file path (without extension). If not specified, replaces input .json with .html",
+    ),
+    template: list[str] = typer.Option(
+        ["pipeline.html"],
+        "--template",
+        "-t",
+        help="Template name (in soak/templates) or path to custom HTML template (can be used multiple times)",
+    ),
+):
+    """Export a saved analysis result to HTML."""
+
+    # Load the pipeline
+    pipeline = load_pipeline_json(input_json)
+
+    # Generate HTML for each template
+    html_outputs = {}
+    for tmpl in template:
+        try:
+            html_outputs[tmpl] = generate_html_output(pipeline, tmpl)
+        except Exception as e:
+            error_msg = format_exception_concise(e)
+            raise typer.BadParameter(
+                f"Error generating HTML output for template '{tmpl}':\n{error_msg}"
+            )
+
+    # Determine output path
+    input_path = Path(input_json)
+    if output is None:
+        output = str(input_path.with_suffix(""))
+
+    # Write HTML files
+    for tmpl in template:
+        template_stem = Path(resolve_template(tmpl)).stem
+        output_html = f"{output}_{template_stem}.html"
+        logger.info(
+            f"Writing HTML output with template '{template_stem}' to {output_html}"
+        )
+        with open(output_html, "w", encoding="utf-8") as f:
+            f.write(html_outputs[tmpl])
+
+    if len(template) == 1:
+        print(f"Successfully exported to {output}_{Path(resolve_template(template[0])).stem}.html")
+    else:
+        print(f"Successfully exported {len(template)} HTML files to {output}_*.html")
+
+
+@app.command()
+def dump(
+    input_json: str = typer.Argument(
+        ..., help="Path to JSON file from a saved pipeline run"
+    ),
+    output_folder: str = typer.Option(
+        None,
+        "--output-folder",
+        "-o",
+        help="Output folder path. If not specified, creates <input_stem>_dump/ in current directory",
+    ),
+    template: list[str] = typer.Option(
+        None,
+        "--template",
+        "-t",
+        help="Generate HTML files in dump using template(s) (can be used multiple times)",
+    ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        "-F",
+        help="Overwrite output folder if it already exists",
+    ),
+):
+    """Dump detailed DAG execution to folder structure for inspection."""
+
+    # Load the pipeline
+    pipeline = load_pipeline_json(input_json)
+
+    # Determine output folder
+    input_path = Path(input_json)
+    if output_folder is None:
+        output_folder = f"{input_path.stem}_dump"
+
+    output_path = Path(output_folder)
+
+    # Check if output folder exists
+    if output_path.exists():
+        if not force:
+            print(
+                f"Error: Output folder already exists: {output_path}", file=sys.stderr
+            )
+            print(f"Use --force/-F to overwrite", file=sys.stderr)
+            raise typer.Exit(1)
+        else:
+            logger.info(f"Removing existing folder: {output_path}")
+            shutil.rmtree(output_path)
+
+    # Export execution details
+    metadata = {
+        "source_file": str(input_path),
+        "command": f"soak dump {input_json}",
+    }
+
+    logger.info(f"Dumping execution details to {output_path}")
+    pipeline.export_execution(output_path, metadata=metadata)
+
+    # Generate HTML files if template(s) specified
+    if template:
+        for tmpl in template:
+            try:
+                html_content = generate_html_output(pipeline, tmpl)
+                template_stem = Path(resolve_template(tmpl)).stem
+                html_path = output_path / f"analysis_{template_stem}.html"
+                logger.info(f"Writing HTML with template '{template_stem}' to {html_path}")
+                with open(html_path, "w", encoding="utf-8") as f:
+                    f.write(html_content)
+            except Exception as e:
+                error_msg = format_exception_concise(e)
+                print(
+                    f"Warning: Error generating HTML for template '{tmpl}': {error_msg}",
+                    file=sys.stderr,
+                )
+
+    print(f"\n✓ Execution dump saved to: {output_path}")
+    if template:
+        print(f"✓ Generated {len(template)} HTML file(s) in dump folder")
 
 
 @app.command()

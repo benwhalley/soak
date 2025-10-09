@@ -369,7 +369,6 @@ class DAGConfig(BaseModel):
     document_paths: Optional[List[Union[str, Tuple[str, Dict[str, Any]]]]] = []
     documents: List[Union[str, "TrackedItem"]] = []
     model_name: str = "litellm/gpt-4.1-mini"
-    temperature: float = 1.0
     chunk_size: int = 20000  # characters, so ~5k tokens or ~4k English words
     extra_context: Dict[str, Any] = {}
     llm_credentials: LLMCredentials = Field(
@@ -378,9 +377,10 @@ class DAGConfig(BaseModel):
     scrub_pii: bool = False
     scrubber_model: str = "en_core_web_md"
     scrubber_salt: Optional[str] = Field(default="42", exclude=True)
+    seed: int = 42
 
     def get_model(self):
-        return LLM(model_name=self.model_name, temperature=self.temperature)
+        return LLM(model_name=self.model_name)
 
     def load_documents(self) -> List["TrackedItem"]:
         """Load documents and wrap them in TrackedItem for provenance tracking."""
@@ -715,10 +715,6 @@ Export Time: {datetime.now().isoformat()}
         for key, value in self.default_context.items():
             meta_content += f"  {key}: {value}\n"
 
-        meta_content += f"\nDAG Configuration:\n"
-        meta_content += f"  Model: {self.config.model_name}\n"
-        meta_content += f"  Temperature: {self.config.temperature}\n"
-        meta_content += f"  Chunk size: {self.config.chunk_size}\n"
         meta_content += f"  Documents: {len(self.config.documents)}\n"
 
         (output_dir / "meta.txt").write_text(meta_content)
@@ -777,8 +773,9 @@ class DAGNode(BaseModel):
     output: Optional[OutputUnion] = Field(default=None)
 
     def get_model(self):
-        if self.model_name or self.temperature:
-            m = LLM(model_name=self.model_name, temperature=self.temperature)
+        model_name = getattr(self, 'model_name', None)
+        if model_name:
+            m = LLM(model_name=model_name)
             return m
         return self.dag.config.get_model()
 
@@ -924,7 +921,7 @@ Parameters:
 
 class CompletionDAGNode(DAGNode):
     model_name: Optional[str] = None
-    temperature: Optional[float] = None
+    temperature: float = 1
     max_tokens: Optional[int] = None
 
     async def run(self, items: List[Any] = None) -> List[Any]:
@@ -1343,12 +1340,19 @@ class Map(ItemsNode, CompletionDAGNode):
 
                 async def run_and_store(index=idx, item=item):
                     async with semaphore:
+                        # Collect extra kwargs for LLM
+                        extra_kwargs = {}
+                        if self.max_tokens is not None:
+                            extra_kwargs['max_tokens'] = self.max_tokens
+                        extra_kwargs['temperature'] = self.temperature
+                        extra_kwargs['seed'] = self.dag.config.seed
+
                         results[index] = await self.task(
                             template=self.template,
                             context={**filtered_context, **item},
                             model=self.get_model(),
                             credentials=self.dag.config.llm_credentials,
-                            max_tokens=self.max_tokens,
+                            **extra_kwargs,
                         )
 
                 tg.start_soon(run_and_store)
@@ -1468,6 +1472,7 @@ class Classifier(ItemsNode, CompletionDAGNode):
     """
 
     type: Literal["Classifier"] = "Classifier"
+    temperature: float = 0.5
     template_text: str = None
     model_names: Optional[List[str]] = None  # Multiple models for agreement analysis
     agreement_fields: Optional[List[str]] = None  # Fields to calculate agreement on
@@ -1533,23 +1538,23 @@ class Classifier(ItemsNode, CompletionDAGNode):
                     ):
                         async with semaphore:
                             # Create model instance for this specific model
-                            model = LLM(
-                                model_name=current_model,
-                                temperature=(
-                                    self.temperature
-                                    if self.temperature is not None
-                                    else self.dag.config.temperature
-                                ),
-                            )
+                            model = LLM(model_name=current_model)
 
                             # Run the classification template
+                            # Collect extra kwargs for LLM
+                            extra_kwargs = {}
+                            if self.max_tokens is not None:
+                                extra_kwargs['max_tokens'] = self.max_tokens
+                            extra_kwargs['temperature'] = self.temperature
+                            extra_kwargs['seed'] = self.dag.config.seed
+
                             chatter_result = await chatter_async(
                                 multipart_prompt=self.template,
                                 context={**filtered_context, **item},
                                 model=model,
                                 credentials=self.dag.config.llm_credentials,
                                 action_lookup=get_action_lookup(),
-                                extra_kwargs={"max_tokens": self.max_tokens},
+                                extra_kwargs=extra_kwargs,
                             )
 
                             # Extract structured outputs from ChatterResult
@@ -1712,7 +1717,7 @@ class Classifier(ItemsNode, CompletionDAGNode):
         # Export prompts once (same for all models)
         prompts_folder = folder / "prompts"
         prompts_folder.mkdir(parents=True, exist_ok=True)
-
+    
         first_results = next(iter(self._model_results.values()))
         if not first_results:
             logger.warning(f"No results to export for {self.name}")
@@ -1741,6 +1746,33 @@ class Classifier(ItemsNode, CompletionDAGNode):
                 (prompts_folder / f"{i:04d}_{safe_id}_response.json").write_text(
                     json.dumps(result_item, indent=2, default=str)
                 )
+        
+        # Export responses for each model
+        responses_folder = folder / "responses"
+        responses_folder.mkdir(parents=True, exist_ok=True)
+
+        for model_name, results in self._model_results.items():
+            safe_model_name = model_name.replace("/", "_").replace(":", "_")
+
+            for i, result_item in enumerate(results):
+                item = (
+                    self._processed_items[i]
+                    if self._processed_items and i < len(self._processed_items)
+                    else None
+                )
+                safe_id = TrackedItem.make_safe_id(TrackedItem.extract_source_id(item))
+                file_prefix = f"{i:04d}_{safe_id}_{safe_model_name}"
+
+                # Export response for this model
+                if hasattr(result_item, "outputs"):
+                    (responses_folder / f"{file_prefix}_response.json").write_text(
+                        result_item.outputs.to_json()
+                    )
+                else:
+                    # Plain dict from JSON deserialization
+                    (responses_folder / f"{file_prefix}_response.json").write_text(
+                        json.dumps(result_item, indent=2, default=str)
+                    )
 
         # Export CSV for each model
         for model_name, results in self._model_results.items():
@@ -2028,6 +2060,13 @@ class Filter(ItemsNode, CompletionDAGNode):
 
                 async def run_and_store(index=idx, item=item):
                     async with semaphore:
+                        # Collect extra kwargs for LLM
+                        extra_kwargs = {}
+                        if self.max_tokens is not None:
+                            extra_kwargs['max_tokens'] = self.max_tokens
+                        extra_kwargs['temperature'] = self.temperature
+                        extra_kwargs['seed'] = self.dag.config.seed
+
                         # Run the filter template
                         chatter_result = await chatter_async(
                             multipart_prompt=self.template,
@@ -2035,7 +2074,7 @@ class Filter(ItemsNode, CompletionDAGNode):
                             model=self.get_model(),
                             credentials=self.dag.config.llm_credentials,
                             action_lookup=get_action_lookup(),
-                            extra_kwargs={"max_tokens": self.max_tokens},
+                            extra_kwargs=extra_kwargs,
                         )
                         results[index] = chatter_result
 
@@ -2298,13 +2337,20 @@ class Transform(ItemsNode, CompletionDAGNode):
 
         rt = render_strict_template(self.template, {**self.context, **items[0]})
 
+        # Collect extra kwargs for LLM
+        extra_kwargs = {}
+        if self.max_tokens is not None:
+            extra_kwargs['max_tokens'] = self.max_tokens
+        extra_kwargs['temperature'] = self.temperature
+        extra_kwargs['seed'] = self.dag.config.seed
+
         # call chatter as async function within the main event loop
         self.output = await chatter_async(
             multipart_prompt=rt,
             model=self.get_model(),
             credentials=self.dag.config.llm_credentials,
             action_lookup=get_action_lookup(),
-            extra_kwargs={"max_tokens": self.max_tokens},
+            extra_kwargs=extra_kwargs,
         )
         return self.output
 
@@ -3842,13 +3888,20 @@ class TransformReduce(CompletionDAGNode):
                         prompt = render_strict_template(
                             self.template_text, {**self.context, "input": batch}
                         )
+                        # Collect extra kwargs for LLM
+                        extra_kwargs = {}
+                        if self.max_tokens is not None:
+                            extra_kwargs['max_tokens'] = self.max_tokens
+                        extra_kwargs['temperature'] = self.temperature
+                        extra_kwargs['seed'] = self.dag.config.seed
+
                         async with semaphore:
                             results[index] = await chatter_async(
                                 multipart_prompt=prompt,
                                 model=self.get_model(),
                                 credentials=self.dag.config.llm_credentials,
                                 action_lookup=get_action_lookup(),
-                                extra_kwargs={"max_tokens": self.max_tokens},
+                                extra_kwargs=extra_kwargs,
                             )
 
                     tg.start_soon(run_and_store)
@@ -3860,12 +3913,20 @@ class TransformReduce(CompletionDAGNode):
         final_prompt = render_strict_template(
             self.template_text, {"input": current[0], **self.context}
         )
+
+        # Collect extra kwargs for LLM
+        extra_kwargs = {}
+        if self.max_tokens is not None:
+            extra_kwargs['max_tokens'] = self.max_tokens
+        extra_kwargs['temperature'] = self.temperature
+        extra_kwargs['seed'] = self.dag.config.seed
+
         final_response = await chatter_async(
             multipart_prompt=final_prompt,
             model=self.get_model(),
             credentials=self.dag.config.llm_credentials,
             action_lookup=get_action_lookup(),
-            extra_kwargs={"max_tokens": self.max_tokens},
+            extra_kwargs=extra_kwargs,
         )
 
         self.output = final_response
