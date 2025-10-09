@@ -21,9 +21,18 @@ def kappam_fleiss(ratings: pd.DataFrame) -> float:
         Fleiss' Kappa coefficient (0-1, higher is better)
     """
     try:
+        # Check for perfect agreement (no variance)
+        if ratings.nunique(axis=1).max() == 1:
+            # All raters agree on all items = perfect agreement
+            return 1.0
+
         cac = CAC(ratings, weights="identity")
         result = cac.fleiss()
         return round(float(result["est"]["coefficient_value"]), 4)
+    except ZeroDivisionError:
+        # No variance in data = perfect agreement
+        logger.debug("Perfect agreement detected (no variance)")
+        return 1.0
     except Exception as e:
         logger.warning(f"Failed to calculate Fleiss' Kappa: {e}")
         return float("nan")
@@ -39,9 +48,18 @@ def kripp_alpha(ratings: pd.DataFrame) -> float:
         Krippendorff's Alpha coefficient (0-1, higher is better)
     """
     try:
+        # Check for perfect agreement (no variance)
+        if ratings.nunique(axis=1).max() == 1:
+            # All raters agree on all items = perfect agreement
+            return 1.0
+
         cac = CAC(ratings, weights="identity")
         result = cac.krippendorff()
         return round(float(result["est"]["coefficient_value"]), 3)
+    except ZeroDivisionError:
+        # No variance in data = perfect agreement
+        logger.debug("Perfect agreement detected (no variance)")
+        return 1.0
     except Exception as e:
         logger.warning(f"Failed to calculate Krippendorff's Alpha: {e}")
         return float("nan")
@@ -76,9 +94,18 @@ def gwet_ac1(ratings: pd.DataFrame) -> float:
         Gwet's AC1 coefficient (0-1, higher is better)
     """
     try:
+        # Check for perfect agreement (no variance)
+        if ratings.nunique(axis=1).max() == 1:
+            # All raters agree on all items = perfect agreement
+            return 1.0
+
         cac = CAC(ratings, weights="identity")
         result = cac.gwet()
         return round(float(result["est"]["coefficient_value"]), 4)
+    except ZeroDivisionError:
+        # No variance in data = perfect agreement
+        logger.debug("Perfect agreement detected (no variance)")
+        return 1.0
     except Exception as e:
         logger.warning(f"Failed to calculate Gwet's AC1: {e}")
         return float("nan")
