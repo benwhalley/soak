@@ -1837,6 +1837,28 @@ class Classifier(ItemsNode, CompletionDAGNode):
                 rows, folder / f"classifications_{self.name}{suffix}{uid_suffix}.json"
             )
 
+        # Export combined long-form dataset for multi-model comparison
+        if len(self._model_results) >= 2:
+            from .helpers import build_combined_long_form_dataset
+
+            combined_df = build_combined_long_form_dataset(
+                self._model_results, self._processed_items
+            )
+
+            if not combined_df.empty:
+                uid_suffix = f"_{unique_id}" if unique_id else ""
+                export_to_csv(
+                    combined_df,
+                    folder / f"classifications_{self.name}_combined_long{uid_suffix}.csv",
+                )
+                export_to_html(
+                    combined_df,
+                    folder / f"classifications_{self.name}_combined_long{uid_suffix}.html",
+                )
+                logger.info(
+                    f"Exported combined long-form dataset with {len(combined_df)} rows"
+                )
+
         # Calculate and export agreement statistics if multiple models
         if len(self._model_results) >= 2:
             from .agreement import calculate_agreement_from_dataframes

@@ -1,6 +1,9 @@
 import hashlib
 import traceback
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import pandas as pd
 
 
 def format_exception_concise(exc: Exception) -> str:
@@ -108,3 +111,132 @@ def sanitize_for_filename(text: str) -> str:
     for char in dangerous_chars:
         result = result.replace(char, "_")
     return result
+
+
+def build_combined_long_form_dataset(
+    model_results: Dict[str, List[Any]],
+    processed_items: Optional[List[Any]] = None,
+) -> pd.DataFrame:
+    """Build a long-form dataset combining results from multiple models.
+
+    Creates a dataset where each row represents one model's response to one slot
+    for one input item, enabling easy comparison across models.
+
+    Args:
+        model_results: Dict mapping model_name -> list of result items
+        processed_items: Optional list of input items for metadata extraction
+
+    Returns:
+        DataFrame with columns: model_name, slot_name, filename, document,
+        item_id, index, slot_response_type, slot_options, response, and other metadata
+    """
+    from .models import TrackedItem  # Avoid circular import
+
+    combined_rows = []
+
+    for model_name, results in model_results.items():
+        for idx, output_item in enumerate(results):
+            # Extract base metadata
+            if processed_items and idx < len(processed_items):
+                base_metadata = TrackedItem.extract_export_metadata(
+                    processed_items[idx], idx
+                )
+            else:
+                base_metadata = {
+                    "item_id": f"item_{idx}",
+                    "document": f"item_{idx}",
+                    "index": idx,
+                }
+
+            # Extract slot-level responses
+            if hasattr(output_item, "results") and output_item.results:
+                # Use results dict for detailed slot information
+                for slot_name, segment_result in output_item.results.items():
+                    row = {
+                        **base_metadata,
+                        "model_name": model_name,
+                        "slot_name": slot_name,
+                        "slot_response_type": (
+                            segment_result.action
+                            if hasattr(segment_result, "action")
+                            else None
+                        ),
+                        "slot_options": (
+                            ",".join(segment_result.options)
+                            if hasattr(segment_result, "options")
+                            and segment_result.options
+                            else None
+                        ),
+                        "response": (
+                            str(segment_result.output)
+                            if hasattr(segment_result, "output")
+                            and segment_result.output is not None
+                            else (
+                                str(getattr(output_item.outputs, slot_name))
+                                if hasattr(output_item.outputs, slot_name)
+                                else None
+                            )
+                        ),
+                    }
+                    combined_rows.append(row)
+            elif hasattr(output_item, "outputs"):
+                # Fallback: use outputs dict if results not available
+                output_dict = (
+                    output_item.outputs
+                    if hasattr(output_item.outputs, "items")
+                    else {}
+                )
+                for slot_name, response_value in output_dict.items():
+                    if not slot_name.startswith("__"):
+                        row = {
+                            **base_metadata,
+                            "model_name": model_name,
+                            "slot_name": slot_name,
+                            "slot_response_type": None,
+                            "slot_options": None,
+                            "response": (
+                                str(response_value) if response_value is not None else None
+                            ),
+                        }
+                        combined_rows.append(row)
+            elif isinstance(output_item, dict):
+                # Plain dict from JSON deserialization
+                for slot_name, response_value in output_item.items():
+                    if not slot_name.startswith("__"):
+                        row = {
+                            **base_metadata,
+                            "model_name": model_name,
+                            "slot_name": slot_name,
+                            "slot_response_type": None,
+                            "slot_options": None,
+                            "response": (
+                                str(response_value) if response_value is not None else None
+                            ),
+                        }
+                        combined_rows.append(row)
+
+    if not combined_rows:
+        return pd.DataFrame()
+
+    df = pd.DataFrame(combined_rows)
+
+    # Reorder columns for readability
+    col_order = ["model_name", "slot_name"]
+    for col in ["filename", "document", "item_id", "index"]:
+        if col in df.columns:
+            col_order.append(col)
+    col_order.extend(["slot_response_type", "slot_options", "response"])
+    remaining_cols = [c for c in df.columns if c not in col_order]
+    col_order.extend(remaining_cols)
+    df = df[[c for c in col_order if c in df.columns]]
+
+    # Sort by filename, document identifiers, slot_name, model_name
+    sort_cols = [
+        c
+        for c in ["filename", "document", "item_id", "index", "slot_name", "model_name"]
+        if c in df.columns
+    ]
+    if sort_cols:
+        df = df.sort_values(by=sort_cols).reset_index(drop=True)
+
+    return df
