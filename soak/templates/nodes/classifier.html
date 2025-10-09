@@ -1,8 +1,6 @@
 <div class="node-result">
   <h5>{{ result.metadata.name }}</h5>
   <p class="text-muted">Type: <code>Classifier</code></p>
-
-  <p><strong>Number of models:</strong> {{ result.metadata.num_models }}</p>
   {% if result.metadata.model_names %}
   <p><strong>Models:</strong> {{ result.metadata.model_names|join(', ') }}</p>
   {% endif %}

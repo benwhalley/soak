@@ -192,7 +192,7 @@
         <div class="section-header">
             <h3>3. Node Results</h3>
         </div>
-
+        
         <div class="row">
             <div class="col-12">
                 {% for node in pipeline.nodes %}
@@ -208,7 +208,7 @@
             <div class="col-12">
                 <details>
                     <summary>Show Full Pipeline Details (JSON)</summary>
-                    <pre class="mt-3" style="font-size: 0.8rem; max-height: 500px; overflow-y: auto;">{{ detail|tojson(indent=2) }}</pre>
+                    <pre class="mt-3" style="font-size: 0.8rem; max-height: 500px; overflow-y: auto;">{{ detail|safe_tojson(indent=2) }}</pre>
                 </details>
             </div>
         </div>

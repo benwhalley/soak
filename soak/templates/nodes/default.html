@@ -11,6 +11,6 @@
     <strong>Error:</strong> {{ result.error }}
   </div>
   {% else %}
-  <pre>{{ result|tojson(indent=2) }}</pre>
+  <pre>{{ result|safe_tojson(indent=2) }}</pre>
   {% endif %}
 </div>
