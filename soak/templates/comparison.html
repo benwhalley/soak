@@ -139,8 +139,8 @@
                             <div class="card-header">Continuous Metrics</div>
                             <div class="card-body">
                                 <ul class="list-unstyled">
-                                    <li><strong>A→B (max similarity):</strong> {{ "%.3f"|format(comp.stats.a_b_most_similar) }}</li>
-                                    <li><strong>B→A (max similarity):</strong> {{ "%.3f"|format(comp.stats.b_a_most_similar) }}</li>
+                                    <li><strong>A→B (avg. best match):</strong> {{ "%.3f"|format(comp.stats.a_b_most_similar) }}</li>
+                                    <li><strong>B→A (avg. best match):</strong> {{ "%.3f"|format(comp.stats.b_a_most_similar) }}</li>
                                     <li><strong>Similarity F1:</strong> {{ "%.3f"|format(comp.stats.similarity_f1) }}</li>
                                 </ul>
                             </div>

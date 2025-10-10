@@ -316,9 +316,9 @@ class Split(DAGNode):
             return self.token_encoder.encode(doc)
 
         elif method == "sentences":
-            import nltk
-
-            return nltk.sent_tokenize(doc)
+            from pysbd import Segmenter
+            seg = Segmenter(language="en", clean=True)
+            return seg.segment(doc)
         elif method == "words":
             import nltk
 
@@ -370,34 +370,121 @@ class Split(DAGNode):
         # Get base metadata from parent
         result = super().result()
 
-        # Build DataFrame of chunks
+        if not self.output:
+            logger.warning(f"Split node '{self.name}' has no output to create statistics from")
+            result["chunks_df"] = pd.DataFrame()
+            result["summary_stats"] = {}
+            result["metadata"]["split_unit"] = self.split_unit
+            result["metadata"]["chunk_size"] = self.chunk_size
+            result["metadata"]["num_chunks"] = 0
+            return result
+
+        # Debug: log what types we're seeing
+        type_counts = {}
+        for chunk in self.output:
+            type_name = type(chunk).__name__
+            type_counts[type_name] = type_counts.get(type_name, 0) + 1
+        logger.debug(f"Split node '{self.name}' output types: {type_counts}")
+
+        # Build DataFrame of chunks with comprehensive statistics
         rows = []
-        for idx, chunk in enumerate(self.output or []):
-            content = extract_content(chunk)
+        for idx, chunk in enumerate(self.output):
+            # Handle both TrackedItem objects and deserialized dicts
+            if isinstance(chunk, dict):
+                # Deserialized from JSON
+                content = chunk.get("content", "")
+                metadata = chunk.get("metadata", {}) or {}
+                source_id = chunk.get("source_id", "")
+            elif isinstance(chunk, TrackedItem):
+                # Live object
+                content = chunk.content
+                metadata = chunk.metadata or {}
+                source_id = chunk.source_id
+            else:
+                # Try extract_content as fallback, but this likely won't work for wrong types
+                content = extract_content(chunk)
+                if not content:
+                    logger.debug(f"Skipping chunk {idx} - wrong type: {type(chunk).__name__}")
+                    continue
+                metadata = getattr(chunk, "metadata", {}) or {}
+                source_id = getattr(chunk, "source_id", "")
+
+            if not content:
+                logger.debug(f"Skipping chunk {idx} - no content")
+                continue
+
+            # Extract filename from metadata or source_id
+            filename = metadata.get("filename", "")
+            if not filename:
+                # Try to extract filename from source_id (format: filename__node__index)
+                if source_id and "__" in source_id:
+                    filename = source_id.split("__")[0]
+                else:
+                    filename = source_id or "unknown"
+
+            # Get chunk index from metadata
+            chunk_index = metadata.get("split_index", idx)
+
+            # Compute various length statistics
+            length_chars = len(content)
+            length_words = len(content.split())
+
+            # Tokenize to get token count using tiktoken (OpenAI tokenizer)
+            try:
+                length_tokens = len(self.token_encoder.encode(content))
+            except Exception as e:
+                logger.debug(f"Failed to tokenize chunk {idx}: {e}")
+                length_tokens = 0
+
+            # Count sentences using nltk
+            try:
+                from pysbd import Segmenter
+                seg = Segmenter(language="en", clean=True)
+                length_sentences = len(seg.segment(content))
+            except Exception as e:
+                logger.debug(f"Failed to count sentences in chunk {idx}: {e}")
+                length_sentences = 0
+
+            # Count paragraphs (split on blank lines)
+            length_paragraphs = len([p for p in content.split("\n\n") if p.strip()])
+
             rows.append(
                 {
-                    "index": idx,
-                    "source_id": TrackedItem.extract_source_id(chunk),
-                    "content": content,
-                    "metadata": getattr(chunk, "metadata", None),
-                    "length": (
-                        len(self.tokenize(content, method=self.split_unit))
-                        if content
-                        else 0
-                    ),
+                    "filename": filename,
+                    "chunk_index": chunk_index,
+                    "length_chars": length_chars,
+                    "length_words": length_words,
+                    "length_sentences": length_sentences,
+                    "length_paragraphs": length_paragraphs,
+                    "length_tokens": length_tokens,
                 }
             )
 
         df = pd.DataFrame(rows)
+
+        if df.empty:
+            logger.warning(f"Split node '{self.name}' created empty DataFrame from {len(self.output)} chunks - check if output is the correct type")
+        else:
+            logger.debug(f"Split node '{self.name}' created DataFrame with {len(df)} rows")
+
+        # Compute summary statistics
+        summary_stats = {}
         if not df.empty:
-            df["split_unit"] = self.split_unit
-            df["chunk_size"] = self.chunk_size
+            for col in ["length_chars", "length_words", "length_sentences", "length_paragraphs", "length_tokens"]:
+                if col in df.columns:
+                    summary_stats[col] = {
+                        "min": int(df[col].min()),
+                        "max": int(df[col].max()),
+                        "mean": float(df[col].mean()),
+                        "median": float(df[col].median()),
+                    }
 
         # Add Split-specific data
-        result["data"] = df
+        result["chunks_df"] = df
+        result["summary_stats"] = summary_stats
         result["metadata"]["split_unit"] = self.split_unit
         result["metadata"]["chunk_size"] = self.chunk_size
-        result["metadata"]["num_chunks"] = len(self.output or [])
+        result["metadata"]["num_chunks"] = len(self.output)
 
         return result
 

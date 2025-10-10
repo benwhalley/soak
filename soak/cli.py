@@ -283,9 +283,8 @@ def run(
 
     # Generate HTML for each template
     html_outputs = {}
-    pipeline_for_html = QualitativeAnalysisPipeline.model_validate(
-        analysis.model_dump()
-    )
+    # Use the original pipeline directly - don't serialize/deserialize as it corrupts node outputs
+    pipeline_for_html = analysis
 
     for tmpl in template:
         try:

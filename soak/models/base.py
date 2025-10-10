@@ -29,7 +29,7 @@ def get_embedding(*args, **kwargs):
 
 
 # Concurrency settings
-MAX_CONCURRENCY = env_config("MAX_CONCURRENCY", default=20, cast=int)
+MAX_CONCURRENCY = env_config("SOAK_MAX_CONCURRENCY", default=20, cast=int)
 semaphore = anyio.Semaphore(MAX_CONCURRENCY)
 
 

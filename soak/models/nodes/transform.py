@@ -7,7 +7,7 @@ from typing import Any, Dict, Literal
 from pydantic import Field
 from struckdown import chatter_async
 
-from ..base import extract_prompt, get_action_lookup, safe_json_dump
+from ..base import extract_prompt, get_action_lookup, safe_json_dump, semaphore
 from ..dag import render_strict_template
 from .base import ItemsNode, CompletionDAGNode
 
@@ -38,14 +38,15 @@ class Transform(ItemsNode, CompletionDAGNode):
         extra_kwargs['temperature'] = self.temperature
         extra_kwargs['seed'] = self.dag.config.seed
 
-        # call chatter as async function within the main event loop
-        self.output = await chatter_async(
-            multipart_prompt=rt,
-            model=self.get_model(),
-            credentials=self.dag.config.llm_credentials,
-            action_lookup=get_action_lookup(),
-            extra_kwargs=extra_kwargs,
-        )
+        # Call chatter with semaphore to limit concurrency
+        async with semaphore:
+            self.output = await chatter_async(
+                multipart_prompt=rt,
+                model=self.get_model(),
+                credentials=self.dag.config.llm_credentials,
+                action_lookup=get_action_lookup(),
+                extra_kwargs=extra_kwargs,
+            )
         return self.output
 
     def result(self) -> Dict[str, Any]:

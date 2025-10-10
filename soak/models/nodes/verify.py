@@ -12,8 +12,11 @@ import pandas as pd
 from pydantic import Field
 from rank_bm25 import BM25Okapi
 from sklearn.metrics.pairwise import cosine_similarity
+import anyio
+from struckdown import chatter_async
+from struckdown.parsing import parse_syntax
 
-from ..base import get_embedding, safe_json_dump, TrackedItem
+from ..base import get_embedding, safe_json_dump, semaphore, TrackedItem, get_action_lookup
 from .base import CompletionDAGNode
 
 logger = logging.getLogger(__name__)
@@ -739,7 +742,8 @@ class VerifyQuotes(CompletionDAGNode):
         if self.template_text:
             prompt = self.template_text
         else:
-            template_path = Path(__file__).parent / "templates" / "llm_as_judge.md"
+            # Templates are in soak/templates, not soak/models/templates
+            template_path = Path(__file__).parent.parent.parent / "templates" / "nodes" / "llm_as_judge.md"
             prompt = template_path.read_text()
 
         try:

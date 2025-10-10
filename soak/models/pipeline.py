@@ -144,6 +144,7 @@ class QualitativeAnalysisPipeline(DAG):
         )
 
     def result(self):
+        """Extract QualitativeAnalysis result from pipeline execution."""
         def safe_get_output(name):
             try:
                 return self.nodes_dict.get(name).output.response
@@ -159,3 +160,15 @@ class QualitativeAnalysisPipeline(DAG):
             themes = self.nodes_dict.get("themes").output.response["themes"]
         except Exception:
             themes = []
+
+        try:
+            narrative = self.nodes_dict.get("narrative").output.response.get("report", "")
+        except Exception:
+            narrative = ""
+
+        return QualitativeAnalysis(
+            codes=codes,
+            themes=themes,
+            narrative=narrative,
+            name=self.name or "analysis"
+        )
