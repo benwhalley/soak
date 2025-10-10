@@ -61,7 +61,6 @@ soak = "soak.cli:app"
 
 [tool.uv]
 package = true
-exclude-packages = ["coverage"]
 
 [tool.uv.sources]
 # Production defaults (git)
