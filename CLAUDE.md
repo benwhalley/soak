@@ -98,7 +98,7 @@ Core models (`soak/models.py`):
 
 - `anyio` for structured concurrency
 - Global semaphore: `MAX_CONCURRENCY` (default: 20)
-- Nodes in same batch run concurrently
+- Nodes in same batch run concurrently, prompts within Node run concurrently
 
 ### Caching
 
@@ -121,10 +121,9 @@ Entry: `soak/cli.py` (Typer)
 
 ## Key Implementation Notes
 
-**Quote Verification** (models.py:2273-2876):
+**Quote Verification** 
 - BM25-first lexical search + embedding verification
-- Handles ellipses by matching head/tail separately
-- Adaptive windowing (1.1× longest quote, 30% overlap)
+- Handles ellipses, Adaptive windowing
 - Outputs: BM25 score, cosine similarity, source positions
 
 **Provenance Tracking** (`TrackedItem`):
@@ -134,5 +133,5 @@ Entry: `soak/cli.py` (Typer)
 
 **Agreement Calculation** (`Classifier` node):
 - Multi-model support
-- Metrics: Krippendorff's alpha, Gwet's AC1, percent agreement
+- Metrics
 - CSV/HTML export per model + combined statistics
