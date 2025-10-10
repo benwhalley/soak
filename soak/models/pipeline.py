@@ -12,6 +12,7 @@ from .dag import DAG
 
 logger = logging.getLogger(__name__)
 
+
 class QualitativeAnalysisPipeline(DAG):
     name: Optional[str] = None
 
@@ -75,11 +76,12 @@ class QualitativeAnalysisPipeline(DAG):
         def safe_tojson(obj, indent=2):
             """Safely convert to JSON, converting DataFrames to records."""
             import json
+
             import pandas as pd
 
             def convert_value(v):
                 if isinstance(v, pd.DataFrame):
-                    return v.to_dict('records')
+                    return v.to_dict("records")
                 elif isinstance(v, dict):
                     return {k: convert_value(val) for k, val in v.items()}
                 elif isinstance(v, list):
@@ -107,7 +109,9 @@ class QualitativeAnalysisPipeline(DAG):
                     node_template = env.get_template(node_template_name)
                 else:
                     # Fall back to default node template
-                    raise Exception(f"Node template not found: {(nodes_template_dir / node_template_name)}")
+                    raise Exception(
+                        f"Node template not found: {(nodes_template_dir / node_template_name)}"
+                    )
                     node_template = env.get_template("default.html")
 
                 # Get node result with metadata
@@ -134,7 +138,7 @@ class QualitativeAnalysisPipeline(DAG):
 
         # Render template with data
         # model_dump with mode='json' ensures all data is JSON-serializable
-        dd = self.model_dump(mode='json')
+        dd = self.model_dump(mode="json")
         dd["config"]["documents"] = []
         return template.render(
             pipeline=self,
@@ -145,6 +149,7 @@ class QualitativeAnalysisPipeline(DAG):
 
     def result(self):
         """Extract QualitativeAnalysis result from pipeline execution."""
+
         def safe_get_output(name):
             try:
                 return self.nodes_dict.get(name).output.response
@@ -162,7 +167,9 @@ class QualitativeAnalysisPipeline(DAG):
             themes = []
 
         try:
-            narrative = self.nodes_dict.get("narrative").output.response.get("report", "")
+            narrative = self.nodes_dict.get("narrative").output.response.get(
+                "report", ""
+            )
         except Exception:
             narrative = ""
 
@@ -170,5 +177,5 @@ class QualitativeAnalysisPipeline(DAG):
             codes=codes,
             themes=themes,
             narrative=narrative,
-            name=self.name or "analysis"
+            name=self.name or "analysis",
         )

@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 class Reduce(ItemsNode):
     """Node that reduces multiple items into a single output."""
+
     type: Literal["Reduce"] = "Reduce"
     template_text: str = "{{input}}\n"
 

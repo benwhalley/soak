@@ -182,9 +182,7 @@ def build_combined_long_form_dataset(
             elif hasattr(output_item, "outputs"):
                 # Fallback: use outputs dict if results not available
                 output_dict = (
-                    output_item.outputs
-                    if hasattr(output_item.outputs, "items")
-                    else {}
+                    output_item.outputs if hasattr(output_item.outputs, "items") else {}
                 )
                 for slot_name, response_value in output_dict.items():
                     if not slot_name.startswith("__"):
@@ -195,7 +193,9 @@ def build_combined_long_form_dataset(
                             "slot_response_type": None,
                             "slot_options": None,
                             "response": (
-                                str(response_value) if response_value is not None else None
+                                str(response_value)
+                                if response_value is not None
+                                else None
                             ),
                         }
                         combined_rows.append(row)
@@ -210,7 +210,9 @@ def build_combined_long_form_dataset(
                             "slot_response_type": None,
                             "slot_options": None,
                             "response": (
-                                str(response_value) if response_value is not None else None
+                                str(response_value)
+                                if response_value is not None
+                                else None
                             ),
                         }
                         combined_rows.append(row)

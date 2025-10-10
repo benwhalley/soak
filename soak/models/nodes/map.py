@@ -10,8 +10,8 @@ from box import Box
 from pydantic import Field
 from struckdown.parsing import parse_syntax
 
-from ..base import semaphore, safe_json_dump, extract_prompt, TrackedItem
-from .base import ItemsNode, CompletionDAGNode, default_map_task
+from ..base import TrackedItem, extract_prompt, safe_json_dump, semaphore
+from .base import CompletionDAGNode, ItemsNode, default_map_task
 
 logger = logging.getLogger(__name__)
 
@@ -71,9 +71,9 @@ class Map(ItemsNode, CompletionDAGNode):
                         # Collect extra kwargs for LLM
                         extra_kwargs = {}
                         if self.max_tokens is not None:
-                            extra_kwargs['max_tokens'] = self.max_tokens
-                        extra_kwargs['temperature'] = self.temperature
-                        extra_kwargs['seed'] = self.dag.config.seed
+                            extra_kwargs["max_tokens"] = self.max_tokens
+                        extra_kwargs["temperature"] = self.temperature
+                        extra_kwargs["seed"] = self.dag.config.seed
 
                         results[index] = await self.task(
                             template=self.template,
@@ -88,6 +88,7 @@ class Map(ItemsNode, CompletionDAGNode):
         if is_batch:
             # Reconstruct BatchList structure
             from .batch import BatchList
+
             reconstructed_batches = []
             result_idx = 0
             for batch_size in batch_sizes:

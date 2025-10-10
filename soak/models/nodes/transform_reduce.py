@@ -10,10 +10,11 @@ from pydantic import Field
 from struckdown import chatter_async
 
 from ..base import extract_prompt, get_action_lookup, safe_json_dump, semaphore
-from ..dag import render_strict_template, OutputUnion
+from ..dag import OutputUnion, render_strict_template
 from .base import CompletionDAGNode
 
 logger = logging.getLogger(__name__)
+
 
 class TransformReduce(CompletionDAGNode):
     """
@@ -191,9 +192,9 @@ class TransformReduce(CompletionDAGNode):
                         # Collect extra kwargs for LLM
                         extra_kwargs = {}
                         if self.max_tokens is not None:
-                            extra_kwargs['max_tokens'] = self.max_tokens
-                        extra_kwargs['temperature'] = self.temperature
-                        extra_kwargs['seed'] = self.dag.config.seed
+                            extra_kwargs["max_tokens"] = self.max_tokens
+                        extra_kwargs["temperature"] = self.temperature
+                        extra_kwargs["seed"] = self.dag.config.seed
 
                         async with semaphore:
                             results[index] = await chatter_async(
@@ -217,9 +218,9 @@ class TransformReduce(CompletionDAGNode):
         # Collect extra kwargs for LLM
         extra_kwargs = {}
         if self.max_tokens is not None:
-            extra_kwargs['max_tokens'] = self.max_tokens
-        extra_kwargs['temperature'] = self.temperature
-        extra_kwargs['seed'] = self.dag.config.seed
+            extra_kwargs["max_tokens"] = self.max_tokens
+        extra_kwargs["temperature"] = self.temperature
+        extra_kwargs["seed"] = self.dag.config.seed
 
         final_response = await chatter_async(
             multipart_prompt=final_prompt,

@@ -11,6 +11,7 @@ logger = logging.getLogger(__name__)
 
 class BatchList(object):
     """Container for batched results."""
+
     batches: List[Any]
 
     def __init__(self, batches: List[Any]):
@@ -22,6 +23,7 @@ class BatchList(object):
 
 class Batch(ItemsNode):
     """Node that groups items into fixed-size batches."""
+
     type: Literal["Batch"] = "Batch"
     batch_size: int = 10
 

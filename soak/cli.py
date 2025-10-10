@@ -78,12 +78,10 @@ def load_pipeline_json(input_json: str) -> QualitativeAnalysisPipeline:
         print(f"Error: File not found: {input_json}", file=sys.stderr)
         raise typer.Exit(1)
 
-    
     with open(input_json, "r", encoding="utf-8") as f:
         data = json.load(f)
     logger.info(f"Read pipeline from {input_json}")
-    
-    
+
     try:
         pipeline = QualitativeAnalysisPipeline.model_validate(data)
         logger.info(f"Loaded pipeline: {pipeline.name}")
@@ -418,7 +416,9 @@ def export(
             f.write(html_outputs[tmpl])
 
     if len(template) == 1:
-        print(f"Successfully exported to {output}_{Path(resolve_template(template[0])).stem}.html")
+        print(
+            f"Successfully exported to {output}_{Path(resolve_template(template[0])).stem}.html"
+        )
     else:
         print(f"Successfully exported {len(template)} HTML files to {output}_*.html")
 
@@ -487,7 +487,9 @@ def dump(
                 html_content = generate_html_output(pipeline, tmpl)
                 template_stem = Path(resolve_template(tmpl)).stem
                 html_path = output_path / f"analysis_{template_stem}.html"
-                logger.info(f"Writing HTML with template '{template_stem}' to {html_path}")
+                logger.info(
+                    f"Writing HTML with template '{template_stem}' to {html_path}"
+                )
                 with open(html_path, "w", encoding="utf-8") as f:
                     f.write(html_content)
             except Exception as e:

@@ -7,18 +7,18 @@ from pathlib import Path
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
 import anyio
+import nltk
 import numpy as np
 import pandas as pd
 import tiktoken
-import nltk
 from box import Box
 from jinja2 import Environment, TemplateSyntaxError
 from pydantic import BaseModel, Field
 from struckdown import LLM, ChatterResult, chatter_async
 from struckdown.parsing import parse_syntax
 
-from ..dag import DAG, OutputUnion, render_strict_template
 from ..base import TrackedItem, extract_content, get_action_lookup
+from ..dag import DAG, OutputUnion, render_strict_template
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ class DAGNode(BaseModel):
     output: Optional[OutputUnion] = Field(default=None)
 
     def get_model(self):
-        model_name = getattr(self, 'model_name', None)
+        model_name = getattr(self, "model_name", None)
         if model_name:
             m = LLM(model_name=model_name)
             return m
@@ -317,6 +317,7 @@ class Split(DAGNode):
 
         elif method == "sentences":
             from pysbd import Segmenter
+
             seg = Segmenter(language="en", clean=True)
             return seg.segment(doc)
         elif method == "words":
@@ -371,7 +372,9 @@ class Split(DAGNode):
         result = super().result()
 
         if not self.output:
-            logger.warning(f"Split node '{self.name}' has no output to create statistics from")
+            logger.warning(
+                f"Split node '{self.name}' has no output to create statistics from"
+            )
             result["chunks_df"] = pd.DataFrame()
             result["summary_stats"] = {}
             result["metadata"]["split_unit"] = self.split_unit
@@ -404,7 +407,9 @@ class Split(DAGNode):
                 # Try extract_content as fallback, but this likely won't work for wrong types
                 content = extract_content(chunk)
                 if not content:
-                    logger.debug(f"Skipping chunk {idx} - wrong type: {type(chunk).__name__}")
+                    logger.debug(
+                        f"Skipping chunk {idx} - wrong type: {type(chunk).__name__}"
+                    )
                     continue
                 metadata = getattr(chunk, "metadata", {}) or {}
                 source_id = getattr(chunk, "source_id", "")
@@ -439,6 +444,7 @@ class Split(DAGNode):
             # Count sentences using nltk
             try:
                 from pysbd import Segmenter
+
                 seg = Segmenter(language="en", clean=True)
                 length_sentences = len(seg.segment(content))
             except Exception as e:
@@ -463,14 +469,24 @@ class Split(DAGNode):
         df = pd.DataFrame(rows)
 
         if df.empty:
-            logger.warning(f"Split node '{self.name}' created empty DataFrame from {len(self.output)} chunks - check if output is the correct type")
+            logger.warning(
+                f"Split node '{self.name}' created empty DataFrame from {len(self.output)} chunks - check if output is the correct type"
+            )
         else:
-            logger.debug(f"Split node '{self.name}' created DataFrame with {len(df)} rows")
+            logger.debug(
+                f"Split node '{self.name}' created DataFrame with {len(df)} rows"
+            )
 
         # Compute summary statistics
         summary_stats = {}
         if not df.empty:
-            for col in ["length_chars", "length_words", "length_sentences", "length_paragraphs", "length_tokens"]:
+            for col in [
+                "length_chars",
+                "length_words",
+                "length_sentences",
+                "length_paragraphs",
+                "length_tokens",
+            ]:
                 if col in df.columns:
                     summary_stats[col] = {
                         "min": int(df[col].min()),

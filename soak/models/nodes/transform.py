@@ -9,13 +9,14 @@ from struckdown import chatter_async
 
 from ..base import extract_prompt, get_action_lookup, safe_json_dump, semaphore
 from ..dag import render_strict_template
-from .base import ItemsNode, CompletionDAGNode
+from .base import CompletionDAGNode, ItemsNode
 
 logger = logging.getLogger(__name__)
 
 
 class Transform(ItemsNode, CompletionDAGNode):
     """Single-item transformation node using LLM."""
+
     type: Literal["Transform"] = "Transform"
     template_text: str = Field(default="{{input}} <prompt>: [[output]]")
 
@@ -34,9 +35,9 @@ class Transform(ItemsNode, CompletionDAGNode):
         # Collect extra kwargs for LLM
         extra_kwargs = {}
         if self.max_tokens is not None:
-            extra_kwargs['max_tokens'] = self.max_tokens
-        extra_kwargs['temperature'] = self.temperature
-        extra_kwargs['seed'] = self.dag.config.seed
+            extra_kwargs["max_tokens"] = self.max_tokens
+        extra_kwargs["temperature"] = self.temperature
+        extra_kwargs["seed"] = self.dag.config.seed
 
         # Call chatter with semaphore to limit concurrency
         async with semaphore:

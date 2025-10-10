@@ -6,20 +6,22 @@ import re
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
+import anyio
 import nltk
 import numpy as np
 import pandas as pd
 from pydantic import Field
 from rank_bm25 import BM25Okapi
 from sklearn.metrics.pairwise import cosine_similarity
-import anyio
 from struckdown import chatter_async
 from struckdown.parsing import parse_syntax
 
-from ..base import get_embedding, safe_json_dump, semaphore, TrackedItem, get_action_lookup
+from ..base import (TrackedItem, get_action_lookup, get_embedding,
+                    safe_json_dump, semaphore)
 from .base import CompletionDAGNode
 
 logger = logging.getLogger(__name__)
+
 
 def make_windows(
     text: str,
@@ -743,7 +745,12 @@ class VerifyQuotes(CompletionDAGNode):
             prompt = self.template_text
         else:
             # Templates are in soak/templates, not soak/models/templates
-            template_path = Path(__file__).parent.parent.parent / "templates" / "nodes" / "llm_as_judge.md"
+            template_path = (
+                Path(__file__).parent.parent.parent
+                / "templates"
+                / "nodes"
+                / "llm_as_judge.md"
+            )
             prompt = template_path.read_text()
 
         try:
@@ -1086,5 +1093,3 @@ class VerifyQuotes(CompletionDAGNode):
                     worksheet.column_dimensions[column_letter].width = min(
                         max_length + 2, 30
                     )
-
-

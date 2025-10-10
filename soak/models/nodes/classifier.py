@@ -12,7 +12,7 @@ from struckdown import LLM, chatter_async
 from struckdown.parsing import parse_syntax
 
 from ..base import TrackedItem, get_action_lookup, semaphore
-from .base import ItemsNode, CompletionDAGNode
+from .base import CompletionDAGNode, ItemsNode
 
 logger = logging.getLogger(__name__)
 
@@ -106,9 +106,9 @@ class Classifier(ItemsNode, CompletionDAGNode):
                             # Collect extra kwargs for LLM
                             extra_kwargs = {}
                             if self.max_tokens is not None:
-                                extra_kwargs['max_tokens'] = self.max_tokens
-                            extra_kwargs['temperature'] = self.temperature
-                            extra_kwargs['seed'] = self.dag.config.seed
+                                extra_kwargs["max_tokens"] = self.max_tokens
+                            extra_kwargs["temperature"] = self.temperature
+                            extra_kwargs["seed"] = self.dag.config.seed
 
                             chatter_result = await chatter_async(
                                 multipart_prompt=self.template,
@@ -249,12 +249,11 @@ class Classifier(ItemsNode, CompletionDAGNode):
     def export(self, folder: Path, unique_id: str = ""):
         """Export Classifier node with CSV output and individual responses."""
         from ...agreement import export_agreement_stats
-        from ...agreement_scripts import (
-            collect_field_categories,
-            generate_human_rater_template,
-            write_agreement_scripts,
-        )
-        from ...export_utils import export_to_csv, export_to_html, export_to_json
+        from ...agreement_scripts import (collect_field_categories,
+                                          generate_human_rater_template,
+                                          write_agreement_scripts)
+        from ...export_utils import (export_to_csv, export_to_html,
+                                     export_to_json)
         from ...helpers import build_combined_long_form_dataset
 
         super().export(folder, unique_id=unique_id)
@@ -416,11 +415,13 @@ class Classifier(ItemsNode, CompletionDAGNode):
                 uid_suffix = f"_{unique_id}" if unique_id else ""
                 export_to_csv(
                     combined_df,
-                    folder / f"classifications_{self.name}_combined_long{uid_suffix}.csv",
+                    folder
+                    / f"classifications_{self.name}_combined_long{uid_suffix}.csv",
                 )
                 export_to_html(
                     combined_df,
-                    folder / f"classifications_{self.name}_combined_long{uid_suffix}.html",
+                    folder
+                    / f"classifications_{self.name}_combined_long{uid_suffix}.html",
                 )
                 logger.info(
                     f"Exported combined long-form dataset with {len(combined_df)} rows"
@@ -458,11 +459,9 @@ class Classifier(ItemsNode, CompletionDAGNode):
 
     def _generate_agreement_script(self, folder: Path):
         """Generate a standalone Python script for agreement calculation."""
-        from ...agreement_scripts import (
-            collect_field_categories,
-            generate_human_rater_template,
-            write_agreement_scripts,
-        )
+        from ...agreement_scripts import (collect_field_categories,
+                                          generate_human_rater_template,
+                                          write_agreement_scripts)
 
         if not self._model_results or not self.agreement_fields:
             return

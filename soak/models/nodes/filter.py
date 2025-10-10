@@ -11,7 +11,7 @@ import pandas as pd
 from struckdown import ChatterResult, chatter_async
 
 from ..base import TrackedItem, get_action_lookup, safe_json_dump, semaphore
-from .base import ItemsNode, CompletionDAGNode
+from .base import CompletionDAGNode, ItemsNode
 
 logger = logging.getLogger(__name__)
 
@@ -144,9 +144,9 @@ class Filter(ItemsNode, CompletionDAGNode):
                         # Collect extra kwargs for LLM
                         extra_kwargs = {}
                         if self.max_tokens is not None:
-                            extra_kwargs['max_tokens'] = self.max_tokens
-                        extra_kwargs['temperature'] = self.temperature
-                        extra_kwargs['seed'] = self.dag.config.seed
+                            extra_kwargs["max_tokens"] = self.max_tokens
+                        extra_kwargs["temperature"] = self.temperature
+                        extra_kwargs["seed"] = self.dag.config.seed
 
                         # Run the filter template
                         chatter_result = await chatter_async(

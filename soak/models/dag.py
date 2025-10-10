@@ -10,10 +10,11 @@ from typing import TYPE_CHECKING, Annotated, Any, Dict, List, Set, Union
 import anyio
 from jinja2 import Environment, StrictUndefined, meta
 from pydantic import BaseModel, Field, model_validator
-from struckdown import ChatterResult, LLM, LLMCredentials
+from struckdown import LLM, ChatterResult, LLMCredentials
 
-from ..document_utils import extract_text, get_scrubber, unpack_zip_to_temp_paths_if_needed
-from .base import TrackedItem, get_default_llm_credentials, SOAK_MAX_RUNTIME
+from ..document_utils import (extract_text, get_scrubber,
+                              unpack_zip_to_temp_paths_if_needed)
+from .base import SOAK_MAX_RUNTIME, TrackedItem, get_default_llm_credentials
 
 if TYPE_CHECKING:
     from .nodes.base import DAGNode
