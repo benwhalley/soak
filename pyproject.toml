@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "soak-llm"
-version = "0.3.0"
+version = "0.3.1"
 description = "Soak: graph-based pipelines for LLM-assisted qualitative text analysis"
 authors = [
   { name = "Ben Whalley", email = "ben.whalley@plymouth.ac.uk" }
@@ -44,6 +44,7 @@ dependencies = [
     "pyirr>=0.84.1.2",
     "setuptools>=80.9.0",
     "irrcac",
+    "pysbd>=0.3.4",
 ]
 
 [tool.setuptools.package-data]
@@ -60,6 +61,7 @@ soak = "soak.cli:app"
 
 [tool.uv]
 package = true
+exclude-packages = ["coverage"]
 
 [tool.uv.sources]
 # Production defaults (git)
@@ -69,3 +71,5 @@ irrcac = { git = "https://github.com/benwhalley/irrCAC.git" }
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+
+
