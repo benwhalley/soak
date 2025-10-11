@@ -64,8 +64,7 @@ package = true
 
 [tool.uv.sources]
 # Production defaults (git)
-# struckdown = { git = "https://github.com/benwhalley/struckdown", rev = "HEAD" }
-struckdown = { path = "../struckdown", editable = true }
+struckdown = { git = "https://github.com/benwhalley/struckdown", rev = "HEAD" }
 irrcac = { git = "https://github.com/benwhalley/irrCAC.git" }
 
 [tool.pytest.ini_options]
