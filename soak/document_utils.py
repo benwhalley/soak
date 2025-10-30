@@ -1,4 +1,4 @@
-"""Text extraction utilities for PDF, Word, and text documents."""
+"""Text extraction utilities for PDF, Word, text documents, and spreadsheets."""
 
 import glob
 import logging
@@ -9,8 +9,10 @@ import tempfile
 import zipfile
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any, Dict, List, Union
 
 import magic
+import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -196,23 +198,69 @@ def unpack_zip_to_temp_paths_if_needed(paths: list[str]) -> list[tuple[str, dict
             shutil.rmtree(tmpdir, ignore_errors=True)
 
 
-def extract_text(path: str) -> str:
+def is_spreadsheet(path: Union[str, Path]) -> bool:
+    """Check if file is a spreadsheet (CSV or XLSX)."""
+    suffix = Path(path).suffix.lower()
+    return suffix in ['.csv', '.xlsx']
+
+
+def extract_spreadsheet_rows(path: str) -> List[Dict[str, Any]]:
+    """Extract rows from CSV or XLSX file as list of dictionaries.
+
+    Each row becomes a dictionary with column names as keys.
+    NaN values are converted to None.
+
+    Args:
+        path: Path to CSV or XLSX file
+
+    Returns:
+        List of dictionaries, one per row (excluding header)
+    """
+    suffix = Path(path).suffix.lower()
+
+    try:
+        if suffix == '.csv':
+            df = pd.read_csv(path)
+        elif suffix == '.xlsx':
+            df = pd.read_excel(path, engine='openpyxl')
+        else:
+            raise ValueError(f"Unsupported spreadsheet format: {suffix}")
+
+        # Convert NaN to None, convert to list of dicts
+        rows = df.where(pd.notna(df), None).to_dict('records')
+
+        logger.info(f"Loaded {len(rows)} rows from {path} with columns: {list(df.columns)}")
+        return rows
+
+    except Exception as e:
+        logger.error(f"Failed to read spreadsheet {path}: {e}")
+        raise
+
+
+def extract_text(path: str) -> Union[str, List[Dict[str, Any]]]:
     """Extract text from various document formats.
 
     Supports:
     - PDF files (.pdf)
     - Word documents (.docx)
     - Plain text files (.txt, .md, etc.)
+    - CSV files (.csv) -- returns list of row dictionaries
+    - Excel files (.xlsx) -- returns list of row dictionaries
 
     Args:
         path: Path to the document file
 
     Returns:
-        Extracted text content
+        Extracted text content (str) or list of row dictionaries for spreadsheets
     """
-    path = Path(path)
-    mtime = path.stat().st_mtime
-    # print(f"Extracted {path}")
+    path_obj = Path(path)
+
+    # Handle spreadsheets differently - return structured data
+    if is_spreadsheet(path_obj):
+        return extract_spreadsheet_rows(path)
+
+    # Regular text extraction for non-spreadsheet files
+    mtime = path_obj.stat().st_mtime
     return strip_null_bytes(_extract_text_cached(str(path), mtime))
 
 
@@ -287,7 +335,7 @@ def is_plain_text_file(path: Path) -> bool:
 
 def get_supported_extensions() -> list[str]:
     """Get list of supported file extensions."""
-    return [".txt", ".md", ".pdf", ".docx"]
+    return [".txt", ".md", ".pdf", ".docx", ".csv", ".xlsx"]
 
 
 def is_supported_file(path: Path) -> bool:
@@ -304,6 +352,10 @@ def detect_file_type(path: Path) -> str:
         return "PDF"
     elif suffix == ".docx":
         return "Word Document"
+    elif suffix == ".csv":
+        return "CSV Spreadsheet"
+    elif suffix == ".xlsx":
+        return "Excel Spreadsheet"
     elif suffix in [".txt", ".md"]:
         return "Text File"
     elif is_plain_text_file(path):
