@@ -19,6 +19,28 @@ Install:
 uv pip install -e .
 ```
 
+
+
+## Coding style
+
+- Prefer functional over imperative
+- `anyio` for structured concurrency
+- Prefer list comprehensions over map/filter
+- Use type hints
+- Don't worry about Exceptions. Allow them to bubble up. Don't try and programme too defensively.
+
+
+General patterns:
+- Type hints everywhere, including returns
+- Use Pydantic models for validation
+- Logger statements for debugging (use logger.debug liberally, info selectively)
+- Docstrings on public functions/methods
+- Use Optional[] explicitly (not | None syntax)
+
+
+
+
+
 ## Commands
 
 **Run pipeline:**
@@ -93,6 +115,19 @@ Core models (`soak/models.py`):
 - `QualitativeAnalysis`: Complete analysis (codes, themes, narrative)
 - `DAGConfig`: Pipeline configuration
 - `TrackedItem`: Document with provenance (source_id, metadata, lineage)
+
+
+Data handling:
+- TrackedItem wraps all document content with source_id and metadata
+- Extract content with helper functions, not direct attribute access
+- Preserve provenance through transformations (source_id format: parent__node__index)
+
+
+Error handling:
+- Let exceptions bubble up
+- Use try/except only for specific recovery logic
+- Log errors with context before re-raising
+
 
 ### Concurrency
 
