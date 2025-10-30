@@ -141,7 +141,7 @@ def run(
         None,
         "--output",
         "-o",
-        help="Output file path name (without extensions) (stdout if not specified)",
+        help="Output file path (without extensions). If not specified, JSON goes to stdout",
     ),
     format: str = typer.Option(
         "json", "--format", "-f", help="Output format: json or html"
@@ -172,8 +172,25 @@ def run(
     force: bool = typer.Option(
         False, "--force", "-F", help="Overwrite dump folder if it already exists"
     ),
+    sample: int = typer.Option(
+        None,
+        "--sample",
+        "-S",
+        help="Randomly sample N rows/documents from input (mutually exclusive with --head)",
+    ),
+    head: int = typer.Option(
+        None,
+        "--head",
+        "-H",
+        help="Take first N rows/documents from input (mutually exclusive with --sample)",
+    ),
 ):
     """Run a pipeline on input files."""
+
+    # Validate mutually exclusive options
+    if sample is not None and head is not None:
+        print("Error: --sample and --head are mutually exclusive", file=sys.stderr)
+        raise typer.Exit(1)
 
     # Check if output files exist (if output specified)
     if output:
@@ -240,6 +257,14 @@ def run(
         base_url=base_url,
     )
 
+    # Set sampling options
+    if sample is not None:
+        pipeline.config.sample_n = sample
+        logger.info(f"Will randomly sample {sample} rows/documents")
+    if head is not None:
+        pipeline.config.head_n = head
+        logger.info(f"Will take first {head} rows/documents")
+
     try:
         with unpack_zip_to_temp_paths_if_needed(input_files) as docfiles:
             if not docfiles:
@@ -293,7 +318,7 @@ def run(
                 f"Error generating HTML output for template '{tmpl}':\n{error_msg}"
             )
 
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    # Generate config hash for dump folder naming (needed even if output not specified)
     config_hash = hash_run_config(
         input_files=input_files,
         model_name=model_name,
@@ -301,21 +326,23 @@ def run(
         template=template,
     )
 
+    # If no output file specified, write JSON to stdout and skip file writing
     if output is None:
-        output = f"{timestamp}_{config_hash}"
+        print(jsoncontent, file=sys.stdout)
+    else:
+        # Write to files when output is specified
+        logger.info(f"Writing json output to {output}.json")
+        with open(output + ".json", "w", encoding="utf-8") as f:
+            f.write(jsoncontent)
 
-    logger.info(f"Writing json output to {output}.json")
-    with open(output + ".json", "w", encoding="utf-8") as f:
-        f.write(jsoncontent)
-
-    for tmpl in template:
-        template_stem = Path(resolve_template(tmpl)).stem
-        html_filename = f"{output}_{template_stem}.html"
-        logger.info(
-            f"Writing HTML output with template '{template_stem}' to {html_filename}"
-        )
-        with open(html_filename, "w", encoding="utf-8") as f:
-            f.write(html_outputs[tmpl])
+        for tmpl in template:
+            template_stem = Path(resolve_template(tmpl)).stem
+            html_filename = f"{output}_{template_stem}.html"
+            logger.info(
+                f"Writing HTML output with template '{template_stem}' to {html_filename}"
+            )
+            with open(html_filename, "w", encoding="utf-8") as f:
+                f.write(html_outputs[tmpl])
 
     if dump:
         if dump_folder is None:
@@ -375,7 +402,7 @@ def export(
         None,
         "--output",
         "-o",
-        help="Output file path (without extension). If not specified, replaces input .json with .html",
+        help="Output file path (without extension). If not specified, HTML goes to stdout (single template only)",
     ),
     template: list[str] = typer.Option(
         ["pipeline.html"],
@@ -400,27 +427,37 @@ def export(
                 f"Error generating HTML output for template '{tmpl}':\n{error_msg}"
             )
 
-    # Determine output path
-    input_path = Path(input_json)
+    # If no output specified, write to stdout (only for single template)
     if output is None:
-        output = str(input_path.with_suffix(""))
-
-    # Write HTML files
-    for tmpl in template:
-        template_stem = Path(resolve_template(tmpl)).stem
-        output_html = f"{output}_{template_stem}.html"
-        logger.info(
-            f"Writing HTML output with template '{template_stem}' to {output_html}"
-        )
-        with open(output_html, "w", encoding="utf-8") as f:
-            f.write(html_outputs[tmpl])
-
-    if len(template) == 1:
-        print(
-            f"Successfully exported to {output}_{Path(resolve_template(template[0])).stem}.html"
-        )
+        if len(template) > 1:
+            print(
+                "Error: Multiple templates specified but no --output given. Specify --output or use single template.",
+                file=sys.stderr,
+            )
+            raise typer.Exit(1)
+        # Output single HTML to stdout
+        print(html_outputs[template[0]], file=sys.stdout)
     else:
-        print(f"Successfully exported {len(template)} HTML files to {output}_*.html")
+        # Write HTML files when output is specified
+        for tmpl in template:
+            template_stem = Path(resolve_template(tmpl)).stem
+            output_html = f"{output}_{template_stem}.html"
+            logger.info(
+                f"Writing HTML output with template '{template_stem}' to {output_html}"
+            )
+            with open(output_html, "w", encoding="utf-8") as f:
+                f.write(html_outputs[tmpl])
+
+        if len(template) == 1:
+            print(
+                f"Successfully exported to {output}_{Path(resolve_template(template[0])).stem}.html",
+                file=sys.stderr,
+            )
+        else:
+            print(
+                f"Successfully exported {len(template)} HTML files to {output}_*.html",
+                file=sys.stderr,
+            )
 
 
 @app.command()
@@ -499,9 +536,11 @@ def dump(
                     file=sys.stderr,
                 )
 
-    print(f"\n✓ Execution dump saved to: {output_path}")
+    print(f"\n✓ Execution dump saved to: {output_path}", file=sys.stderr)
     if template:
-        print(f"✓ Generated {len(template)} HTML file(s) in dump folder")
+        print(
+            f"✓ Generated {len(template)} HTML file(s) in dump folder", file=sys.stderr
+        )
 
 
 @app.command()
@@ -604,7 +643,7 @@ def compare(
     with open(output, "w", encoding="utf-8") as f:
         f.write(html_content)
 
-    print(f"\n✓ Comparison report saved to: {output}")
+    print(f"\n✓ Comparison report saved to: {output}", file=sys.stderr)
 
     # Print summary statistics
     logger.debug("\nSummary:")
@@ -716,7 +755,9 @@ def check_and_prompt_credentials(cwd: Path) -> tuple[str | None, str | None]:
             print(f"   - {var}", file=sys.stderr)
         print(file=sys.stderr)
 
-        response = typer.confirm("Would you like to provide them now?", default=True)
+        response = typer.confirm(
+            "Would you like to provide them now?", default=True, err=True
+        )
         if not response:
             print("Error: Cannot proceed without LLM credentials", file=sys.stderr)
             raise typer.Exit(1)
@@ -725,12 +766,12 @@ def check_and_prompt_credentials(cwd: Path) -> tuple[str | None, str | None]:
         env_vars = load_env_file(env_path)
 
         if not api_key:
-            api_key = typer.prompt("Enter LLM_API_KEY")
+            api_key = typer.prompt("Enter LLM_API_KEY", err=True)
             env_vars["LLM_API_KEY"] = api_key
 
         if not base_url:
             default_url = "https://api.openai.com/v1"
-            base_url = typer.prompt("Enter LLM_API_BASE", default=default_url)
+            base_url = typer.prompt("Enter LLM_API_BASE", default=default_url, err=True)
             env_vars["LLM_API_BASE"] = base_url
 
         # Save to .env file
