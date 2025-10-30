@@ -424,10 +424,11 @@ def create_pairwise_heatmap(
         vmax = 1  # Explicitly set maximum
     else:
         data = df_sim
+        # Use perceptually uniform colormap (viridis is colorblind-safe)
         cmap = "viridis"
         annot = True
-        vmin = None  # Let seaborn auto-scale
-        vmax = None
+        vmin = 0.45  # Fixed scale from 0
+        vmax = 0.75  # Cap at 0.8 - anything higher shows as max color (yellow)
 
     # Create heatmap with better spacing
     sns.heatmap(
