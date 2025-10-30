@@ -91,6 +91,24 @@ uv run soak run demo yourdata/*.txt --output analysis1
 
 # with the 'simple' html output template
 uv run soak run zspe data/interviews.docx -t simple --output analysis2
+
+# with CSV/XLSX spreadsheet input (each row becomes a document)
+uv run soak run mypipeline data.csv --output analysis3
+```
+
+**Spreadsheet support:** CSV and XLSX files are supported as input. Each row becomes a separate document, with column values accessible in templates as `{{column_name}}`. Example:
+
+```yaml
+# pipeline.yaml
+nodes:
+  - name: analyze
+    type: Map
+    inputs: [documents]
+---#analyze
+Participant {{participant_id}} (age {{age}}, {{condition}} group):
+{{response}}
+
+Summarize the response: [[summary:str]]
 ```
 
 
