@@ -1,0 +1,46 @@
+name: test_filter_map
+
+nodes:
+  - name: chunks
+    type: Split
+    split_unit: sentences
+    chunk_size: 3
+
+  - name: relevance_decision
+    type: Map
+    inputs:
+      - chunks
+
+  - name: filter_relevant
+    type: Filter
+    expression: "item['relevance_decision'].response is True"
+    inputs:
+      - relevance_decision
+
+  - name: analyze
+    type: Map
+    inputs:
+      - filter_relevant
+
+---#chunks
+{{input}}
+
+---#relevance_decision
+
+Is this text about coffee or beverages?
+
+<text>
+{{input}}
+</text>
+
+[[bool:relevant]]
+
+---#analyze
+
+Analyze this text:
+
+<text>
+{{input}}
+</text>
+
+[[analysis]]

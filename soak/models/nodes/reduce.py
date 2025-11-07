@@ -4,7 +4,8 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, Literal
 
-from ..dag import render_strict_template
+from soak.models.dag import render_strict_template
+
 from .base import ItemsNode
 
 logger = logging.getLogger(__name__)
@@ -25,7 +26,7 @@ class Reduce(ItemsNode):
         from .batch import BatchList
 
         if len(self.inputs) > 1:
-            raise ValueError("Reduce nodes can only have one input")
+            raise ValueError("Reduce nodes must only have one input.")
 
         if self.inputs:
             input_data = self.dag.context[self.inputs[0]]
@@ -51,11 +52,12 @@ class Reduce(ItemsNode):
 
         # if items is a BatchList, run on each batch
         if isinstance(items, BatchList):
-            self.output = []
+            batch_results = []  # Use local variable to avoid state conflicts
             for batch in items.batches:
                 result = await self.run(items=batch)
-                self.output.append(result)
+                batch_results.append(result)
 
+            self.output = batch_results  # Set self.output after all recursive calls
             return self.output
 
         else:
@@ -79,7 +81,6 @@ class Reduce(ItemsNode):
         # Add Reduce-specific data
         result["output"] = self.output
         result["output_type"] = type(self.output).__name__ if self.output else None
-
         return result
 
     def export(self, folder: Path, unique_id: str = ""):

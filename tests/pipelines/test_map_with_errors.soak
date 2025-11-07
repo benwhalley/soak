@@ -1,0 +1,18 @@
+name: test_map_with_errors
+
+nodes:
+  - name: process
+    type: Map
+    inputs:
+      - documents
+
+---#process
+
+# Potentially problematic prompt that might cause some errors
+Analyze this and extract EXACTLY 5 themes (may fail if text is too short):
+
+<text>
+{{response}}
+</text>
+
+[[themes]]

@@ -1,0 +1,18 @@
+name: test_spreadsheet
+default_context:
+  task: "Analyze participant responses"
+
+nodes:
+  - name: analyze
+    type: Map
+    inputs:
+      - documents
+
+---#analyze
+Participant ID: {{participant_id}}
+Age: {{age}}
+Condition: {{condition}}
+Response: {{response}}
+
+Summarize this participant's response in one sentence.
+[[summary:str]]

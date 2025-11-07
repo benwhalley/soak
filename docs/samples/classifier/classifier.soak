@@ -2,7 +2,7 @@ name: classifier_simple
 default_context:
   persona: Experienced researcher
 default_config:
-  model_name: litellm/gpt-4.1
+  model_name: gpt-4.1
 
 nodes:
   - name: splits
@@ -13,8 +13,8 @@ nodes:
   - name: classify
     type: Classifier
     model_names:
-      - litellm/gpt-4.1
-      - litellm/gpt-4.1-mini
+      - gpt-4.1
+      - gpt-4.1-mini
     
     inputs:
       - splits

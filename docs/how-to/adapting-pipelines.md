@@ -4,7 +4,7 @@ It's probably best to start from an existing pipeline.
 Export a copy to a local file like this:
 
 ```bash
-soak show pipeline zs > my_pipeline.yaml
+soak show zs > my_pipeline.soak pipeline
 ```
 
 A pipeline consist of 2 pars:
@@ -74,7 +74,7 @@ Create themes from the codes above
 [[themes:themes]]
 ```
 
-The [[codes:codes]] and [[themes:themes]] placeholders are used to identify that LLM completions of specific types (codes/themes) should be extracted from the LLM output. That is, it's a prompt to soak to request structured data from the LLM.
+The [[codes:codes]] and [[themes:themes]] placeholders are used to identify that LLM completions of specific types (codes/themes) should be extracted from the LLM output. That is, it's a prompt to soak to structured data from the LLM. request
 
 To adapt the pipeline to your needs, simple edit the YAML file to add your own nodes and prompts. See the documentation for details of all the node types and options.
 

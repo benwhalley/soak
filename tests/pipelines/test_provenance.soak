@@ -1,0 +1,27 @@
+name: test_provenance
+
+nodes:
+  - name: items
+    type: Split
+    split_unit: sentences
+    chunk_size: 3
+    inputs:
+      - documents
+
+  - name: process
+    type: Map
+    inputs:
+      - items
+
+---#items
+{{input}}
+
+---#process
+
+Process:
+
+<text>
+{{input}}
+</text>
+
+[[output]]

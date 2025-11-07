@@ -1,0 +1,23 @@
+name: test_filter_with_errors
+
+nodes:
+  - name: keep_decision
+    type: Map
+    inputs:
+      - documents
+
+  - name: filter_items
+    type: Filter
+    expression: "item['keep_decision'].response is True"
+    inputs:
+      - keep_decision
+
+---#keep_decision
+
+Should we keep this item?
+
+<text>
+{{response}}
+</text>
+
+[[bool:keep]]

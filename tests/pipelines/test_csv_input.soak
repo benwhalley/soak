@@ -1,0 +1,17 @@
+name: test_csv_input
+
+nodes:
+  - name: process
+    type: Map
+    inputs:
+      - documents
+
+---#process
+
+Process this participant data:
+
+<data>
+{{input}}
+</data>
+
+[[summary]]

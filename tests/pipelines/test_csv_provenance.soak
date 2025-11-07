@@ -1,0 +1,17 @@
+name: test_csv_provenance
+
+nodes:
+  - name: process
+    type: Map
+    inputs:
+      - documents
+
+---#process
+
+Process:
+
+<text>
+{{response}}
+</text>
+
+[[output]]

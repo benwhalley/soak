@@ -1,0 +1,24 @@
+name: test_agreement_basic
+
+nodes:
+  - name: classify
+    type: Classifier
+    model_names:
+      - gpt-4o-mini
+      - openai/gpt-4o-mini
+    agreement_fields:
+      - sentiment
+    inputs:
+      - documents
+
+---#classify
+
+Read this participant response:
+
+<response>
+{{response}}
+</response>
+
+What is the overall sentiment of this response?
+
+[[pick:sentiment|positive,negative,neutral]]

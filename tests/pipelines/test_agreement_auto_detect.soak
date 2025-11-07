@@ -1,0 +1,21 @@
+name: test_agreement_auto_detect
+
+nodes:
+  - name: classify
+    type: Classifier
+    model_names:
+      - gpt-4o-mini
+      - openai/gpt-4o-mini
+    # No agreement_fields specified - should auto-detect from template
+    inputs:
+      - documents
+
+---#classify
+
+Read this response:
+
+<response>
+{{response}}
+</response>
+
+Sentiment: [[pick:sentiment|positive,negative,neutral]]

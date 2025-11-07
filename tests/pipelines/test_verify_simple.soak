@@ -1,0 +1,26 @@
+name: test_verify_simple
+
+nodes:
+  - name: codes
+    type: Map
+    inputs:
+      - documents
+
+  - name: verify
+    type: VerifyQuotes
+    window_size: 300
+    trim_spans: true
+    inputs:
+      - codes
+
+---#codes
+
+Extract themes with supporting quotes from this text:
+
+<text>
+{{input}}
+</text>
+
+Only include direct quotes from the text above.
+
+[[codes:codes]]

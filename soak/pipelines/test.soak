@@ -9,11 +9,17 @@ nodes:
     split_unit: paragraphs
     chunk_size: 1
 
-  - name: filter_substantive
-    type: Filter
+  - name: coffee_check
+    type: Map
     inputs:
       - paragraphs
-      
+
+  - name: filter_substantive
+    type: Filter
+    expression: "item['coffee_check'].response is True"
+    inputs:
+      - coffee_check
+
   - name: summarise_substantive
     type: Map
     inputs:
@@ -21,11 +27,11 @@ nodes:
 
   - name: classify_substantive
     type: Classifier
-    model_name: litellm/gpt-4.1-mini
+    model_name: gpt-4.1-mini
     inputs:
       - summarise_substantive
 
----#filter_substantive
+---#coffee_check
 
 Read this text carefully:
 
@@ -35,7 +41,7 @@ Read this text carefully:
 
 Does this text contain talk about coffee? True if it does.
 
-[[bool:filter]]
+[[bool:about_coffee]]
 
 
 ---#summarise_substantive

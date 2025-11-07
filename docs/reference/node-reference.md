@@ -148,8 +148,8 @@ Extract structured data from each item using multiple choice and typed fields.
 - name: classify
   type: Classifier
   model_names:
-    - litellm/gpt-4o-mini
-    - litellm/gpt-4.1-mini
+    - gpt-4o-mini
+    - gpt-4.1-mini
   agreement_fields:
     - topic
     - sentiment
@@ -436,55 +436,63 @@ Summarize these {{input|length}} chunks together:
 {% endfor %}
 ```
 
-### TransformReduce
+### Filter
 
-Recursively reduce long inputs by splitting, transforming, and re-reducing until single output.
+Filter items based on a boolean expression (no LLM call).
 
-**Type:** `TransformReduce`
+**Type:** `Filter`
 
 **Parameters:**
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `name` | str | Required | Node name |
-| `inputs` | List[str] | Required | Input nodes |
-| `template_text` | str | Required | Transform template |
-| `reduce_template` | str | `"{{input}}\n\n"` | Reduce template |
-| `chunk_size` | int | `20000` | Split size for long inputs |
-| `split_unit` | str | `"tokens"` | Unit for splitting |
-| `max_levels` | int | `5` | Max recursion depth |
-| `max_tokens` | int | `4096` | Max response tokens |
+| `inputs` | List[str] | Required | Input nodes (must produce list) |
+| `expression` | str | Required | Python expression using simpleeval |
 
-**Input:** Single long text
-**Output:** Recursively reduced result
+**Input:** List of items (TrackedItem or ChatterResult)
+**Output:** Filtered list (items where expression is truthy)
 
-**How it Works:**
+**Expression Context:**
 
-1. If input fits in `chunk_size`, transform directly
-2. If too long: split → transform each → concatenate → recurse
-3. Repeat until single output or max_levels reached
+- Use `item` as a dictionary where keys are input node names
+- Access attributes with `.response`, `.outputs`, etc.
+- Safe builtins: `len`, `str`, `int`, `float`, `bool`, `True`, `False`, `None`
 
 **Example:**
 
 ```yaml
-- name: long_summary
-  type: TransformReduce
-  chunk_size: 10000
-  max_levels: 3
-  inputs:
-    - very_long_document
+# Step 1: LLM creates boolean decision
+- name: relevance_check
+  type: Map
+  inputs: [chunks]
+---#relevance_check
+Is this text relevant?
+[[bool:is_relevant]]
 
----#long_summary
-Summarize this text concisely:
+# Step 2: Filter using item dictionary
+- name: filtered
+  type: Filter
+  expression: "item['relevance_check'].response is True"
+  inputs: [relevance_check]
+```
 
-{{input}}
+**Common Expressions:**
 
-[[summary]]
+```python
+# Boolean response (ChatterResult)
+"item['decision_node'].response is True"
+
+# Numeric threshold from outputs
+"item['score_node'].outputs['score'] > 0.5"
+
+# Multiple conditions
+"item['category_node'].outputs['category'] == 'relevant' and item['score_node'].outputs['score'] > 0.3"
 ```
 
 **Use Case:**
 
-Summarizing documents longer than LLM context window.
+Filtering items based on LLM decisions or computed scores without additional LLM calls.
 
 ## Common Patterns
 

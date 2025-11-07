@@ -2,20 +2,20 @@
 
 import itertools
 import logging
-from typing import Any, List, Literal
+from typing import Any, List, Literal, Union
+
+from pydantic import BaseModel
+from struckdown import ChatterResult
 
 from .base import ItemsNode
 
 logger = logging.getLogger(__name__)
 
 
-class BatchList(object):
+class BatchList(BaseModel):
     """Container for batched results."""
 
     batches: List[Any]
-
-    def __init__(self, batches: List[Any]):
-        self.batches = batches
 
     def __iter__(self):
         return iter(self.batches)

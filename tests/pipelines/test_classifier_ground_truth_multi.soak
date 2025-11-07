@@ -1,0 +1,31 @@
+name: test_classifier_ground_truth_multi
+
+nodes:
+  - name: classify
+    type: Classifier
+    model_names:
+      - gpt-4o-mini
+    ground_truths:
+      condition_pred:
+        existing: "condition"
+        labels: ["control", "treatment"]
+      age_category:
+        existing: "age"
+        labels: ["young", "middle", "older"]
+    inputs:
+      - documents
+
+---#classify
+
+Read this participant data:
+
+<data>
+Age: {{age}}
+Response: {{response}}
+</data>
+
+Classify the participant:
+
+Condition group (based on their response): [[pick:condition_pred|control,treatment]]
+
+Age category: [[pick:age_category|young,middle,older]]

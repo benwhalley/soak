@@ -27,9 +27,20 @@ A classification prompt, extracting structured data from transcripts. The green 
 
 ![A struckdown prompt](docs/images/classifyprompt.png)
 
-Inter-rater agreement statistics, calculated for structured data extracted from transcripts:
+Inter-rater agreement and ground truth validation statistics, calculated for structured data extracted from transcripts:
 
 ![IRR statistics](docs/images/rateragreement.png)
+
+**Ground truth validation:** Classifier nodes can automatically validate LLM outputs against ground truth labels, calculating precision, recall, F1, and confusion matrices:
+
+```yaml
+ground_truths:
+  reflection:
+    existing: reflection_exists  # Ground truth column
+    mapping: {yes: 1, no: 0}     # Map LLM outputs to GT values
+```
+
+See [Ground Truth Validation](docs/how-to/ground-truth-validation.md) for details.
 
 Plots and similarity statistics quantify the similarity between sets of themes created by different analyses. For example we might compare different LLMs, different datasets (patients vs doctors) or different prompts (amending the research question posed to the LLM). The heatmap reveals common themes between different analyses or datasets:
 
@@ -52,54 +63,68 @@ Similarity statistics quantify the similarity between sets of themes created by 
 
 ### Example pipeline specifications
 
-- [soak/pipelines/zs.yaml](soak/pipelines/zs.yaml) is the Zero-shot pipeline used in the sample outputs above.
+- [soak/pipelines/zs.soak](soak/pipelines/zs.soak) is the Zero-shot pipeline used in the sample outputs above.
 
-- [classifier.yaml](docs/samples/classifier/classifier.yaml) is the classifier pipeline used in the sample output above.
+- [classifier.soak](docs/samples/classifier/classifier.soak) is the classifier pipeline used in the sample output above.
 
 ## Quick Start
 
 ```bash
 # install
 git clone https://github.com/benwhalley/soak
-uv tool install .
+uv install . tool
 
 # set credentials, using openai for simplicity
 export LLM_API_KEY=your_api_key
 export LLM_API_BASE=https://api.openai.com/v1
 
 # Run analysis
-soak run zs data/cfs/\*.txt -t simple -o cfs-simple-1
+soak zs soak/data/cfs/*.txt -t simple -o cfs-simple-1
 
 # Open results in a browser
-open docs/samples/cfs-simple-1.html
+open cfs-simple-1_simple.html
 
 # Re-run with a different/better model
-soak run zs data/cfs/\*.txt -o cfs-simple-2 --model-name="litellm/gpt-4.1"
+soak zs -o cfs-simple-2 --model-name="openai/gpt-4o" soak/data/cfs/*.txt
 
 # Compare results
-soak compare cfs-simple-1.json cfs-simple-2.json --output=comparison.html
+soak compare cfs-simple-2.json --output comparison.html cfs-simple-1.json
 ```
 
 
 ## More usage
 
 ```bash
-uv run soak run <pipeline> <files> --output <name>
+# Basic pattern
+uv run soak <pipeline> <files> --output <name>
 
-# Examples
-uv run soak run demo yourdata/*.txt --output analysis1
+# Run demo pipeline on sample text files
+uv run soak demo --output demo_analysis soak/data/cfs/*.txt
 
-# with the 'simple' html output template
-uv run soak run zspe data/interviews.docx -t simple --output analysis2
-
-# with CSV/XLSX spreadsheet input (each row becomes a document)
-uv run soak run mypipeline data.csv --output analysis3
+# Use the 'simple' html output template
+uv run soak zs -t simple --output analysis_simple soak/data/cfs/*.txt
 ```
 
-**Spreadsheet support:** CSV and XLSX files are supported as input. Each row becomes a separate document, with column values accessible in templates as `{{column_name}}`. Example:
+### Working with CSV/XLSX Spreadsheets
+
+CSV and XLSX files are fully supported. Each row becomes a separate document, with column values accessible in templates as `{{column_name}}`.
+
+**Example data** (`soak/data/test_data.csv`):
+```csv
+participant_id,age,condition,response
+P001,25,control,I felt very relaxed during the session
+P002,32,treatment,The intervention helped me focus better
+```
+
+**Run classifier on CSV:**
+```bash
+uv run soak classifier_tabular --output csv_analysis soak/data/test_data.csv
+```
+
+**Pipeline template accessing columns:**
 
 ```yaml
-# pipeline.yaml
+# pipeline.soak
 nodes:
   - name: analyze
     type: Map
@@ -111,8 +136,19 @@ Participant {{participant_id}} (age {{age}}, {{condition}} group):
 Summarize the response: [[summary:str]]
 ```
 
+**Sampling options:**
+```bash
+# Process first 10 rows only (useful for testing)
+uv run soak classifier_tabular --head 10 --output test_run survey.csv
 
-**Options:**
+# Randomly sample 50 rows
+uv run soak classifier_tabular --sample 50 --output pilot survey.csv
+```
+
+See [Working with Spreadsheet Data](docs/how-to/working-with-spreadsheet-data.md) for more details.
+
+
+**Common Options:**
 - `--output, -o`: Output filename (generates .json dump file and .html)
 - `--model-name`: LLM model (default: gpt-4o-mini)
 - `-c, --context`: Pipeline context variables (e.g., `-c research_question="Experiences of patients with COVID-19"`)

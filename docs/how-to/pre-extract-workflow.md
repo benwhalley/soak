@@ -32,7 +32,7 @@ The `zspe` pipeline adds a pre-extraction step before coding:
 ## Running the Pipeline
 
 ```bash
-uv run soak run zspe data/interviews/*.txt \
+uv run soak zspe \ data/interviews/*.txt
   --output results \
   -c excerpt_topics="Exercise, physical rehabilitation, and recovery through movement"
 ```
@@ -143,7 +143,7 @@ Examples:
 ### Step 2: Run with Topic
 
 ```bash
-uv run soak run zspe data/*.txt \
+uv run soak zspe \ data/*.txt
   --output results \
   -c excerpt_topics="Recovery experiences and symptom improvement"
 ```
@@ -154,9 +154,9 @@ Check `results_dump/02_Map_extract_relevant_excepts/` to see what was extracted:
 
 ```bash
 # Dump detailed execution
-uv run soak dump results.json
+uv run soak dump
 
-# View an extraction
+# View an extraction results.json
 cat results_dump/02_Map_extract_relevant_excepts/0000_*_response.json | jq '.relevant_content'
 ```
 
@@ -177,7 +177,7 @@ Codes will focus on your specified topics.
 ### Multiple Topics
 
 ```bash
-uv run soak run zspe data/*.txt \
+uv run soak zspe \ data/*.txt
   --output results \
   -c excerpt_topics="1) Physical symptoms and energy levels, 2) Social isolation, 3) Medical treatment"
 ```
@@ -187,7 +187,7 @@ uv run soak run zspe data/*.txt \
 Copy and modify the template:
 
 ```bash
-uv run soak show pipeline zspe > my_zspe.yaml
+uv run soak show zspe > my_zspe.soak pipeline
 ```
 
 Edit `extract_relevant_excepts` section:
@@ -228,7 +228,7 @@ Extract text according to criteria:
 Always dump execution to verify extractions match expectations:
 
 ```bash
-uv run soak run zspe data/*.txt -o results --dump
+uv run soak zspe -o results --dump data/*.txt
 ```
 
 **Too little extracted:**
@@ -280,15 +280,15 @@ Run multiple analyses on same data with different topics:
 
 ```bash
 # Analysis 1: Physical health
-uv run soak run zspe data/*.txt -o health_analysis \
+uv run soak zspe -o health_analysis \ data/*.txt
   -c excerpt_topics="Physical symptoms and bodily experiences"
 
 # Analysis 2: Social impact
-uv run soak run zspe data/*.txt -o social_analysis \
+uv run soak zspe -o social_analysis \ data/*.txt
   -c excerpt_topics="Relationships and social interactions"
 
 # Compare results
-uv run soak compare health_analysis.json social_analysis.json
+uv run soak compare social_analysis.json health_analysis.json
 ```
 
 ### Filtering Irrelevant Speakers

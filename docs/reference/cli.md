@@ -9,7 +9,7 @@ soak provides a command-line interface for running pipelines and working with re
 Run a pipeline on input files.
 
 ```bash
-uv run soak run PIPELINE INPUT_FILES [OPTIONS]
+uv run soak PIPELINE INPUT_FILES [OPTIONS]
 ```
 
 **Arguments:**
@@ -21,45 +21,52 @@ uv run soak run PIPELINE INPUT_FILES [OPTIONS]
 
 | Option | Short | Description |
 |--------|-------|-------------|
-| `--model-name MODEL` | | Override LLM model (default: from pipeline or `litellm/gpt-4.1-mini`) |
-| `--output PATH` | `-o` | Output file path without extension (generates `.json` and `.html`) |
-| `--format FORMAT` | `-f` | Output format when writing to stdout: `json` or `html` (default: `json`) |
-| `--template NAME` | `-t` | Template name in `soak/templates/` or path to custom template (default: `default.html`) |
+| `--model MODEL` | `-m` | Override LLM model (default: from pipeline or `gpt-4o-mini`) |
+| `--output PATH` | `-o` | Output file path without extension (default: derived from pipeline name) |
+| `--template NAME` | `-t` | Template name in `soak/templates/` or path to custom template (default: `pipeline.html`, can be used multiple times) |
 | `--include-documents` | | Include original document text in JSON output |
 | `--context KEY=VALUE` | `-c` | Override context variables (can be used multiple times) |
-| `--dump` | `-d` | Export detailed execution to folder |
-| `--dump-folder PATH` | | Custom dump folder path (default: `<output>_dump`) |
-| `--force` | `-F` | Overwrite existing output/dump files |
+| `--force` | `-f` | Overwrite existing output files/folders (checked before pipeline runs) |
+| `--sample N` | `-S` | Randomly sample N rows/documents from input |
+| `--head N` | `-H` | Take first N rows/documents from input |
+| `--seed N` | | Random seed for reproducible outputs (overrides pipeline config) |
+| `--progress/--no-progress` | | Show progress bars (auto-detected: enabled for TTY, disabled with -vv) |
 | `--verbose` | `-v` | Increase verbosity (`-v` = INFO, `-vv` = DEBUG) |
 
 **Examples:**
 
 ```bash
-# Basic usage
-uv run soak run zs data/interview.txt --output results
+# Basic usage (creates zs.json and zs_pipeline.html)
+uv run soak zs data/interview.txt
+
+# Specify custom output name
+uv run soak zs --output results data/interview.txt
 
 # Multiple files
-uv run soak run zs data/*.txt --output analysis
+uv run soak zs --output analysis data/*.txt
 
 # Custom model
-uv run soak run zs data/*.txt --output results --model-name openai/gpt-4o
+uv run soak zs --output results --model openai/gpt-4o data/*.txt
 
 # Override context variables
-uv run soak run zspe data/*.txt -o results \
+uv run soak zspe -o results data/*.txt \
   -c research_question="What are recovery experiences?" \
   -c excerpt_topics="Exercise and rehabilitation"
 
-# Dump execution details
-uv run soak run zs data/*.txt -o results --dump
-
 # Use custom template
-uv run soak run zs data/*.txt -o results -t my_template.html
+uv run soak zs -o results -t my_template.html data/*.txt
 
-# Write JSON to stdout
-uv run soak run zs data/interview.txt -f json > output.json
+# Use multiple templates (creates results_pipeline.html and results_simple.html)
+uv run soak zs -o results -t pipeline.html -t simple.html data/*.txt
 
 # Process ZIP archive
-uv run soak run zs interviews.zip -o results
+uv run soak zs -o results interviews.zip
+
+# Process CSV spreadsheet (each row becomes a document)
+uv run soak classifier_tabular -o results soak/data/test_data.csv
+
+# Sample first 10 rows from spreadsheet
+uv run soak classifier_tabular --head 10 -o results data/survey.xlsx
 ```
 
 **Pipeline Resolution:**
@@ -67,37 +74,46 @@ uv run soak run zs interviews.zip -o results
 soak looks for pipeline files in this order:
 
 1. `./PIPELINE` (exact path)
-2. `./PIPELINE.yaml`
+2. `./PIPELINE.soak`
 3. `./PIPELINE.yml`
 4. `soak/pipelines/PIPELINE`
-5. `soak/pipelines/PIPELINE.yaml`
+5. `soak/pipelines/PIPELINE.soak`
 6. `soak/pipelines/PIPELINE.yml`
 
 **Input Files:**
 
-- Supports: `.txt`, `.pdf`, `.docx`, `.zip`
+- Supports: `.txt`, `.pdf`, `.docx`, `.csv`, `.xlsx`, `.zip`
 - Glob patterns: `data/*.txt`, `**/*.docx`
+- CSV/XLSX: Each row becomes a separate document with columns accessible as `{{column_name}}`
 - ZIP files: Automatically extracted to temp directory
 - Multiple files processed in parallel
 
 **Output:**
 
-Without `--output`:
-- Writes to stdout in format specified by `--format`
+Output files are always written to disk (never to stdout):
+
+Without `--output` (pipeline `zs.soak`):
+- `zs.json` - Full pipeline data
+- `zs_pipeline.html` - Rendered view (default template)
+- `zs_dump/` - Detailed execution folder with node outputs
 
 With `--output results`:
 - `results.json` - Full pipeline data
-- `results.html` - Rendered view (using template)
+- `results_pipeline.html` - Rendered view (default template)
+- Additional HTML files if multiple `-t` options specified (e.g., `results_simple.html`)
+- `results_dump/` - Detailed execution folder
 
-With `--dump`:
-- Creates `results_dump/` directory with detailed node execution data
+**Conflict handling:**
+- Before running the pipeline, soak checks if any output files/folders already exist
+- If conflicts found without `--force`: exits with error (prevents wasted pipeline execution)
+- If conflicts found with `--force`: warns and overwrites all conflicting files/folders
 
 ### compare
 
 Compare multiple analysis results.
 
 ```bash
-uv run soak compare INPUT_FILES... [OPTIONS]
+uv run soak compare [OPTIONS] INPUT_FILES...
 ```
 
 **Arguments:**
@@ -118,16 +134,16 @@ uv run soak compare INPUT_FILES... [OPTIONS]
 
 ```bash
 # Compare two analyses
-uv run soak compare results1.json results2.json -o comparison.html
+uv run soak compare results2.json -o comparison.html results1.json
 
 # Compare with custom similarity threshold
-uv run soak compare run1.json run2.json run3.json --threshold 0.7
+uv run soak compare run2.json run3.json --threshold 0.7 run1.json
 
 # Use different visualization method
-uv run soak compare *.json --method pca -o comparison.html
+uv run soak compare --method pca -o comparison.html *.json
 
 # Custom label template
-uv run soak compare *.json -l "{name}: {description}" -o comparison.html
+uv run soak compare -l "{name}: {description}" -o comparison.html *.json
 ```
 
 **Output:**
@@ -157,14 +173,14 @@ uv run soak show pipeline
 # List all templates
 uv run soak show template
 
-# Show a pipeline
+# Show a specific pipeline
 uv run soak show pipeline zs
 
-# Show a template
+# Show a specific template
 uv run soak show template default
 
 # Save to file for customization
-uv run soak show pipeline zs > my_analysis.yaml
+uv run soak show pipeline zs > my_analysis.soak
 uv run soak show template default > my_template.html
 ```
 
@@ -179,44 +195,12 @@ uv run soak show template default > my_template.html
 
 - `default.html` - Standard results view
 
-### export
-
-Export saved JSON analysis to HTML.
-
-```bash
-uv run soak export INPUT_JSON [OPTIONS]
-```
-
-**Arguments:**
-
-- `INPUT_JSON` - Path to JSON file from previous run
-
-**Options:**
-
-| Option | Short | Description |
-|--------|-------|-------------|
-| `--output PATH` | `-o` | Output path without extension (default: same as input) |
-| `--template NAME` | `-t` | Template name or path (default: `default.html`) |
-
-**Examples:**
-
-```bash
-# Export with default template
-uv run soak export results.json
-
-# Export with custom template
-uv run soak export results.json -t narrative.html
-
-# Export to different file
-uv run soak export results.json -o final_report
-```
-
 ### dump
 
 Export detailed DAG execution to folder structure.
 
 ```bash
-uv run soak dump INPUT_JSON [OPTIONS]
+uv run soak dump [OPTIONS] INPUT_JSON
 ```
 
 **Arguments:**
@@ -228,19 +212,23 @@ uv run soak dump INPUT_JSON [OPTIONS]
 | Option | Short | Description |
 |--------|-------|-------------|
 | `--output-folder PATH` | `-o` | Output folder (default: `<input_stem>_dump`) |
-| `--force` | `-F` | Overwrite existing folder |
+| `--template NAME` | `-t` | Generate HTML files in dump using template(s) (can be used multiple times) |
+| `--force` | `-f` | Overwrite existing folder |
 
 **Examples:**
 
 ```bash
 # Dump execution details
-uv run soak dump results.json
+uv run soak dump
 
-# Custom output folder
+# Custom output folder results.json
 uv run soak dump results.json -o detailed_analysis
 
 # Overwrite existing dump
-uv run soak dump results.json --force
+uv run soak dump --force results.json
+
+# Dump with HTML generation
+uv run soak dump results.json -t pipeline.html
 ```
 
 **Output Structure:**
@@ -265,7 +253,7 @@ results_dump/
 | `LLM_API_KEY` | API key for LLM provider | Required |
 | `LLM_API_BASE` | Base URL for API | `https://api.openai.com/v1` |
 | `MAX_CONCURRENCY` | Max parallel LLM calls | `20` |
-| `SOAK_MAX_RUNTIME` | Max pipeline runtime (seconds) | `10800` (3 hours) |
+| `SOAK_MAX_RUNTIME` | Max pipeline runtime (seconds) | `1800` (30 minutes) |
 
 Set via:
 
@@ -294,13 +282,14 @@ LLM_API_BASE=https://api.openai.com/v1
 **View progress:**
 
 ```bash
-uv run soak run zs data/*.txt -o results -v
+uv run soak zs -o results -v data/*.txt
 ```
 
-**Test with stdout:**
+**Process results with jq:**
 
 ```bash
-uv run soak run zs data/test.txt -f json | jq '.codes'
+uv run soak zs data/test.txt  # Creates zs.json
+cat zs.json | jq '.codes'
 ```
 
 **Iterate on templates:**
@@ -312,20 +301,20 @@ uv run soak show template default > my_template.html
 # Edit my_template.html
 
 # Use it
-uv run soak run zs data/*.txt -o results -t my_template.html
+uv run soak zs data/*.txt -o results -t my_template.html
 ```
 
 **Reuse saved results:**
 
 ```bash
 # Run once
-uv run soak run zs data/*.txt -o results
-
-# Re-export with different template
-uv run soak export results.json -t my_template.html
+uv run soak zs -o results data/*.txt
 
 # Inspect detailed execution
 uv run soak dump results.json
+
+# Generate HTML from dump with custom template
+uv run soak dump results.json -t my_template.html
 ```
 
 **Process large datasets:**
@@ -333,5 +322,5 @@ uv run soak dump results.json
 ```bash
 # Reduce concurrency to avoid rate limits
 export MAX_CONCURRENCY=5
-uv run soak run zs large_dataset/*.txt -o results
+uv run soak zs large_dataset/*.txt -o results
 ```

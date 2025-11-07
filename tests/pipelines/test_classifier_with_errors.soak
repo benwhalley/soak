@@ -1,0 +1,19 @@
+name: test_classifier_with_errors
+
+nodes:
+  - name: classify
+    type: Classifier
+    model_names:
+      - gpt-4o-mini
+    inputs:
+      - documents
+
+---#classify
+
+Classify this text:
+
+<text>
+{{response}}
+</text>
+
+[[pick:category|A,B,C]]

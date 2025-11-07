@@ -16,8 +16,8 @@ nodes:
   - name: classify_sentences
     type: Classifier
     model_names:
-      - litellm/gpt-4o-mini
-      - litellm/gpt-4.1-mini
+      - gpt-4o-mini
+      - gpt-4.1-mini
     agreement_fields: 
       - positivity
     inputs:
@@ -25,13 +25,13 @@ nodes:
       
   - name: classify_paragraphs
     type: Classifier
-    model_name: "litellm/gpt-4.1-mini"
+    model_name: "gpt-4.1-mini"
     inputs:
       - paragraphs
 
   - name: classify_documents
     type: Classifier
-    model_name: litellm/gpt-4.1-mini
+    model_name: gpt-4.1-mini
     inputs:
       - documents
 

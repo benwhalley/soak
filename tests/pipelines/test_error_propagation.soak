@@ -1,0 +1,32 @@
+name: test_error_propagation
+
+nodes:
+  - name: step1
+    type: Map
+    inputs:
+      - documents
+
+  - name: step2
+    type: Map
+    inputs:
+      - step1
+
+---#step1
+
+Extract:
+
+<text>
+{{response}}
+</text>
+
+[[output]]
+
+---#step2
+
+Process:
+
+<text>
+{{input}}
+</text>
+
+[[result]]

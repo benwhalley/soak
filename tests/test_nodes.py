@@ -4,18 +4,18 @@
 from pathlib import Path
 
 import pytest
+from struckdown import LLMCredentials
 
-from soak.models import LLMCredentials
 from soak.specs import load_template_bundle
 
 # Test data path
-TEST_DATA = Path("data/chainstorecoffee.txt")
+TEST_DATA = Path("data-private/chainstorecoffee.txt")
 
 
 @pytest.mark.anyio
 async def test_split_node():
     """Test Split node with different split_unit options."""
-    pipeline = load_template_bundle(Path("tests/pipelines/test_split.yaml"))
+    pipeline = load_template_bundle(Path("tests/pipelines/test_split.soak"))
     pipeline.config.document_paths = [str(TEST_DATA)]
     pipeline.config.llm_credentials = LLMCredentials()
 
@@ -62,7 +62,7 @@ async def test_split_node():
 @pytest.mark.anyio
 async def test_map_node():
     """Test Map node processes all items in parallel."""
-    pipeline = load_template_bundle(Path("tests/pipelines/test_map.yaml"))
+    pipeline = load_template_bundle(Path("tests/pipelines/test_map.soak"))
     pipeline.config.document_paths = [str(TEST_DATA)]
     pipeline.config.llm_credentials = LLMCredentials()
 
@@ -86,7 +86,7 @@ async def test_map_node():
 @pytest.mark.anyio
 async def test_classifier_node_with_agreement():
     """Test Classifier node with multiple models and agreement calculation."""
-    pipeline = load_template_bundle(Path("tests/pipelines/test_classifier.yaml"))
+    pipeline = load_template_bundle(Path("tests/pipelines/test_classifier.soak"))
     pipeline.config.document_paths = [str(TEST_DATA)]
     pipeline.config.llm_credentials = LLMCredentials()
 
@@ -137,7 +137,7 @@ async def test_classifier_node_with_agreement():
 @pytest.mark.anyio
 async def test_filter_node():
     """Test Filter node includes and excludes items correctly."""
-    pipeline = load_template_bundle(Path("tests/pipelines/test_filter.yaml"))
+    pipeline = load_template_bundle(Path("tests/pipelines/test_filter.soak"))
     pipeline.config.document_paths = [str(TEST_DATA)]
     pipeline.config.llm_credentials = LLMCredentials()
 
@@ -164,7 +164,7 @@ async def test_filter_node():
 @pytest.mark.anyio
 async def test_transform_node_multi_slot():
     """Test Transform node with multi-slot struckdown prompts."""
-    pipeline = load_template_bundle(Path("tests/pipelines/test_transform.yaml"))
+    pipeline = load_template_bundle(Path("tests/pipelines/test_transform.soak"))
     pipeline.config.document_paths = [str(TEST_DATA)]
     pipeline.config.llm_credentials = LLMCredentials()
 
@@ -190,7 +190,7 @@ async def test_transform_node_multi_slot():
 @pytest.mark.anyio
 async def test_reduce_node():
     """Test Reduce node aggregates multiple inputs."""
-    pipeline = load_template_bundle(Path("tests/pipelines/test_reduce.yaml"))
+    pipeline = load_template_bundle(Path("tests/pipelines/test_reduce.soak"))
     pipeline.config.document_paths = [str(TEST_DATA)]
     pipeline.config.llm_credentials = LLMCredentials()
 
@@ -212,7 +212,7 @@ async def test_reduce_node():
 @pytest.mark.anyio
 async def test_batch_node():
     """Test Batch node groups items correctly."""
-    pipeline = load_template_bundle(Path("tests/pipelines/test_batch.yaml"))
+    pipeline = load_template_bundle(Path("tests/pipelines/test_batch.soak"))
     pipeline.config.document_paths = [str(TEST_DATA)]
     pipeline.config.llm_credentials = LLMCredentials()
 
@@ -248,17 +248,37 @@ async def test_batch_node():
 @pytest.mark.anyio
 async def test_verify_quotes_node():
     """Test VerifyQuotes node validates quotes against source."""
-    # VerifyQuotes is complex - it requires a specific 'codes' node with quotes
-    # Skip for now or test as part of a full pipeline
-    pytest.skip(
-        "VerifyQuotes requires complex setup with codes node - tested in integration"
-    )
+    pipeline = load_template_bundle(Path("tests/pipelines/test_verify_quotes.soak"))
+    pipeline.config.document_paths = [str(TEST_DATA)]
+    pipeline.config.llm_credentials = LLMCredentials()
+
+    result, error = await pipeline.run()
+    assert error is None, f"Pipeline failed: {error}"
+
+    verify_node = [n for n in pipeline.nodes if n.name == "verify"][0]
+
+    # Should have quote matches
+    assert verify_node.sentence_matches is not None
+    assert len(verify_node.sentence_matches) > 0
+
+    # Check statistics
+    assert verify_node.stats is not None
+    assert "n_quotes" in verify_node.stats
+    assert "mean_bm25_score" in verify_node.stats
+    assert "mean_cosine" in verify_node.stats
+
+    # Each match should have required fields
+    for match in verify_node.sentence_matches:
+        assert "quote" in match
+        assert "span_text" in match
+        assert "bm25_score" in match
+        assert "cosine_similarity" in match
 
 
 @pytest.mark.anyio
 async def test_pipeline_serialization():
     """Test that pipelines can be serialized to JSON."""
-    pipeline = load_template_bundle(Path("tests/pipelines/test_map.yaml"))
+    pipeline = load_template_bundle(Path("tests/pipelines/test_map.soak"))
     pipeline.config.document_paths = [str(TEST_DATA)]
     pipeline.config.llm_credentials = LLMCredentials()
 

@@ -4,7 +4,7 @@ Guide for Claude Code working with this repository.
 
 ## Project
 
-**soak-llm**: DAG-based pipeline system for LLM-assisted qualitative text analysis.
+**soaking**: DAG-based pipeline system for LLM-assisted qualitative text analysis.
 
 ## Environment
 
@@ -33,9 +33,30 @@ uv pip install -e .
 General patterns:
 - Type hints everywhere, including returns
 - Use Pydantic models for validation
-- Logger statements for debugging (use logger.debug liberally, info selectively)
 - Docstrings on public functions/methods
 - Use Optional[] explicitly (not | None syntax)
+
+**Logging standards:**
+- **stdout**: Only for primary command output (JSON, HTML, file contents from `show` command)
+- **stderr print**: Only for tqdm progress bars -- never for messages
+- **logger.error**: Fatal errors that terminate execution
+- **logger.warning**: Non-fatal problems that allow continuation
+- **logger.info**: User-facing progress/results (visible with `-v`)
+- **logger.debug**: Internal implementation details (visible with `-vv`)
+
+Examples:
+```python
+# ✅ Good
+logger.error("File not found: {path}")
+logger.info("✓ Exported results to {path}")
+logger.debug(f"Using cached documents: {len(docs)} items")
+print(json_output, file=sys.stdout)  # Primary output only
+
+# ❌ Bad
+print("Error: File not found", file=sys.stderr)  # Use logger.error
+print("✓ Done", file=sys.stderr)  # Use logger.info
+logger.info("Tokenized 150 chunks")  # Too detailed, use logger.debug
+```
 
 
 

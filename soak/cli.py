@@ -13,13 +13,19 @@ from pathlib import Path
 
 import typer
 from jinja2 import Environment, FileSystemLoader
-from struckdown import LLMCredentials
+from struckdown import CostSummary, LLMCredentials
 from trogon.typer import init_tui
 
 from .comparators.similarity_comparator import SimilarityComparator
 from .document_utils import unpack_zip_to_temp_paths_if_needed
-from .helpers import (format_exception_concise, hash_run_config, load_env_file,
-                      resolve_pipeline, sanitize_for_filename, save_env_file)
+from .helpers import (
+    format_exception_concise,
+    hash_run_config,
+    load_env_file,
+    resolve_pipeline,
+    sanitize_for_filename,
+    save_env_file,
+)
 from .models import QualitativeAnalysis, QualitativeAnalysisPipeline
 from .specs import load_template_bundle
 
@@ -29,8 +35,8 @@ init_tui(app)
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 logger = logging.getLogger(__name__)
 
-
 PIPELINE_DIR = Path(__file__).parent / "pipelines"
+COMMANDS = {"run", "export", "dump", "compare", "show", "tui"}
 
 
 @app.callback()
@@ -43,7 +49,10 @@ def main(
         help="Increase verbosity (-v=INFO, -vv=DEBUG)",
     )
 ):
-    """Global options."""
+    """soak: DAG-based pipeline system for LLM-assisted qualitative analysis.
+
+    Try `soak run --help` to get started
+    """
     setup_logging(verbose)
 
 
@@ -61,6 +70,38 @@ def generate_html_output(pipeline: QualitativeAnalysisPipeline, template: str) -
     return pipeline.to_html(template_path=str(template_path))
 
 
+def generate_all_html_outputs(
+    pipeline: QualitativeAnalysisPipeline,
+    templates: list[str],
+    on_error: str = "raise",
+) -> dict[str, str]:
+    """Generate HTML outputs for multiple templates.
+
+    Args:
+        pipeline: QualitativeAnalysisPipeline instance to render
+        templates: List of template names or paths
+        on_error: Error handling strategy -- "raise" to raise exceptions, "warn" to log warnings and continue
+
+    Returns:
+        Dict mapping template name to rendered HTML content
+    """
+    html_outputs = {}
+    for tmpl in templates:
+        try:
+            html_outputs[tmpl] = generate_html_output(pipeline, tmpl)
+        except Exception as e:
+            error_msg = format_exception_concise(e)
+            if on_error == "raise":
+                raise typer.BadParameter(
+                    f"Error generating HTML output for template '{tmpl}':\n{error_msg}"
+                )
+            else:  # warn
+                logger.warning(
+                    f"Error generating HTML for template '{tmpl}': {error_msg}"
+                )
+    return html_outputs
+
+
 def load_pipeline_json(input_json: str) -> QualitativeAnalysisPipeline:
     """Load and validate a pipeline from a JSON file.
 
@@ -75,7 +116,7 @@ def load_pipeline_json(input_json: str) -> QualitativeAnalysisPipeline:
     """
     input_path = Path(input_json)
     if not input_path.exists():
-        print(f"Error: File not found: {input_json}", file=sys.stderr)
+        logger.error(f"File not found: {input_json}")
         raise typer.Exit(1)
 
     with open(input_json, "r", encoding="utf-8") as f:
@@ -125,26 +166,91 @@ def resolve_template(template: str) -> Path:
             return candidate_with_ext
 
     # Template not found
-    print(f"Error: Template not found: {template}", file=sys.stderr)
-    print(f"Looked in: {templates_dir}", file=sys.stderr)
+    logger.error(f"Template not found: {template}")
+    logger.error(f"Looked in: {templates_dir}")
     raise typer.Exit(1)
+
+
+# @app.command()
+# def export(
+#     input_json: str = typer.Argument(
+#         ..., help="Path to JSON file containing QualitativeAnalysisPipeline"
+#     ),
+#     output: str = typer.Option(
+#         None,
+#         "--output",
+#         "-o",
+#         help="Output file path (without extension). If not specified, HTML goes to stdout (single template only)",
+#     ),
+#     template: list[str] = typer.Option(
+#         ["pipeline.html"],
+#         "--template",
+#         "-t",
+#         help="Template name (in soak/templates) or path to custom HTML template (can be used multiple times)",
+#     ),
+# ):
+#     """Export a saved analysis result to HTML."""
+
+#     # Load the pipeline
+#     pipeline = load_pipeline_json(input_json)
+
+#     # Generate HTML for each template
+#     html_outputs = generate_all_html_outputs(pipeline, template, on_error="raise")
+
+#     # If no output specified, write to stdout (only for single template)
+#     if output is None:
+#         if len(template) > 1:
+#             print(
+#                 "Error: Multiple templates specified but no --output given. Specify --output or use single template.",
+#                 file=sys.stderr,
+#             )
+#             raise typer.Exit(1)
+#         # Output single HTML to stdout
+#         print(html_outputs[template[0]], file=sys.stdout)
+#     else:
+#         # Write HTML files when output is specified
+#         for tmpl in template:
+#             template_stem = Path(resolve_template(tmpl)).stem
+#             output_html = f"{output}_{template_stem}.html"
+#             logger.info(
+#                 f"Writing HTML output with template '{template_stem}' to {output_html}"
+#             )
+#             with open(output_html, "w", encoding="utf-8") as f:
+#                 f.write(html_outputs[tmpl])
+
+#         if len(template) == 1:
+#             print(
+#                 f"Successfully exported to {output}_{Path(resolve_template(template[0])).stem}.html",
+#                 file=sys.stderr,
+#             )
+#         else:
+#             print(
+#                 f"Successfully exported {len(template)} HTML files to {output}_*.html",
+#                 file=sys.stderr,
+#             )
 
 
 @app.command()
 def run(
     pipeline: str = typer.Argument(..., help="Pipeline name to run (e.g., 'poc')"),
-    input_files: list[str] = typer.Argument(
-        ..., help="File patterns or zip files (supports globs like '*.txt')"
+    input: list[Path] = typer.Argument(
+        None,
+        help="Input file paths (file patterns or zip files, supports globs like '*.txt')",
     ),
-    model_name: str = typer.Option(None, help="LLM model name"),
+    context: list[str] = typer.Option(
+        None,
+        "--context",
+        "-c",
+        help="Override context variables (format: key=value, can be used multiple times)",
+    ),
     output: str = typer.Option(
         None,
         "--output",
         "-o",
-        help="Output file path (without extensions). If not specified, JSON goes to stdout",
+        help="Output file path (without extensions). If not specified, derived from pipeline name",
     ),
-    format: str = typer.Option(
-        "json", "--format", "-f", help="Output format: json or html"
+    force: bool = typer.Option(
+        False, "--force", "-f", help="Overwrite existing output files/folders"
     ),
     template: list[str] = typer.Option(
         ["pipeline.html"],
@@ -154,23 +260,6 @@ def run(
     ),
     include_documents: bool = typer.Option(
         False, "--include-documents", help="Include original documents in output"
-    ),
-    context: list[str] = typer.Option(
-        None,
-        "--context",
-        "-c",
-        help="Override context variables (format: key=value, can be used multiple times)",
-    ),
-    dump: bool = typer.Option(
-        False, "--dump", "-d", help="Dump execution details to folder"
-    ),
-    dump_folder: str = typer.Option(
-        None,
-        "--dump-folder",
-        help="Custom dump folder path (default: <output>_dump or <pipeline>_<timestamp>_dump)",
-    ),
-    force: bool = typer.Option(
-        False, "--force", "-F", help="Overwrite dump folder if it already exists"
     ),
     sample: int = typer.Option(
         None,
@@ -184,43 +273,45 @@ def run(
         "-H",
         help="Take first N rows/documents from input (mutually exclusive with --sample)",
     ),
+    seed: int = typer.Option(
+        None,
+        "--seed",
+        help="Random seed for reproducible outputs (overrides pipeline config)",
+    ),
+    model_name: str = typer.Option(None, "--model", "-m", help="LLM model name"),
+    progress: bool = typer.Option(
+        None,
+        "--progress/--no-progress",
+        help="Show progress bars (auto-detected: enabled for TTY, disabled with -vv)",
+    ),
 ):
     """Run a pipeline on input files."""
+    # start new run for cache detection
+    from struckdown import new_run
+
+    new_run()
+
+    # Validate that input files are provided
+    if not input:
+        logger.error("No input files specified.")
+        raise typer.Exit(1)
 
     # Validate mutually exclusive options
     if sample is not None and head is not None:
-        print("Error: --sample and --head are mutually exclusive", file=sys.stderr)
+        logger.error("--sample and --head are mutually exclusive")
         raise typer.Exit(1)
 
-    # Check if output files exist (if output specified)
-    if output:
-        output_json = Path(f"{output}.json")
-
-        # Check for all template HTML files
-        output_html_files = []
-        for tmpl in template:
-            template_stem = Path(resolve_template(tmpl)).stem
-            output_html_files.append(Path(f"{output}_{template_stem}.html"))
-
-        existing = []
-        if output_json.exists():
-            existing.append(str(output_json))
-        for html_file in output_html_files:
-            if html_file.exists():
-                existing.append(str(html_file))
-
-        if existing:
-            if not force:
-                print(
-                    f"Error: Output file(s) already exist: {', '.join(existing)}",
-                    file=sys.stderr,
-                )
-                print(f"Use --force/-F to overwrite", file=sys.stderr)
-                raise typer.Exit(1)
-            else:
-                logger.warning(
-                    f"Overwriting existing output files: {', '.join(existing)}"
-                )
+    # Auto-detect progress bar setting if not explicitly provided
+    if progress is None:
+        # Enable progress bars if:
+        # 1. Output is a TTY (interactive terminal)
+        # 2. Verbosity is not DEBUG (-vv)
+        # Check if logger is at DEBUG level (verbosity >= 2)
+        is_debug = logging.getLogger().level <= logging.DEBUG
+        progress = sys.stderr.isatty() and not is_debug
+    else:
+        # User explicitly set --progress or --no-progress, respect their choice
+        pass
 
     # Check and prompt for credentials first
     api_key, base_url = check_and_prompt_credentials(Path.cwd())
@@ -230,6 +321,47 @@ def run(
 
     pipyml = resolve_pipeline(pipeline_arg, Path.cwd(), PIPELINE_DIR)
     logger.info(f"Loading pipeline from {pipyml}")
+
+    # If no output specified, derive from pipeline filename
+    if output is None:
+        output = Path(pipyml).stem
+        logger.info(f"Using default output name: {output}")
+
+    # Check if ANY output files/folders exist BEFORE running pipeline
+    output_json = Path(f"{output}.json")
+
+    # Check for all template HTML files
+    output_html_files = []
+    for tmpl in template:
+        template_stem = Path(resolve_template(tmpl)).stem
+        output_html_files.append(Path(f"{output}_{template_stem}.html"))
+
+    # Check for dump folder (always created)
+    expected_dump_folder = Path(f"{output}_dump")
+
+    # Collect all existing paths
+    existing = []
+    if output_json.exists():
+        existing.append(str(output_json))
+    for html_file in output_html_files:
+        if html_file.exists():
+            existing.append(str(html_file))
+    if expected_dump_folder.exists():
+        existing.append(str(expected_dump_folder) + "/")
+
+    # Fail if any conflicts and not force
+    if existing:
+        if not force:
+            print(
+                f"Error: Output file(s)/folder(s) already exist: {', '.join(existing)}",
+                file=sys.stderr,
+            )
+            print(f"Use --force/-f to overwrite", file=sys.stderr)
+            raise typer.Exit(1)
+        else:
+            logger.warning(
+                f"Overwriting existing output files/folders: {', '.join(existing)}"
+            )
 
     try:
         pipeline = load_template_bundle(pipyml)
@@ -252,6 +384,9 @@ def run(
 
     if model_name is not None:
         pipeline.config.model_name = model_name
+    if seed is not None:
+        pipeline.config.seed = seed
+        logger.info(f"Set seed to {seed}")
     pipeline.config.llm_credentials = LLMCredentials(
         api_key=api_key,
         base_url=base_url,
@@ -265,11 +400,16 @@ def run(
         pipeline.config.head_n = head
         logger.info(f"Will take first {head} rows/documents")
 
+    # Set progress bar setting
+    pipeline.config.show_progress = progress
+    if progress:
+        logger.debug("Progress bars enabled")
+
     try:
-        with unpack_zip_to_temp_paths_if_needed(input_files) as docfiles:
+        with unpack_zip_to_temp_paths_if_needed(input) as docfiles:
             if not docfiles:
                 print(
-                    f"Error: No files found matching input patterns: {', '.join(input_files)}",
+                    f"Error: No files found matching input patterns: {', '.join(map(str,input))}",
                     file=sys.stderr,
                 )
                 print(
@@ -281,13 +421,49 @@ def run(
             pipeline.config.document_paths = docfiles
             pipeline.config.documents = pipeline.config.load_documents()
     except FileNotFoundError as e:
-        print(f"Error: {e}", file=sys.stderr)
+        logger.error(str(e))
         raise typer.Exit(1)
 
     try:
         analysis, errors = asyncio.run(pipeline.run())
         if errors:
             raise typer.BadParameter(f"Pipeline execution failed:\n{errors}")
+
+        # print cost summary to stderr (always visible)
+        cost_summary = analysis.get_cost_summary()
+        if cost_summary:
+            # use CostSummary for overall display
+            summary = CostSummary(
+                total_cost=cost_summary.get("total_cost", 0.0),
+                fresh_cost=cost_summary.get("fresh_cost", 0.0),
+                total_prompt_tokens=cost_summary.get("total_prompt_tokens", 0),
+                total_completion_tokens=cost_summary.get("total_completion_tokens", 0),
+                fresh_count=cost_summary.get("fresh_count", 0),
+                cached_count=cost_summary.get("cached_count", 0),
+                has_unknown_costs=cost_summary.get("has_unknown_costs", False),
+                all_costs_unknown=cost_summary.get("all_costs_unknown", False),
+            )
+            print(summary.format_summary(include_breakdown=True), file=sys.stderr)
+
+            # print per-node breakdown (only if verbose mode is enabled)
+            if logging.getLogger("soak").level <= logging.INFO:
+                for node_name, node_data in cost_summary.get("by_node", {}).items():
+                    if node_data["cost"] > 0 or node_data.get("prompt_tokens", 0) > 0:
+                        unknown_marker = "*" if node_data.get("has_unknown") else ""
+                        # show cache info for this node if available
+                        if node_data.get("cached_count", 0) > 0:
+                            cache_info = f" ({node_data['fresh_count']} fresh, {node_data['cached_count']} cached)"
+                        elif node_data.get("fresh_count", 0) > 0:
+                            cache_info = " (fresh)"
+                        else:
+                            cache_info = ""
+
+                        print(
+                            f"  {node_name}{unknown_marker}: ${node_data['cost']:.4f} "
+                            f"({node_data['prompt_tokens']:,} in / "
+                            f"{node_data['completion_tokens']:,} out){cache_info}",
+                            file=sys.stderr,
+                        )
 
     except Exception as e:
         error_msg = format_exception_concise(e)
@@ -301,163 +477,71 @@ def run(
     if not include_documents:
         analysis.config.documents = []
 
-    # generate output content based on format
+    # generate output content
     jsoncontent = analysis.model_dump_json()
-
+    
     # Generate HTML for each template
-    html_outputs = {}
     # Use the original pipeline directly - don't serialize/deserialize as it corrupts node outputs
     pipeline_for_html = analysis
-
-    for tmpl in template:
-        try:
-            html_outputs[tmpl] = generate_html_output(pipeline_for_html, tmpl)
-        except Exception as e:
-            error_msg = format_exception_concise(e)
-            raise typer.BadParameter(
-                f"Error generating HTML output for template '{tmpl}':\n{error_msg}"
-            )
+    html_outputs = generate_all_html_outputs(
+        pipeline_for_html, template, on_error="raise"
+    )
 
     # Generate config hash for dump folder naming (needed even if output not specified)
     config_hash = hash_run_config(
-        input_files=input_files,
+        input_files=input,
         model_name=model_name,
         context=context,
         template=template,
     )
 
-    # If no output file specified, write JSON to stdout and skip file writing
-    if output is None:
-        print(jsoncontent, file=sys.stdout)
-    else:
-        # Write to files when output is specified
-        logger.info(f"Writing json output to {output}.json")
-        with open(output + ".json", "w", encoding="utf-8") as f:
-            f.write(jsoncontent)
+    # Write output files
+    logger.info(f"Writing json output to {output}.json")
+    with open(output + ".json", "w", encoding="utf-8") as f:
+        f.write(jsoncontent)
 
-        for tmpl in template:
-            template_stem = Path(resolve_template(tmpl)).stem
-            html_filename = f"{output}_{template_stem}.html"
-            logger.info(
-                f"Writing HTML output with template '{template_stem}' to {html_filename}"
-            )
-            with open(html_filename, "w", encoding="utf-8") as f:
-                f.write(html_outputs[tmpl])
-
-    if dump:
-        if dump_folder is None:
-            if output:
-                dump_folder = f"{output}_dump"
-            else:
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                # Sanitize pipeline name for safe folder name (use pipeline.name from the loaded object)
-                safe_pipeline = sanitize_for_filename(pipeline.name)
-                dump_folder = f"{safe_pipeline}_{config_hash}_{timestamp}_dump"
-
-        dump_path = Path(dump_folder)
-
-        # Check if dump folder exists
-        if dump_path.exists():
-            if not force:
-                print(
-                    f"\nError: Dump folder already exists: {dump_path}", file=sys.stderr
-                )
-                print(f"Use --force/-F to overwrite", file=sys.stderr)
-                raise typer.Exit(1)
-            else:
-                logger.info(f"Removing existing dump folder: {dump_path}")
-
-                shutil.rmtree(dump_path)
-
-        # Build command string for metadata
-        cmd_parts = [f"soak run {pipeline_arg}"] + input_files
-        if output:
-            cmd_parts.append(f"--output {output}")
-        cmd_parts.append(f"--model-name {model_name}")
-        if context:
-            for ctx in context:
-                cmd_parts.append(f"--context {ctx}")
-
-        metadata = {
-            "command": " ".join(cmd_parts),
-            "pipeline_file": str(pipyml),
-            "model_name": model_name,
-            "templates": template,
-            "unique_id": config_hash,
-        }
-        if context:
-            metadata["context_overrides"] = dict([c.split("=", 1) for c in context])
-
-        logger.info(f"Dumping execution details to {dump_path}")
-        analysis.export_execution(dump_path, metadata=metadata)
-        print(f"✓ Execution dump saved to: {str(dump_path)}", file=sys.stderr)
-
-
-@app.command()
-def export(
-    input_json: str = typer.Argument(
-        ..., help="Path to JSON file containing QualitativeAnalysisPipeline"
-    ),
-    output: str = typer.Option(
-        None,
-        "--output",
-        "-o",
-        help="Output file path (without extension). If not specified, HTML goes to stdout (single template only)",
-    ),
-    template: list[str] = typer.Option(
-        ["pipeline.html"],
-        "--template",
-        "-t",
-        help="Template name (in soak/templates) or path to custom HTML template (can be used multiple times)",
-    ),
-):
-    """Export a saved analysis result to HTML."""
-
-    # Load the pipeline
-    pipeline = load_pipeline_json(input_json)
-
-    # Generate HTML for each template
-    html_outputs = {}
     for tmpl in template:
-        try:
-            html_outputs[tmpl] = generate_html_output(pipeline, tmpl)
-        except Exception as e:
-            error_msg = format_exception_concise(e)
-            raise typer.BadParameter(
-                f"Error generating HTML output for template '{tmpl}':\n{error_msg}"
-            )
+        template_stem = Path(resolve_template(tmpl)).stem
+        html_filename = f"{output}_{template_stem}.html"
+        logger.info(
+            f"Writing HTML output with template '{template_stem}' to {html_filename}"
+        )
+        with open(html_filename, "w", encoding="utf-8") as f:
+            f.write(html_outputs[tmpl])
 
-    # If no output specified, write to stdout (only for single template)
-    if output is None:
-        if len(template) > 1:
-            print(
-                "Error: Multiple templates specified but no --output given. Specify --output or use single template.",
-                file=sys.stderr,
-            )
-            raise typer.Exit(1)
-        # Output single HTML to stdout
-        print(html_outputs[template[0]], file=sys.stdout)
-    else:
-        # Write HTML files when output is specified
-        for tmpl in template:
-            template_stem = Path(resolve_template(tmpl)).stem
-            output_html = f"{output}_{template_stem}.html"
-            logger.info(
-                f"Writing HTML output with template '{template_stem}' to {output_html}"
-            )
-            with open(output_html, "w", encoding="utf-8") as f:
-                f.write(html_outputs[tmpl])
+    # Always create dump folder
+    dump_path = Path(f"{output}_dump")
 
-        if len(template) == 1:
-            print(
-                f"Successfully exported to {output}_{Path(resolve_template(template[0])).stem}.html",
-                file=sys.stderr,
-            )
-        else:
-            print(
-                f"Successfully exported {len(template)} HTML files to {output}_*.html",
-                file=sys.stderr,
-            )
+    # Remove existing dump folder if force is enabled
+    if dump_path.exists() and force:
+        logger.info(f"Removing existing dump folder: {dump_path}")
+        shutil.rmtree(dump_path)
+
+    # Build command string for metadata
+    cmd_parts = [f"soak {pipeline_arg}"]
+    for inp in input:
+        cmd_parts.append(f"--input {inp}")
+    cmd_parts.append(f"--output {output}")
+    if model_name:
+        cmd_parts.append(f"--model-name {model_name}")
+    if context:
+        for ctx in context:
+            cmd_parts.append(f"--context {ctx}")
+
+    metadata = {
+        "command": " ".join(cmd_parts),
+        "pipeline_file": str(pipyml),
+        "model_name": model_name,
+        "templates": template,
+        "unique_id": config_hash,
+    }
+    if context:
+        metadata["context_overrides"] = dict([c.split("=", 1) for c in context])
+
+    logger.info(f"Dumping execution details to {dump_path}")
+    analysis.export_execution(dump_path, metadata=metadata)
+    logger.info(f"✓ Execution dump saved to: {dump_path}")
+
 
 
 @app.command()
@@ -480,7 +564,7 @@ def dump(
     force: bool = typer.Option(
         False,
         "--force",
-        "-F",
+        "-f",
         help="Overwrite output folder if it already exists",
     ),
 ):
@@ -519,28 +603,17 @@ def dump(
 
     # Generate HTML files if template(s) specified
     if template:
-        for tmpl in template:
-            try:
-                html_content = generate_html_output(pipeline, tmpl)
-                template_stem = Path(resolve_template(tmpl)).stem
-                html_path = output_path / f"analysis_{template_stem}.html"
-                logger.info(
-                    f"Writing HTML with template '{template_stem}' to {html_path}"
-                )
-                with open(html_path, "w", encoding="utf-8") as f:
-                    f.write(html_content)
-            except Exception as e:
-                error_msg = format_exception_concise(e)
-                print(
-                    f"Warning: Error generating HTML for template '{tmpl}': {error_msg}",
-                    file=sys.stderr,
-                )
+        html_outputs = generate_all_html_outputs(pipeline, template, on_error="warn")
+        for tmpl, html_content in html_outputs.items():
+            template_stem = Path(resolve_template(tmpl)).stem
+            html_path = output_path / f"analysis_{template_stem}.html"
+            logger.info(f"Writing HTML with template '{template_stem}' to {html_path}")
+            with open(html_path, "w", encoding="utf-8") as f:
+                f.write(html_content)
 
-    print(f"\n✓ Execution dump saved to: {output_path}", file=sys.stderr)
+    logger.info(f"✓ Execution dump saved to: {output_path}")
     if template:
-        print(
-            f"✓ Generated {len(template)} HTML file(s) in dump folder", file=sys.stderr
-        )
+        logger.info(f"✓ Generated {len(template)} HTML file(s) in dump folder")
 
 
 @app.command()
@@ -581,7 +654,7 @@ def compare(
     """Compare multiple analysis results and generate comparison report."""
 
     if len(input_files) < 2:
-        print("Error: At least 2 JSON files required for comparison", file=sys.stderr)
+        logger.error("At least 2 JSON files required for comparison")
         raise typer.Exit(1)
 
     logger.info(f"Loading {len(input_files)} analyses...")
@@ -590,7 +663,7 @@ def compare(
     for input_json in input_files:
         input_path = Path(input_json)
         if not input_path.exists():
-            print(f"Error: File not found: {input_json}", file=sys.stderr)
+            logger.error(f"File not found: {input_json}")
             raise typer.Exit(1)
 
         with open(input_json, "r", encoding="utf-8") as f:
@@ -643,7 +716,7 @@ def compare(
     with open(output, "w", encoding="utf-8") as f:
         f.write(html_content)
 
-    print(f"\n✓ Comparison report saved to: {output}", file=sys.stderr)
+    logger.info(f"✓ Comparison report saved to: {output}")
 
     # Print summary statistics
     logger.debug("\nSummary:")
@@ -673,7 +746,7 @@ def show(
         soak show template default  # Show contents of default template
 
     You can redirect output to create your own custom versions:
-        soak show pipeline demo > my_pipeline.yaml
+        soak show pipeline demo > my_pipeline.soak
         soak show template default > my_template.html
     """
 
@@ -686,18 +759,18 @@ def show(
 
     if item_type == "pipeline":
         items_dir = PIPELINE_DIR
-        extensions = [".yaml", ".yml"]
+        extensions = [".soak"]
     else:  # template
         items_dir = Path(__file__).parent / "templates"
         extensions = [".html"]
 
     # List all if no name provided
     if name is None:
-        print(f"Available {item_type}s:", file=sys.stderr)
+        logger.info(f"Available {item_type}s:")
         for ext in extensions:
             for item_path in sorted(items_dir.glob(f"*{ext}")):
-                print(f"  {item_path.stem}", file=sys.stderr)
-        print(f"\nUsage: soak show {item_type} <name>", file=sys.stderr)
+                logger.info(f"  {item_path.stem}")
+        logger.info(f"\nUsage: soak show {item_type} <name>")
         return
 
     # Find the item
@@ -716,8 +789,8 @@ def show(
             break
 
     if item_path is None:
-        print(f"Error: {item_type} '{name}' not found in {items_dir}", file=sys.stderr)
-        print(f"Tried: {[str(c) for c in candidates]}", file=sys.stderr)
+        logger.error(f"{item_type} '{name}' not found in {items_dir}")
+        logger.debug(f"Tried: {[str(c) for c in candidates]}")
         raise typer.Exit(1)
 
     # Print contents to stdout
@@ -750,16 +823,15 @@ def check_and_prompt_credentials(cwd: Path) -> tuple[str | None, str | None]:
         missing.append("LLM_API_BASE")
 
     if missing:
-        print("\n⚠️  Missing required LLM credentials:", file=sys.stderr)
+        logger.warning("Missing required LLM credentials:")
         for var in missing:
-            print(f"   - {var}", file=sys.stderr)
-        print(file=sys.stderr)
+            logger.warning(f"   - {var}")
 
         response = typer.confirm(
             "Would you like to provide them now?", default=True, err=True
         )
         if not response:
-            print("Error: Cannot proceed without LLM credentials", file=sys.stderr)
+            logger.error("Cannot proceed without LLM credentials")
             raise typer.Exit(1)
 
         # Load existing .env vars to preserve them
@@ -776,7 +848,7 @@ def check_and_prompt_credentials(cwd: Path) -> tuple[str | None, str | None]:
 
         # Save to .env file
         save_env_file(env_path, env_vars)
-        print(f"\n✓ Credentials saved to {env_path}", file=sys.stderr)
+        logger.info(f"✓ Credentials saved to {env_path}")
 
         # Set in current process environment
         os.environ["LLM_API_KEY"] = api_key
@@ -786,6 +858,7 @@ def check_and_prompt_credentials(cwd: Path) -> tuple[str | None, str | None]:
 
 
 def setup_logging(verbose: int):
+    """Configure logging levels based on verbosity (0=WARNING, 1=INFO, 2+=DEBUG)."""
 
     # map verbosity to levels
     if verbose == 0:
@@ -807,5 +880,24 @@ def setup_logging(verbose: int):
     logging.getLogger("struckdown").setLevel(level)
 
 
-if __name__ == "__main__":
+def main_with_default_command():
+    """Entry point that makes 'run' the default command."""
+    # Make 'run' the default command when first non-flag arg is not a built-in command
+    # Find first non-flag argument
+    first_arg = None
+    first_arg_index = None
+    for i, arg in enumerate(sys.argv[1:], 1):
+        if not arg.startswith("-"):
+            first_arg = arg
+            first_arg_index = i
+            break
+
+    # If first non-flag arg exists and is not a command, inject 'run' before it
+    if first_arg and first_arg not in COMMANDS:
+        sys.argv.insert(first_arg_index, "run")
+
     app()
+
+
+if __name__ == "__main__":
+    main_with_default_command()

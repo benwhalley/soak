@@ -3,9 +3,9 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "soak-llm"
-version = "0.3.1"
-description = "Soak: graph-based pipelines for LLM-assisted qualitative text analysis"
+name = "soaking"
+version = "0.3.3"
+description = "soak: graph-based pipelines for LLM-assisted qualitative text analysis"
 authors = [
   { name = "Ben Whalley", email = "ben.whalley@plymouth.ac.uk" }
 ]
@@ -32,7 +32,6 @@ dependencies = [
     "typer>=0.16.0",
     "umap-learn>=0.5.9.post2",
     "asyncpg>=0.30.0",
-    "more-itertools>=10.7.0",
     "jinja-markdown>=1.210911",
     "struckdown",
     "trogon>=0.6.0",
@@ -45,26 +44,30 @@ dependencies = [
     "setuptools>=80.9.0",
     "irrcac",
     "pysbd>=0.3.4",
+    "tqdm>=4.67.0",
+    "simpleeval>=1.0.3",
+    "mkdocs>=1.6.0",
+    "mkdocs-material>=9.5.0",
+    "pymdown-extensions>=10.11.0",
 ]
 
 [tool.setuptools.package-data]
-soak = ["templates/*.html", "templates/*.md", "pipelines/*.yaml", "data/**/*"]
+soak = ["templates/*.html", "templates/*.md", "pipelines/*.soak", "data/**/*"]
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["soak*",]
 
-
-
 [project.scripts]
-soak = "soak.cli:app"
+soak = "soak.cli:main_with_default_command"
 
 [tool.uv]
 package = true
 
 [tool.uv.sources]
-# Production defaults (git)
-struckdown = { git = "https://github.com/benwhalley/struckdown", rev = "HEAD" }
+# Local development version
+struckdown = { path = "/Users/benwhalley/dev/struckdown", editable = true }
+# struckdown = { git = "https://github.com/benwhalley/struckdown", rev = "HEAD" }
 irrcac = { git = "https://github.com/benwhalley/irrCAC.git" }
 
 [tool.pytest.ini_options]

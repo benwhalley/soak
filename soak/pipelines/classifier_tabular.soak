@@ -1,0 +1,99 @@
+name: classifier_example
+nodes:
+  - name: classify_utterances
+    type: Classifier
+    model_names:
+      # - gpt-4.1
+      - gpt-4.1-mini
+    inputs:
+      - documents    
+    ground_truths:
+      question_type:
+        existing: question_subtype
+        mapping:
+          open: open
+          closed: closed
+          not_a_question: "NA"
+      reflection: 
+        existing: reflection_exists
+        mapping:
+          simple: true
+          complex: true
+          reflexive_check: true
+          factual_check: false
+          no: false
+          unclear: false
+          
+---#classify_utterances
+
+Read the text carefully. We will classify the LAST utterance only.
+
+<text>
+{{utterance_context}}
+</text>
+
+Use these lines as context, but only make decisions based on the last utterance. The last utterance was:
+
+> "{{utterance_text}}"
+
+¡BEGIN
+
+Is this utterance a question?
+
+Questions can be explicit (ending with a question mark) or implied (phrased as statements but functionally inviting a response). Consider the interactional context: is the therapist seeking information or confirmation from the client?
+If so, it’s a question — even if grammatically a statement.
+
+Then classify the question type:
+- Open question: invites a broad, elaborative response (e.g. “What do you think about that?”).
+- Closed question: restricts the response to a short or factual answer, often yes/no or a specific fact (e.g. “Do you play tennis every day?”).
+
+If the utterance doesn’t function as a question it may be a statement or some other utterance type. Classify as not a question.
+
+Last utterance:
+
+> {{utterance_text}}
+
+Choose an option: [[pick:question_type|open,closed,not_a_question]]
+
+
+¡OBLIVIATE
+
+Does the therapist respond with reflection?
+
+A reflection is a statement (not usually a question), that mirrors or paraphrases what the client has said (or implied), to show understanding and guide the conversation.
+Sometimes, questions can be used for reflection.
+
+Reflections serve to:
+
+- demonstrate empathic listening,
+- make clients feel heard and understood,
+- encourage deeper exploration, and
+- subtly shape direction toward change talk.
+
+Reflections vary in depth:
+
+**Simple reflections** tend to repeat or slightly rephrase what the client said. Example:
+
+Client: "I just don’t have the energy to exercise."
+Therapist: "You’re feeling drained lately."
+
+**Complex reflections** add meaning, highlight underlying emotion or values, or infer unspoken content. Example: 
+
+Therapist: "You miss how you used to feel when you were more active, but right now it seems overwhelming."
+
+A **reflexive check** is a question-shaped reflection — it restates or infers the client’s meaning but phrases it with rising intonation or a question mark to check understanding.
+It functions like a reflection (showing empathy and testing accuracy) but sounds more tentative.  Example:
+
+Therapist: "So you’d like more time with your friends?"
+
+**Factual checks** can sound similar. They are questions but are NOT reflections. They are used to clarify or confirm factual information, rather than mirroring the client’s *perspective* or *emotion*. There’s no empathic or interpretive element. Example:
+
+Therapist: "you drink alcohol at least four times a week?"
+
+-----------
+
+Check the last utterance in the conversation again:
+
+> {{utterance_text}}
+
+Respond `simple` if simple reflection is present; `complex` for complex reflection; "reflexive_check" for a question-type reflection. Use "factual_check" or "no" if there is no reflection; use `unclear` if it's not clear or not applicable to this example: [[pick:reflection|simple,complex,reflexive_check,factual_check,no,unclear]]

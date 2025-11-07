@@ -13,11 +13,24 @@ import pandas as pd
 from pydantic import Field
 from rank_bm25 import BM25Okapi
 from sklearn.metrics.pairwise import cosine_similarity
-from struckdown import chatter_async
+from struckdown import StruckdownLLMError, chatter_async
 from struckdown.parsing import parse_syntax
 
-from ..base import (TrackedItem, get_action_lookup, get_embedding,
-                    safe_json_dump, semaphore)
+from soak.error_handlers import (
+    ErrorBehavior,
+    get_error_behavior,
+    log_error_to_stderr,
+    managed_llm_call,
+    should_continue_pipeline,
+)
+from soak.models.base import (
+    TrackedItem,
+    get_action_lookup,
+    get_embedding,
+    safe_json_dump,
+    semaphore,
+)
+
 from .base import CompletionDAGNode
 
 logger = logging.getLogger(__name__)
@@ -76,19 +89,11 @@ def create_document_boundaries(
         doc_name = (
             doc.metadata.get("filename")
             if hasattr(doc, "metadata") and doc.metadata
-            else (
-                doc.source_id
-                if hasattr(doc, "source_id")
-                else getattr(doc, "path", "unknown")
-            )
+            else (doc.id if hasattr(doc, "id") else getattr(doc, "path", "unknown"))
         )
-        # Fall back to source_id or path attribute
+        # Fall back to id or path attribute
         if not doc_name:
-            doc_name = (
-                doc.source_id
-                if hasattr(doc, "source_id")
-                else getattr(doc, "path", "unknown")
-            )
+            doc_name = doc.id if hasattr(doc, "id") else getattr(doc, "path", "unknown")
 
         doc_name_str = str(doc_name)
         boundaries.append((doc_name_str, current_pos, current_pos + content_len))
@@ -412,7 +417,7 @@ def is_match_truncated(
 
 
 def verify_quotes_bm25_first(
-    extracted_sentences: List[str],
+    extracted_quotes: List["Quote"],
     original_windows: List[Tuple[str, int, int]],
     original_text: str,
     doc_boundaries: List[Tuple[str, int, int]],
@@ -432,16 +437,17 @@ def verify_quotes_bm25_first(
     - If no ellipsis: find best BM25 window
     - If ellipsis: match head/tail separately, reconstruct span
     - Always compute embedding similarity on combined span
-    - Return BM25 score, ratio (top1/top2), cosine similarity, and full source document content
+    - Return BM25 score, ratio (top1/top2), cosine similarity, hash, and full source document content
 
     Args:
+        extracted_quotes: List of Quote objects to verify
         original_windows: List of (window_text, start_pos, end_pos) tuples
         original_text: Full concatenated source text
         doc_boundaries: List of (doc_name, start_pos, end_pos) for document tracking
         doc_content_map: Dict mapping doc_name to full document content
     """
 
-    if not extracted_sentences:
+    if not extracted_quotes:
         return []
 
     # Extract window texts and build BM25 index
@@ -451,7 +457,8 @@ def verify_quotes_bm25_first(
 
     results = []
 
-    for quote in extracted_sentences:
+    for quote_obj in extracted_quotes:
+        quote = quote_obj.text
         has_ellipsis = bool(ELLIPSIS_RE.search(quote))
 
         if not has_ellipsis:
@@ -671,6 +678,7 @@ def verify_quotes_bm25_first(
         results.append(
             {
                 "quote": quote,
+                "quote_hash": quote_obj.hash(),
                 "source_doc": source_doc,
                 "span_text": span_text,
                 "source_doc_content": source_doc_content,
@@ -753,31 +761,41 @@ class VerifyQuotes(CompletionDAGNode):
             )
             prompt = template_path.read_text()
 
-        try:
-            result = await chatter_async(
-                multipart_prompt=prompt,
-                context={"text1": quote, "text2": source},
-                model=self.get_model(),
-                credentials=self.dag.config.llm_credentials,
-                action_lookup=get_action_lookup(),
-            )
+        # get LLM kwargs including seed
+        extra_kwargs = self.get_llm_kwargs()
 
-            # Extract the parsed results
-            explanation = (
-                result.results.get("explanation", {}).output
-                if hasattr(result.results.get("explanation", {}), "output")
-                else ""
-            )
-            is_contained = (
-                result.results.get("is_contained", {}).output
-                if hasattr(result.results.get("is_contained", {}), "output")
-                else None
-            )
+        result = await managed_llm_call(
+            node_name=self.name,
+            config=self.dag.config,
+            llm_func=chatter_async,
+            item_index=None,
+            multipart_prompt=prompt,
+            context={"text1": quote, "text2": source},
+            model=self.get_model(),
+            credentials=self.dag.config.llm_credentials,
+            extra_kwargs=extra_kwargs,
+        )
 
-            return {"explanation": explanation, "is_contained": is_contained}
-        except Exception as e:
-            logger.error(f"Error in llm_as_judge: {e}")
-            return {"explanation": f"Error: {str(e)}", "is_contained": None}
+        # If managed_llm_call returned None (error was skipped), return error indicator
+        if result is None:
+            return {"explanation": "LLM Error occurred (skipped)", "is_contained": None}
+
+        # accumulate cost from LLM-as-judge call
+        self._accumulate_costs(result)
+
+        # Extract the parsed results
+        explanation = (
+            result.results.get("explanation", {}).output
+            if hasattr(result.results.get("explanation", {}), "output")
+            else ""
+        )
+        is_contained = (
+            result.results.get("is_contained", {}).output
+            if hasattr(result.results.get("is_contained", {}), "output")
+            else None
+        )
+
+        return {"explanation": explanation, "is_contained": is_contained}
 
     async def run(self) -> List[Any]:
         await super().run()
@@ -789,86 +807,181 @@ class VerifyQuotes(CompletionDAGNode):
             self.dag.config.documents
         )
 
-        codes = self.context.get("codes")
-        if not codes:
-            raise Exception("VerifyQuotes must be run after node called `codes`")
+        # Get input - must produce CodeList(s)
+        if not self.inputs or len(self.inputs) != 1:
+            raise ValueError("VerifyQuotes requires exactly one input node")
 
-        # collect extracted quotes
-        self.extracted_sentences = []
-        # Wrap in list if it's a single result
-        codes_list = [codes] if not isinstance(codes, list) else codes
-        for result in codes_list:
-            try:
-                # Try different ways to extract codes from the result
-                cset = None
+        input_data = self.context[self.inputs[0]]
+        if not input_data:
+            raise ValueError(f"No output from input node '{self.inputs[0]}'")
+
+        # Handle both single ChatterResult and list of ChatterResults
+        from soak.models.base import CodeList
+
+        if isinstance(input_data, list):
+            # Map node returns list of results - collect all CodeLists
+            all_codelists = []
+            for result in input_data:
                 if hasattr(result, "outputs"):
-                    if hasattr(result.outputs, "codes"):
-                        cset = result.outputs.codes
-                    elif isinstance(result.outputs, dict) and "codes" in result.outputs:
-                        cset = result.outputs["codes"]
-                elif hasattr(result, "results") and result.results.get("codes"):
-                    output = result.results.get("codes").output
-                    if hasattr(output, "codes"):
-                        cset = output.codes
-                    elif isinstance(output, dict) and "codes" in output:
-                        cset = output["codes"]
+                    codelists = [
+                        v for v in result.outputs.values() if isinstance(v, CodeList)
+                    ]
+                    all_codelists.extend(codelists)
 
-                if not cset:
+            if not all_codelists:
+                raise ValueError(
+                    f"Input node '{self.inputs[0]}' must output CodeList(s)"
+                )
+
+            # Merge all codelists into one
+            codelist = CodeList(codes=[])
+            for cl in all_codelists:
+                codelist.codes.extend(cl.codes)
+        else:
+            # Single ChatterResult
+            codelists = [
+                v for v in input_data.outputs.values() if isinstance(v, CodeList)
+            ]
+
+            if len(codelists) > 1:
+                raise ValueError(
+                    f"Input node '{self.inputs[0]}' has multiple CodeList outputs"
+                )
+            if not codelists:
+                raise ValueError(
+                    f"Input node '{self.inputs[0]}' must output a CodeList"
+                )
+
+            codelist = codelists[0]
+
+        # TODO: OPTIMIZE - Currently making windows once per source with quotes.
+        # Could be more efficient: make windows ONCE per document upfront, store in
+        # dict {source_id: windows}, then reuse for all quotes from that source.
+        # Would also allow cleaner fallback by concatenating all pre-made windows.
+
+        # Extract Quote objects (keep source)
+        quotes_to_verify = []
+        for code in codelist.codes:
+            quotes_to_verify.extend(code.all_quotes)
+
+        # Build doc lookup using TrackedItem.id and concatenated docs (for fallback)
+        doc_by_source = {doc.id: doc.content for doc in self.dag.config.documents}
+
+        # Group quotes by source (with fallback bucket)
+        from collections import defaultdict
+
+        quotes_by_source = defaultdict(list)
+        fallback_quotes = []  # Quotes without source or source not found
+
+        for quote in quotes_to_verify:
+            if quote.source and quote.source in doc_by_source:
+                quotes_by_source[quote.source].append(quote)
+            else:
+                # Track quotes without proper source
+                fallback_quotes.append(quote)
+
+                if not quote.source:
+                    logger.warning(f"Quote missing source: '{quote.text[:60]}...'")
+                elif quote.source not in doc_by_source:
                     logger.warning(
-                        f"Could not extract codes from result: {type(result)}"
+                        f"Quote source '{quote.source}' not found in documents: '{quote.text[:60]}...'"
                     )
-                    continue
 
-                # Handle CodeList wrapper
-                codes_to_process = cset.codes if hasattr(cset, "codes") else cset
-                for code in codes_to_process:
-                    if hasattr(code, "quotes"):
-                        self.extracted_sentences.extend(code.quotes)
-                    else:
-                        logger.warning(
-                            f"Code object missing 'quotes' attribute: {type(code)}"
-                        )
-            except Exception as e:
-                logger.error(f"Error extracting quotes from result: {e}")
-                raise
+        # Log summary of fallback quotes
+        if fallback_quotes:
+            logger.warning(
+                f"{len(fallback_quotes)} quotes without valid source will be verified across all documents. "
+                f"This may indicate post_process() didn't run or source tracking is broken."
+            )
 
-        # Check if we found any quotes - fail early if not
-        if not self.extracted_sentences:
-            logger.error("No quotes found in codes to verify")
+        # Verify per source
+        all_matches = []
+        all_windows = []  # For original_sentences
+
+        for source_id, quotes in quotes_by_source.items():
+            source_content = doc_by_source[source_id]
+
+            # make_windows expects strings, so extract text
+            quote_texts = [q.text for q in quotes]
+
+            windows = make_windows(
+                source_content,
+                window_size=self.window_size,
+                overlap=self.overlap,
+                extracted_sentences=quote_texts,
+            )
+
+            matches = verify_quotes_bm25_first(
+                quotes,  # Pass Quote objects
+                windows,
+                source_content,
+                doc_boundaries,
+                doc_content_map,
+                get_embedding,
+                bm25_k1=self.bm25_k1,
+                bm25_b=self.bm25_b,
+                ellipsis_max_gap=self.ellipsis_max_gap,
+                trim_spans=self.trim_spans,
+                trim_method=self.trim_method,
+                min_fuzzy_ratio=self.min_fuzzy_ratio,
+                expand_window_neighbors=self.expand_window_neighbors,
+            )
+
+            all_matches.extend(matches)
+            all_windows.extend(windows)
+
+        # Fallback: verify quotes without source across all docs
+        if fallback_quotes:
+
+            logger.info(
+                f"Verifying {len(fallback_quotes)} quotes without source across all documents"
+            )
+
+            # make_windows expects strings, so extract text
+            fallback_texts = [q.text for q in fallback_quotes]
+
+            windows = make_windows(
+                alldocs,
+                window_size=self.window_size,
+                overlap=self.overlap,
+                extracted_sentences=fallback_texts,
+            )
+
+            matches = verify_quotes_bm25_first(
+                fallback_quotes,  # Pass Quote objects
+                windows,
+                alldocs,
+                doc_boundaries,
+                doc_content_map,
+                get_embedding,
+                bm25_k1=self.bm25_k1,
+                bm25_b=self.bm25_b,
+                ellipsis_max_gap=self.ellipsis_max_gap,
+                trim_spans=self.trim_spans,
+                trim_method=self.trim_method,
+                min_fuzzy_ratio=self.min_fuzzy_ratio,
+                expand_window_neighbors=self.expand_window_neighbors,
+            )
+
+            all_matches.extend(matches)
+            all_windows.extend(windows)
+
+        # Check if any quotes verified
+        if not all_matches:
+            logger.error("No quotes found to verify")
             import pdb
 
             pdb.set_trace()
             raise ValueError(
-                "No quotes found in codes to verify. Check that the 'codes' node produces Code objects with quotes."
+                f"No quotes found to verify. Check that the '{self.inputs[0]}' node produces Code objects with quotes."
             )
 
-        # --- Create windowed slices through haystack ---
-        windows_with_positions = make_windows(
-            alldocs,
-            window_size=self.window_size,
-            overlap=self.overlap,
-            extracted_sentences=self.extracted_sentences,
-        )
+        # Store windows and extracted sentences for compatibility
+        self.original_sentences = [w[0] for w in all_windows]
+        self.extracted_sentences = [q.text for q in quotes_to_verify]
 
-        # Store just the text for serialization (not the position tuples)
-        self.original_sentences = [w[0] for w in windows_with_positions]
-
-        # --- Run quote matching with BM25-first approach ---
-        matches = verify_quotes_bm25_first(
-            self.extracted_sentences,
-            windows_with_positions,
-            alldocs,
-            doc_boundaries,
-            doc_content_map,
-            get_embedding,
-            bm25_k1=self.bm25_k1,
-            bm25_b=self.bm25_b,
-            ellipsis_max_gap=self.ellipsis_max_gap,
-            trim_spans=self.trim_spans,
-            trim_method=self.trim_method,
-            min_fuzzy_ratio=self.min_fuzzy_ratio,
-            expand_window_neighbors=self.expand_window_neighbors,
-        )
+        # Use all_matches instead of matches for downstream processing
+        matches = all_matches
 
         # --- Convert to dataframe and compute stats ---
         df = pd.DataFrame(matches)

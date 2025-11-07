@@ -1,0 +1,33 @@
+name: test_split_map_reduce
+
+nodes:
+  - name: chunks
+    type: Split
+    split_unit: sentences
+    chunk_size: 5
+
+  - name: summarize_chunks
+    type: Map
+    inputs:
+      - chunks
+
+  - name: combine
+    type: Reduce
+    inputs:
+      - summarize_chunks
+
+---#chunks
+{{input}}
+
+---#summarize_chunks
+
+Summarize this chunk:
+
+<text>
+{{input}}
+</text>
+
+[[summary]]
+
+---#combine
+- {{input}}

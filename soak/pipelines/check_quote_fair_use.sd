@@ -1,0 +1,32 @@
+<!--
+For each Code, we present the source document text, a quote, and a question to the LLM.
+-->
+
+{{quote.code.source_document.text>}}
+
+# THEME CREATED IN THEMATIC ANALYSIS
+
+{{quote.code.theme}}
+
+# Specific code the quote is used to support
+
+{{quote.code}}
+
+# FOCAL QUOTE
+
+We want to check this quote:
+
+> {{quote.text}}
+
+The quote is given in full context above. We want to make sure it is used correctly to support the theme.  Sometimes, quotes can be taken out of context and change meaning. We are concerned this might be the case here. 
+
+Your task:
+
+- read the whole interview again
+- check the quote and consider the broad meaning of the theme it is used to support
+
+Is the quote used fairly? Does it really support the theme, as implied? Give your reasoning.
+
+[[responsd:quote_fair_use]]
+
+Now, decide whether the quote is fairly used: [[pick:quote_fair_use|yes,no,unclear]]

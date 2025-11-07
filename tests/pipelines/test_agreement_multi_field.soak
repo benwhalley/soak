@@ -1,0 +1,25 @@
+name: test_agreement_multi_field
+
+nodes:
+  - name: classify
+    type: Classifier
+    model_names:
+      - gpt-4o-mini
+      - openai/gpt-4o-mini
+    agreement_fields:
+      - sentiment
+      - engagement
+    inputs:
+      - documents
+
+---#classify
+
+Read this response:
+
+<response>
+{{response}}
+</response>
+
+Sentiment: [[pick:sentiment|positive,negative,neutral]]
+
+Engagement level: [[pick:engagement|high,medium,low]]

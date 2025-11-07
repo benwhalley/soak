@@ -18,4 +18,4 @@ ratings = [
 
 kappam_fleiss(ratings, detail=True)
 
-pd.DataFrame(ratings).to_csv("~/dev/soak-package/tests/irrtest.csv")
+# pd.DataFrame(ratings).to_csv("~/dev/soaking/tests/irrtest.csv")

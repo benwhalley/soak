@@ -1,0 +1,25 @@
+name: test_verify_ellipsis
+
+nodes:
+  - name: codes
+    type: Map
+    inputs:
+      - documents
+
+  - name: verify
+    type: VerifyQuotes
+    window_size: 300
+    ellipsis_max_gap: 3
+    trim_spans: true
+    inputs:
+      - codes
+
+---#codes
+
+Extract themes with quotes. Use ellipsis (...) for long quotes to show where you've skipped text. Only include direct quotes from the text above.
+
+<text>
+{{input}}
+</text>
+
+[[codes:codes]]

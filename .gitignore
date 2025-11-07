@@ -8,3 +8,5 @@ data-private/
 *_dump
 uv.lock
 uv.lock
+dist/*
+site/

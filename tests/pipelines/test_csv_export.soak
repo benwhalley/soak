@@ -1,0 +1,19 @@
+name: test_csv_export
+
+nodes:
+  - name: classify
+    type: Classifier
+    model_names:
+      - gpt-4o-mini
+    inputs:
+      - documents
+
+---#classify
+
+Read this response:
+
+<response>
+{{response}}
+</response>
+
+Sentiment: [[pick:sentiment|positive,negative,neutral]]

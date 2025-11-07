@@ -1,0 +1,20 @@
+name: test_csv_multi_column
+
+nodes:
+  - name: analyze
+    type: Map
+    inputs:
+      - documents
+
+---#analyze
+
+Analyze this data:
+
+ID: {{participant_id}}
+Age: {{age}}
+Condition: {{condition}}
+Response: {{response}}
+
+Provide analysis considering all fields above.
+
+[[analysis]]

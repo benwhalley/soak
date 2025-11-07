@@ -1,13 +1,13 @@
 # Customizing Your Analysis
 
-This tutorial shows how to adapt soak pipelines to your research needs by modifying prompts and pipeline structure.
+This tutorial shows how to adapt soak pipelines your research needs by modifying prompts and pipeline structure. to
 
 ## Quick Customization: Context Variables
 
 The fastest way to customize is using context variables with `-c`:
 
 ```bash
-uv run soak run zs data/*.txt \
+uv run soak zs \ data/*.txt
   --output results \
   -c research_question="What factors influence treatment adherence?" \
   -c persona="Health psychologist specializing in chronic illness"
@@ -20,7 +20,7 @@ Context variables inject into templates via `{{variable_name}}`.
 Check pipeline defaults:
 
 ```bash
-uv run soak show pipeline zs | grep -A 5 "default_context"
+uv run soak show zs | grep -A 5 "default_context" pipeline
 ```
 
 Common variables:
@@ -35,12 +35,12 @@ For more control, copy and modify pipeline files.
 ### Step 1: Get the Pipeline
 
 ```bash
-uv run soak show pipeline zs > my_analysis.yaml
+uv run soak show zs > my_analysis.soak pipeline
 ```
 
 ### Step 2: Edit the YAML
 
-Open `my_analysis.yaml` in your editor. The file has two sections:
+Open `my_analysis.soak` in your editor. The file has two sections:
 
 **Front matter** (YAML):
 
@@ -129,14 +129,14 @@ Now identify themes that group related codes...
 ### Step 4: Run Your Custom Pipeline
 
 ```bash
-uv run soak run my_analysis.yaml data/student_interviews/*.txt --output results
+uv run soak my_analysis.soak data/student_interviews/*.txt --output results
 ```
 
 ## Common Customizations
 
 ### Change Code/Theme Criteria
 
-**Original (zs.yaml):**
+**Original (zs.soak):**
 
 ```
 A 'code' should be related to the desires, needs, and meaningful outcomes
@@ -208,7 +208,7 @@ When coding:
 
 ## Working with Return Types
 
-soak uses struckdown syntax for structured outputs: `[[return_type:field_name]]`
+soak uses syntax for structured outputs: `[[return_type:field_name]]` struckdown
 
 ### Available Return Types
 
@@ -218,7 +218,7 @@ soak uses struckdown syntax for structured outputs: `[[return_type:field_name]]`
 - `[[extract:text]]` - Free-form text extraction
 - `[[report]]` - Free-form narrative
 
-**Classification (see classifier.yaml):**
+**Classification (see classifier.soak):**
 - `[[pick:field|option1,option2]]` - Single choice
 - `[[pick*:field|option1,option2]]` - Multiple choice
 - `[[int:field]]` - Integer
@@ -339,14 +339,14 @@ Adjust processing behavior:
 
 ```bash
 # Test with single file first
-uv run soak run my_analysis.yaml data/test_interview.txt -f json | jq '.codes'
+uv run soak my_analysis.soak data/test_interview.txt -f json | jq '.codes'
 ```
 
 ### Check Intermediate Outputs
 
 ```bash
 # Dump execution to inspect each stage
-uv run soak run my_analysis.yaml data/test.txt -o test --dump
+uv run soak my_analysis.soak data/test.txt -o test --dump
 
 # Review specific node output
 cat test_dump/02_Map_chunk_codes_and_themes/0000_*_response.json | jq
@@ -440,7 +440,7 @@ Summarize treatment patterns:
 Run it:
 
 ```bash
-uv run soak run treatment_analysis.yaml data/*.txt -o treatment_results
+uv run soak treatment_analysis.soak data/*.txt -o treatment_results
 ```
 
 ## Tips
@@ -448,7 +448,7 @@ uv run soak run treatment_analysis.yaml data/*.txt -o treatment_results
 **Keep original pipeline:**
 
 ```bash
-cp my_analysis.yaml my_analysis_backup.yaml
+cp my_analysis.soak my_analysis_backup.soak
 ```
 
 **Version your pipelines:**
@@ -473,7 +473,7 @@ Change one thing at a time and test. Don't modify multiple nodes simultaneously.
 **Use verbose mode:**
 
 ```bash
-uv run soak run my_analysis.yaml data/test.txt -o test -v
+uv run soak my_analysis.soak data/test.txt -o test -v
 ```
 
 Shows what's happening at each stage.

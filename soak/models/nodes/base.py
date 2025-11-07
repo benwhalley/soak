@@ -3,6 +3,7 @@
 import json
 import logging
 import math
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
 
@@ -13,12 +14,13 @@ import pandas as pd
 import tiktoken
 from box import Box
 from jinja2 import Environment, TemplateSyntaxError
-from pydantic import BaseModel, Field
-from struckdown import LLM, ChatterResult, chatter_async
+from pydantic import BaseModel, Field, PrivateAttr
+from struckdown import LLM, ChatterResult, StruckdownLLMError, chatter_async
 from struckdown.parsing import parse_syntax
 
-from ..base import TrackedItem, extract_content, get_action_lookup
-from ..dag import DAG, OutputUnion, render_strict_template
+from soak.error_handlers import log_error_to_stderr, should_continue_pipeline
+from soak.models.base import TrackedItem, extract_content, get_action_lookup
+from soak.models.dag import DAG, OutputUnion, render_strict_template
 
 logger = logging.getLogger(__name__)
 
@@ -170,7 +172,7 @@ Parameters:
                     if item.metadata:
                         (
                             inputs_folder / f"{idx:04d}_{item.safe_id}_metadata.json"
-                        ).write_text(json.dumps(item.metadata, indent=2, default=str))
+                        ).write_text(item.to_json())
                 elif isinstance(item, str):
                     # Backward compatibility
                     (inputs_folder / f"{idx:04d}_input.txt").write_text(item)
@@ -186,6 +188,34 @@ class CompletionDAGNode(DAGNode):
     model_name: Optional[str] = None
     temperature: float = 1
     max_tokens: Optional[int] = None
+
+    # cost tracking (private attributes, not serialized)
+    _total_cost: float = PrivateAttr(default=0.0)
+    _prompt_tokens: int = PrivateAttr(default=0)
+    _completion_tokens: int = PrivateAttr(default=0)
+
+    def _accumulate_costs(self, result: ChatterResult) -> None:
+        """Extract and accumulate costs from a ChatterResult"""
+        self._total_cost += result.total_cost
+        self._prompt_tokens += result.prompt_tokens
+        self._completion_tokens += result.completion_tokens
+
+    def get_llm_kwargs(self) -> Dict[str, Any]:
+        """Build extra_kwargs dict for LLM API calls.
+
+        Constructs the standard kwargs used across all LLM calls including
+        temperature, seed, and optional max_tokens.
+
+        Returns:
+            Dict with LLM call parameters
+        """
+        kwargs = {
+            "temperature": self.temperature,
+            "seed": self.dag.config.seed,
+        }
+        if self.max_tokens is not None:
+            kwargs["max_tokens"] = self.max_tokens
+        return kwargs
 
     async def run(self, items: List[Any] = None) -> List[Any]:
         await super().run()
@@ -246,7 +276,7 @@ class Split(DAGNode):
             else:
                 # Backward compatibility: wrap plain strings
                 temp_tracked = TrackedItem(
-                    content=doc, source_id="unknown_doc", metadata={}
+                    content=doc, id="unknown_doc", sources=["unknown_doc"], metadata={}
                 )
                 chunks = self.split_tracked_document(temp_tracked)
             all_chunks.extend(chunks)
@@ -270,28 +300,29 @@ class Split(DAGNode):
         return self.output
 
     def split_tracked_document(self, doc: TrackedItem) -> List[TrackedItem]:
-        """Split a TrackedItem into multiple TrackedItems with nested source_ids.
+        """Split a TrackedItem into multiple TrackedItems with hierarchical IDs.
 
-        The node name is included in the source_id to track which Split node created the chunk.
-        Format: parent_source_id__nodename__index
+        The node name is included in the ID to track which Split node created the chunk.
+        Format: parent_id__nodename__index
         Example: doc_A__sentences__0 (first chunk from 'sentences' Split node)
         """
         text_chunks = self.split_document(doc.content)
 
         tracked_chunks = []
         for idx, chunk in enumerate(text_chunks):
-            # Include node name in source_id for tracking which split created this
-            new_source_id = f"{doc.source_id}__{self.name}__{idx}"
+            # Include node name in ID for tracking which split created this
+            new_id = f"{doc.id}__{self.name}__{idx}"
 
             tracked_chunks.append(
                 TrackedItem(
                     content=chunk,
-                    source_id=new_source_id,
+                    id=new_id,
+                    sources=[doc.id],  # This chunk comes from single parent
                     metadata={
                         **doc.metadata,
                         "split_index": idx,
                         "split_node": self.name,
-                        "parent_source_id": doc.source_id,
+                        "parent_id": doc.id,
                     },
                 )
             )
@@ -397,12 +428,12 @@ class Split(DAGNode):
                 # Deserialized from JSON
                 content = chunk.get("content", "")
                 metadata = chunk.get("metadata", {}) or {}
-                source_id = chunk.get("source_id", "")
+                item_id = chunk.get("id", "")
             elif isinstance(chunk, TrackedItem):
                 # Live object
                 content = chunk.content
                 metadata = chunk.metadata or {}
-                source_id = chunk.source_id
+                item_id = chunk.id
             else:
                 # Try extract_content as fallback, but this likely won't work for wrong types
                 content = extract_content(chunk)
@@ -412,20 +443,20 @@ class Split(DAGNode):
                     )
                     continue
                 metadata = getattr(chunk, "metadata", {}) or {}
-                source_id = getattr(chunk, "source_id", "")
+                item_id = getattr(chunk, "id", "")
 
             if not content:
                 logger.debug(f"Skipping chunk {idx} - no content")
                 continue
 
-            # Extract filename from metadata or source_id
+            # Extract filename from metadata or item_id
             filename = metadata.get("filename", "")
             if not filename:
-                # Try to extract filename from source_id (format: filename__node__index)
-                if source_id and "__" in source_id:
-                    filename = source_id.split("__")[0]
+                # Try to extract filename from item_id (format: filename__node__index)
+                if item_id and "__" in item_id:
+                    filename = item_id.split("__")[0]
                 else:
-                    filename = source_id or "unknown"
+                    filename = item_id or "unknown"
 
             # Get chunk index from metadata
             chunk_index = metadata.get("split_index", idx)
@@ -441,7 +472,7 @@ class Split(DAGNode):
                 logger.debug(f"Failed to tokenize chunk {idx}: {e}")
                 length_tokens = 0
 
-            # Count sentences using nltk
+            # Count sentences using nltk?
             try:
                 from pysbd import Segmenter
 
@@ -566,7 +597,7 @@ Chunk size: {self.chunk_size}
                     if chunk.metadata:
                         (
                             outputs_folder / f"{idx:04d}_{chunk.safe_id}_metadata.json"
-                        ).write_text(json.dumps(chunk.metadata, indent=2, default=str))
+                        ).write_text(chunk.to_json())
                 else:
                     # Backward compatibility: plain strings
                     (outputs_folder / f"{idx:04d}_chunk.txt").write_text(str(chunk))
@@ -581,8 +612,11 @@ class ItemsNode(DAGNode):
         Handles TrackedItem transparently: extracts content for templates while
         preserving source_id and metadata for provenance tracking.
         """
+        # Ensure inputs default is set (accessing context property sets it)
+        context = self.context
+
         # resolve futures now (it's lazy to this point)
-        input_data = {k: self.context[k] for k in self.inputs}
+        input_data = {k: context[k] for k in self.inputs}
 
         lengths = {
             k: len(v) if isinstance(v, list) else 1 for k, v in input_data.items()
@@ -607,11 +641,21 @@ class ItemsNode(DAGNode):
 
             for key, val in zip(self.inputs, values):
                 if isinstance(val, TrackedItem):
-                    # Extract content for template, preserve metadata
+                    # Extract content for template, preserve metadata and provenance
                     item_dict[key] = val.content
-                    item_dict[f"__{key}__source_id"] = val.source_id
+                    item_dict[f"__{key}__tracked_item"] = val  # Keep full reference
+
+                    # Maintain backward compatibility for templates using source_id
+                    item_dict[f"__{key}__source_id"] = val.id  # Backward compat
                     item_dict[f"__{key}__metadata"] = val.metadata
-                    item_dict[f"__{key}__tracked_item"] = val  # Keep reference
+
+                    # Spread metadata into top-level context for easy access
+                    # Column names from spreadsheets will be available as {{column_name}}
+                    if val.metadata:
+                        for meta_key, meta_val in val.metadata.items():
+                            # don't override existing keys with metadata
+                            if meta_key not in item_dict:
+                                item_dict[meta_key] = meta_val
                 else:
                     item_dict[key] = val
 
@@ -620,9 +664,13 @@ class ItemsNode(DAGNode):
                 first_val = values[0]
                 if isinstance(first_val, TrackedItem):
                     item_dict["input"] = first_val.content
-                    item_dict["source_id"] = first_val.source_id
+                    item_dict["source_id"] = (
+                        first_val.id
+                    )  # Backward compat for templates
                     item_dict["metadata"] = first_val.metadata
-                    item_dict["tracked_item"] = first_val
+                    item_dict["tracked_item"] = (
+                        first_val  # Full TrackedItem for post_process
+                    )
                 else:
                     item_dict["input"] = first_val
 
@@ -630,19 +678,63 @@ class ItemsNode(DAGNode):
 
         return items
 
+    @contextmanager
+    def progress_bar(self, items: List, node_type: str = None):
+        """Context manager for optional progress bars.
+
+        Creates a progress bar if show_progress is enabled in config,
+        otherwise yields None. This eliminates repetitive progress bar
+        setup code across nodes.
+
+        Args:
+            items: List of items to process (for total count)
+            node_type: Optional node type label (defaults to self.type)
+
+        Yields:
+            tqdm progress bar instance or None
+        """
+        if not self.dag.config.show_progress:
+            yield None
+            return
+
+        from tqdm import tqdm
+
+        node_type = node_type or self.type
+        desc = f"{node_type} '{self.name}'"
+        pbar = tqdm(total=len(items), desc=desc, unit="item")
+        try:
+            yield pbar
+        finally:
+            pbar.close()
+
 
 async def default_map_task(template, context, model, credentials, **kwargs):
-    """Default map task renders the Step template for each input item and calls the LLM."""
+    """Default map task renders the Step template for each input item and calls the LLM.
+
+    Note: This function does NOT catch StruckdownLLMError - it lets errors propagate
+    to the calling node (Map) which handles them appropriately via managed_llm_call.
+    The connection error counter is reset by managed_llm_call wrapper.
+    """
 
     rt = render_strict_template(template, context)
 
     # call chatter as async function within the main event loop
+    # errors will propagate to the calling node for handling
     result = await chatter_async(
         multipart_prompt=rt,
         context=context,
         model=model,
         credentials=credentials,
-        action_lookup=get_action_lookup(),
         extra_kwargs=kwargs,
     )
+
     return result
+
+
+async def template_map_task(template, context, **kwargs):
+    """Template-only map task that renders Jinja2 template without LLM call.
+
+    Returns the rendered string directly (no ChatterResult wrapper).
+    Used when Map node has function="template" for pure templating.
+    """
+    return render_strict_template(template, context)

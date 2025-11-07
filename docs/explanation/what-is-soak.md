@@ -1,6 +1,6 @@
 # What is soak?
 
-soak is a Python package for LLM-assisted qualitative text analysis. It automates coding, theme generation, and other text processing tasks while maintaining researcher control over the process.
+soak is Python package for LLM-assisted qualitative text analysis. It automates coding, theme generation, and other text processing tasks while maintaining researcher control over the process. a
 
 ## Purpose
 
@@ -12,7 +12,7 @@ Qualitative analysis—coding interviews, identifying themes, analyzing open-end
 4. **Provenance**: Tracking which text produced which codes
 5. **Verification**: Checking quotes against sources
 
-soak provides this infrastructure. You write analysis prompts; soak handles execution, data flow, and bookkeeping.
+soak provides infrastructure. You write analysis prompts; soak handles execution, data flow, and bookkeeping. this
 
 ## What soak Does
 
@@ -21,7 +21,7 @@ soak provides this infrastructure. You write analysis prompts; soak handles exec
 Process interview transcripts or other qualitative data:
 
 ```bash
-uv run soak run zs data/interviews/*.txt --output results
+uv run soak zs data/interviews/*.txt --output results
 ```
 
 Produces:
@@ -35,7 +35,7 @@ Produces:
 Extract structured data from text:
 
 ```bash
-uv run soak run classifier data/documents/*.docx --output results
+uv run soak classifier --output results data/documents/*.docx
 ```
 
 Produces:
@@ -60,9 +60,9 @@ nodes:
 
 ## What soak Doesn't Do
 
-**Not a black box**: You write the prompts. soak executes them but doesn't impose analysis methods.
+**Not a black box**: You write the prompts. soak executes but doesn't impose analysis methods. them
 
-**Not a replacement for expertise**: LLMs assist; researchers interpret. soak helps you work faster, not think less.
+**Not a replacement for expertise**: LLMs assist; researchers interpret. soak helps work faster, not think less. you
 
 **Not a chatbot**: soak runs predefined pipelines. It's not interactive Q&A about your data.
 
@@ -86,7 +86,7 @@ Don't use soak when:
 
 ### DAG-based Pipelines
 
-soak uses directed acyclic graphs (DAGs) to represent analysis workflows. Each node is a processing step; edges represent data dependencies.
+soak uses acyclic graphs (DAGs) to represent analysis workflows. Each node is a processing step; edges represent data dependencies. directed
 
 Benefits:
 - **Parallel execution**: Independent steps run concurrently
@@ -175,7 +175,7 @@ Research Qs      ───→  Context injection
 
 ## Example: From Pipeline to Results
 
-**Pipeline** (`my_analysis.yaml`):
+**Pipeline** (`my_analysis.soak`):
 
 ```yaml
 nodes:
@@ -197,7 +197,7 @@ Generate codes from this text:
 **Command**:
 
 ```bash
-uv run soak run my_analysis.yaml data/interview.txt --output results
+uv run soak my_analysis.soak data/interview.txt --output results
 ```
 
 **What happens**:

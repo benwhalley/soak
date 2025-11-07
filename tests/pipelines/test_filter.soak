@@ -1,0 +1,35 @@
+name: test_filter
+
+nodes:
+  - name: chunks
+    type: Split
+    split_unit: sentences
+    chunk_size: 10
+    overlap: 2
+
+  - name: advice
+    type: Map
+    inputs:
+      - chunks
+
+  - name: filter
+    type: Filter
+    expression: "item.advice.response == 'yes'"
+    inputs:
+      - advice
+
+---#chunks
+{{input}}
+
+---#advice
+
+You are a linguist doing a text clasification task.
+Does this text give advice to the reader?
+
+<text>
+{{input}}
+</text>
+
+Return yes if it gives advice to the reader, no otherwise.
+
+[[pick:advice|yes,no]]

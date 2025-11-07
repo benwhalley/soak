@@ -12,8 +12,12 @@ from .dag import DAG
 
 logger = logging.getLogger(__name__)
 
+from pydantic import PrivateAttr
+
 
 class QualitativeAnalysisPipeline(DAG):
+    _cost_summary: dict = PrivateAttr(default_factory=dict)
+
     name: Optional[str] = None
 
     def to_html(self, template_path: Optional[str] = None) -> str:

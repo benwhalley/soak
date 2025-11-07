@@ -13,12 +13,7 @@ This tutorial walks you through installing soak and running your first thematic 
 **Requirements:** Python 3.11+, [uv](https://docs.astral.sh/uv/getting-started/installation)
 
 ```bash
-git clone https://github.com/benwhalley/soak-package
-cd soak-package
-uv tool install .
-
-# or for development
-# uv pip install -e .
+uv tool install git+https://github.com/benwhalley/soak
 ```
 
 Set environment variables:
@@ -54,6 +49,7 @@ soak run zs data/interview.txt --output my_first_analysis
 ```
 
 This will:
+
 - Split the text into chunks
 - Generate codes from each chunk
 - Identify themes
@@ -73,6 +69,7 @@ open my_first_analysis.html
 ```
 
 You'll see:
+
 - **Codes**: Specific concepts identified in the text (with quotes)
 - **Themes**: Broader patterns grouping codes
 - **Narrative**: A written report of findings

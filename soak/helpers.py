@@ -7,7 +7,11 @@ import pandas as pd
 
 
 def format_exception_concise(exc: Exception) -> str:
-    """Format exception with minimal context - just the error and relevant code location."""
+    """Format exception with minimal context.
+
+    Returns:
+        Error message with exception type, message, file location, and code line
+    """
     tb = traceback.extract_tb(exc.__traceback__)
 
     # Get the last frame (where the error actually occurred)
@@ -25,7 +29,11 @@ def format_exception_concise(exc: Exception) -> str:
 
 
 def load_env_file(env_path: Path) -> dict[str, str]:
-    """Load environment variables from a .env file."""
+    """Load environment variables from .env file.
+
+    Returns:
+        Dict of key-value pairs. Empty dict if file missing.
+    """
     env_vars = {}
     if env_path.exists():
         with open(env_path, "r") as f:
@@ -39,21 +47,27 @@ def load_env_file(env_path: Path) -> dict[str, str]:
     return env_vars
 
 
-def save_env_file(env_path: Path, env_vars: dict[str, str]):
-    """Save environment variables to a .env file."""
+def save_env_file(env_path: Path, env_vars: dict[str, str]) -> None:
+    """Save environment variables to .env file with quoted values."""
     with open(env_path, "w") as f:
         for key, value in env_vars.items():
             f.write(f'{key}="{value}"\n')
 
 
 def resolve_pipeline(pipeline: str, localdir: Path, pipelinedir: Path) -> Path:
+    """Resolve pipeline name to file path.
+
+    Searches localdir first, then builtin pipelinedir.
+    Tries with/without .soak extension.
+
+    Raises:
+        FileNotFoundError: If pipeline file not found in any location
+    """
     candidates = [
         localdir / pipeline,
-        localdir / f"{pipeline}.yaml",
-        localdir / f"{pipeline}.yml",
+        localdir / f"{pipeline}.soak",
         pipelinedir / f"{pipeline}",
-        pipelinedir / f"{pipeline}.yaml",
-        pipelinedir / f"{pipeline}.yml",
+        pipelinedir / f"{pipeline}.soak",
     ]
     for cand in candidates:
         if cand.is_file():
@@ -62,7 +76,7 @@ def resolve_pipeline(pipeline: str, localdir: Path, pipelinedir: Path) -> Path:
 
 
 def hash_run_config(
-    input_files: list[str],
+    input_files: list[str | Path],
     model_name: str | None = None,
     context: list[str] | None = None,
     template: str | None = None,
@@ -71,7 +85,7 @@ def hash_run_config(
     """Generate a short hash from run configuration.
 
     Args:
-        input_files: List of input file paths
+        input_files: List of input file paths (str or Path)
         model_name: Model name if specified
         context: Context overrides if specified
         template: Template name if specified
@@ -80,9 +94,12 @@ def hash_run_config(
     Returns:
         Short hash string of specified length (hex chars only - always safe)
     """
+    # Convert paths to strings for consistent handling
+    input_files_str = [str(f) for f in input_files]
+
     # Build configuration string from all parameters
     parts = [
-        "files:" + "|".join(sorted(input_files)),
+        "files:" + "|".join(sorted(input_files_str)),
     ]
     if model_name:
         parts.append(f"model:{model_name}")

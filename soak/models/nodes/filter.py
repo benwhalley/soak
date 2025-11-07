@@ -8,9 +8,11 @@ from typing import Any, Dict, List, Literal, Optional
 
 import anyio
 import pandas as pd
-from struckdown import ChatterResult, chatter_async
+from struckdown import ChatterResult, StruckdownLLMError, chatter_async
 
-from ..base import TrackedItem, get_action_lookup, safe_json_dump, semaphore
+from soak.error_handlers import managed_llm_call
+from soak.models.base import TrackedItem, get_action_lookup, safe_json_dump, semaphore
+
 from .base import CompletionDAGNode, ItemsNode
 
 logger = logging.getLogger(__name__)
@@ -136,30 +138,48 @@ class Filter(ItemsNode, CompletionDAGNode):
         # Process all items concurrently
         results = [None] * len(items)
 
-        async with anyio.create_task_group() as tg:
-            for idx, item in enumerate(items):
+        # Use progress bar context manager
+        with self.progress_bar(items) as pbar:
+            async with anyio.create_task_group() as tg:
+                for idx, item in enumerate(items):
 
-                async def run_and_store(index=idx, item=item):
-                    async with semaphore:
-                        # Collect extra kwargs for LLM
-                        extra_kwargs = {}
-                        if self.max_tokens is not None:
-                            extra_kwargs["max_tokens"] = self.max_tokens
-                        extra_kwargs["temperature"] = self.temperature
-                        extra_kwargs["seed"] = self.dag.config.seed
+                    async def run_and_store(index=idx, item=item, progress_bar=pbar):
+                        async with semaphore:
+                            # Get LLM kwargs using helper method
+                            extra_kwargs = self.get_llm_kwargs()
 
-                        # Run the filter template
-                        chatter_result = await chatter_async(
-                            multipart_prompt=self.template,
-                            context={**filtered_context, **item},
-                            model=self.get_model(),
-                            credentials=self.dag.config.llm_credentials,
-                            action_lookup=get_action_lookup(),
-                            extra_kwargs=extra_kwargs,
-                        )
-                        results[index] = chatter_result
+                            try:
+                                # Run the filter template
+                                chatter_result = await managed_llm_call(
+                                    node_name=self.name,
+                                    config=self.dag.config,
+                                    llm_func=chatter_async,
+                                    item_index=index,
+                                    multipart_prompt=self.template,
+                                    context={**filtered_context, **item},
+                                    model=self.get_model(),
+                                    credentials=self.dag.config.llm_credentials,
+                                    extra_kwargs=extra_kwargs,
+                                )
+                                results[index] = chatter_result
+                            except Exception as e:
+                                # catch-all for any non-struckdown errors
+                                logger.error(
+                                    f"Unexpected error in node '{self.name}' for item {index}: {e}"
+                                )
+                                # default to skip + continue for unknown errors
+                                results[index] = None
+                            finally:
+                                # Update progress bar on completion
+                                if progress_bar is not None:
+                                    progress_bar.update(1)
 
-                tg.start_soon(run_and_store)
+                    tg.start_soon(run_and_store)
+
+        # accumulate costs from all filter results
+        for result in results:
+            if result is not None:
+                self._accumulate_costs(result)
 
         # Store all results for export
         self._filter_results = results
@@ -191,46 +211,16 @@ class Filter(ItemsNode, CompletionDAGNode):
                     content=content, source_id=f"item_{idx}", metadata={}
                 )
 
-            # Create a clean copy of TrackedItem to avoid serialization issues
-            # Filter out any non-serializable objects from metadata
-            clean_metadata = {}
-            if tracked.metadata:
-                for k, v in tracked.metadata.items():
-                    # Only include simple serializable types
-                    if isinstance(v, (str, int, float, bool, type(None))):
-                        clean_metadata[k] = v
-                    elif isinstance(v, (list, dict)):
-                        # Include simple containers (assume they're serializable)
-                        try:
-                            json.dumps(v)
-                            clean_metadata[k] = v
-                        except (TypeError, ValueError):
-                            # Skip non-serializable items
-                            pass
-
-            clean_tracked = TrackedItem(
-                content=tracked.content,
-                source_id=tracked.source_id,
-                metadata=clean_metadata,
-            )
-
             if filter_value:
-                included_items.append(clean_tracked)
+                included_items.append(tracked)
             else:
-                excluded_items.append(clean_tracked)
+                excluded_items.append(tracked)
 
         # Store excluded items for export
         self._excluded_items = excluded_items
 
-        # Store included items as output (convert to dicts for serialization)
-        self.output = [
-            {
-                "content": item.content,
-                "source_id": item.source_id,
-                "metadata": item.metadata,
-            }
-            for item in included_items
-        ]
+        # Store included items as output
+        self.output = included_items
 
         logger.info(
             f"Filter '{self.name}': {len(included_items)} included, {len(excluded_items)} excluded"
@@ -249,21 +239,9 @@ class Filter(ItemsNode, CompletionDAGNode):
                 included_rows.append(
                     {
                         "index": idx,
-                        "source_id": (
-                            item.get("source_id")
-                            if isinstance(item, dict)
-                            else getattr(item, "source_id", None)
-                        ),
-                        "content": (
-                            item.get("content")
-                            if isinstance(item, dict)
-                            else getattr(item, "content", None)
-                        ),
-                        "metadata": (
-                            item.get("metadata")
-                            if isinstance(item, dict)
-                            else getattr(item, "metadata", None)
-                        ),
+                        "source_id": item.source_id,
+                        "content": item.content,
+                        "metadata": item.metadata,
                     }
                 )
 
@@ -316,36 +294,19 @@ Filter field: {self._identify_filter_field() if self.template_text else 'unknown
 """
         (folder / "filter_summary.txt").write_text(summary)
 
-        # Export included items (outputs folder) - reconstruct TrackedItems from output dicts
+        # Export included items (outputs folder)
         if self.output:
             outputs_folder = folder / "outputs"
             outputs_folder.mkdir(exist_ok=True)
 
             for idx, item in enumerate(self.output):
-                # Handle both dict (from self.output) and TrackedItem (from _excluded_items)
-                if isinstance(item, dict):
-                    # Reconstruct from dict
-                    safe_id = item["source_id"].replace("/", "_").replace("\\", "_")
-                    (outputs_folder / f"{idx:04d}_{safe_id}.txt").write_text(
-                        item["content"]
-                    )
+                safe_id = item.safe_id
+                (outputs_folder / f"{idx:04d}_{safe_id}.txt").write_text(item.content)
 
-                    if item.get("metadata"):
-                        (
-                            outputs_folder / f"{idx:04d}_{safe_id}_metadata.json"
-                        ).write_text(
-                            json.dumps(item["metadata"], indent=2, default=str)
-                        )
-                elif isinstance(item, TrackedItem):
-                    safe_id = item.safe_id
-                    (outputs_folder / f"{idx:04d}_{safe_id}.txt").write_text(
-                        item.content
+                if item.metadata:
+                    (outputs_folder / f"{idx:04d}_{safe_id}_metadata.json").write_text(
+                        item.to_json()
                     )
-
-                    if item.metadata:
-                        (
-                            outputs_folder / f"{idx:04d}_{safe_id}_metadata.json"
-                        ).write_text(json.dumps(item.metadata, indent=2, default=str))
 
         # Export excluded items (excluded folder)
         if self._excluded_items:
@@ -353,19 +314,18 @@ Filter field: {self._identify_filter_field() if self.template_text else 'unknown
             excluded_folder.mkdir(exist_ok=True)
 
             for idx, item in enumerate(self._excluded_items):
-                if isinstance(item, TrackedItem):
-                    safe_id = item.safe_id
-                    (excluded_folder / f"{idx:04d}_{safe_id}.txt").write_text(
-                        item.content
-                    )
+                safe_id = item.safe_id
+                (excluded_folder / f"{idx:04d}_{safe_id}.txt").write_text(item.content)
 
-                    if item.metadata:
-                        (
-                            excluded_folder / f"{idx:04d}_{safe_id}_metadata.json"
-                        ).write_text(json.dumps(item.metadata, indent=2, default=str))
+                if item.metadata:
+                    (excluded_folder / f"{idx:04d}_{safe_id}_metadata.json").write_text(
+                        item.to_json()
+                    )
 
         # Export all prompts and responses (prompts folder)
         if self._filter_results and self._processed_items:
+            from ..utils import export_chatter_result
+
             prompts_folder = folder / "prompts"
             prompts_folder.mkdir(exist_ok=True)
 
@@ -376,25 +336,5 @@ Filter field: {self._identify_filter_field() if self.template_text else 'unknown
                 safe_id = TrackedItem.make_safe_id(TrackedItem.extract_source_id(item))
                 file_prefix = f"{idx:04d}_{safe_id}"
 
-                try:
-                    # Extract and write prompt
-                    if hasattr(result, "results") and result.results:
-                        first_seg = next(iter(result.results.values()))
-                        if hasattr(first_seg, "prompt"):
-                            (prompts_folder / f"{file_prefix}_prompt.md").write_text(
-                                first_seg.prompt
-                            )
-
-                    # Write response text
-                    if hasattr(result, "response"):
-                        (prompts_folder / f"{file_prefix}_response.txt").write_text(
-                            str(result.response)
-                        )
-
-                    # Write full ChatterResult JSON
-                    (prompts_folder / f"{file_prefix}_response.json").write_text(
-                        safe_json_dump(result)
-                    )
-
-                except Exception as e:
-                    logger.warning(f"Failed to export prompt/response {idx}: {e}")
+                # Export using utility function
+                export_chatter_result(result, prompts_folder, file_prefix)

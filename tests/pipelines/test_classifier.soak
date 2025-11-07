@@ -9,8 +9,8 @@ nodes:
   - name: classify
     type: Classifier
     model_names:
-      - litellm/gpt-4o-mini
-      - litellm/gpt-4.1-mini
+      - gpt-4o-mini
+      - openai/gpt-4o-mini
     agreement_fields:
       - topic
       - sentiment

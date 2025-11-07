@@ -51,9 +51,7 @@ def resolve_path_with_package_data(path_pattern: str) -> list[str]:
 
 
 def strip_null_bytes(obj):
-    """
-    Recursively strip null bytes (\\u0000) from strings in nested structures.
-    """
+    """Recursively strip null bytes from strings in nested structures."""
     if isinstance(obj, str):
         return obj.replace("\u0000", "")
     elif isinstance(obj, dict):
@@ -69,11 +67,10 @@ def strip_null_bytes(obj):
 
 
 def get_scrubber(salt, model="en_core_web_md"):
-    """
-    Return a configured scrubber with:
-    - hashed + wrapped replacements
-    - spaCy NER detector (e.g. PERSON, ORG)
-    - stricter email detector (avoids '@' in normal text)
+    """Create PII scrubber with spaCy NER and strict email detection.
+
+    Returns:
+        Configured scrubadub.Scrubber with hashed replacements
     """
 
     import scrubadub
@@ -104,13 +101,10 @@ def get_scrubber(salt, model="en_core_web_md"):
 
 
 def safer_extract(zip_ref, dest_dir, max_files: int = 1000):
-    """
-    More safely extract a zip archive to dest_dir.
+    """Safely extract zip archive with path traversal and symlink checks.
 
-    Args:
-        zip_ref: zipfile.ZipFile object
-        dest_dir: directory to extract to
-        max_files: max number of files allowed
+    Raises:
+        Exception: If zip contains too many files, unsafe paths, or symlinks
     """
     members = zip_ref.infolist()
 
@@ -132,16 +126,16 @@ def safer_extract(zip_ref, dest_dir, max_files: int = 1000):
 
 
 @contextmanager
-def unpack_zip_to_temp_paths_if_needed(paths: list[str]) -> list[tuple[str, dict]]:
-    """
-    Yield list of (path, metadata) tuples for extracted or globbed files. Cleans up any temp dirs.
+def unpack_zip_to_temp_paths_if_needed(paths: list[str | Path]) -> list[tuple[str, dict]]:
+    """Unpack zip files to temp dir and yield file paths with metadata.
 
     Returns:
-        List of tuples: (file_path, metadata_dict)
-        metadata_dict contains:
-            - 'zip_source': stem of zip file if from zip, None otherwise
-            - 'zip_path': full path to original zip file if from zip, None otherwise
+        List of (file_path, metadata) tuples. Metadata includes zip_source and zip_path.
+        Temp dirs are cleaned up on context exit.
     """
+    # Convert all paths to strings for consistent handling
+    paths = [str(p) for p in paths]
+
     expanded_items = []
     temp_dirs = []
 
@@ -199,9 +193,9 @@ def unpack_zip_to_temp_paths_if_needed(paths: list[str]) -> list[tuple[str, dict
 
 
 def is_spreadsheet(path: Union[str, Path]) -> bool:
-    """Check if file is a spreadsheet (CSV or XLSX)."""
+    """Check if file is spreadsheet (CSV or XLSX) by extension."""
     suffix = Path(path).suffix.lower()
-    return suffix in ['.csv', '.xlsx']
+    return suffix in [".csv", ".xlsx"]
 
 
 def extract_spreadsheet_rows(path: str) -> List[Dict[str, Any]]:
@@ -219,17 +213,19 @@ def extract_spreadsheet_rows(path: str) -> List[Dict[str, Any]]:
     suffix = Path(path).suffix.lower()
 
     try:
-        if suffix == '.csv':
+        if suffix == ".csv":
             df = pd.read_csv(path)
-        elif suffix == '.xlsx':
-            df = pd.read_excel(path, engine='openpyxl')
+        elif suffix == ".xlsx":
+            df = pd.read_excel(path, engine="openpyxl")
         else:
             raise ValueError(f"Unsupported spreadsheet format: {suffix}")
 
         # Convert NaN to None, convert to list of dicts
-        rows = df.where(pd.notna(df), None).to_dict('records')
+        rows = df.where(pd.notna(df), None).to_dict("records")
 
-        logger.info(f"Loaded {len(rows)} rows from {path} with columns: {list(df.columns)}")
+        logger.info(
+            f"Loaded {len(rows)} rows from {path} with columns: {list(df.columns)}"
+        )
         return rows
 
     except Exception as e:
@@ -265,7 +261,7 @@ def extract_text(path: str) -> Union[str, List[Dict[str, Any]]]:
 
 
 def _extract_docx_text(path: str) -> str:
-    """Extract text from a DOCX file including headers and footers."""
+    """Extract text from DOCX including headers and footers."""
     import docx
 
     try:
@@ -291,7 +287,7 @@ def _extract_docx_text(path: str) -> str:
 
 
 def _extract_text_cached(path: str, mtime: float) -> str:
-    """Extract text based on file extension with error handling."""
+    """Extract text from PDF/DOCX/TXT with error handling. Cached by mtime."""
     import pdfplumber
     from pdfplumber.utils.exceptions import PdfminerException
 
@@ -325,7 +321,7 @@ def _extract_text_cached(path: str, mtime: float) -> str:
 
 
 def is_plain_text_file(path: Path) -> bool:
-    """Check if a file is a plain text file using MIME type detection."""
+    """Check if file is plain text using MIME type detection."""
     try:
         mime = magic.from_file(str(path), mime=True)
         return mime.startswith("text/")
@@ -334,18 +330,18 @@ def is_plain_text_file(path: Path) -> bool:
 
 
 def get_supported_extensions() -> list[str]:
-    """Get list of supported file extensions."""
+    """Return list of supported file extensions."""
     return [".txt", ".md", ".pdf", ".docx", ".csv", ".xlsx"]
 
 
 def is_supported_file(path: Path) -> bool:
-    """Check if a file is supported for text extraction."""
+    """Check if file is supported for text extraction."""
     suffix = path.suffix.lower()
     return suffix in get_supported_extensions() or is_plain_text_file(path)
 
 
 def detect_file_type(path: Path) -> str:
-    """Detect the type of document for logging/debugging purposes."""
+    """Detect document type for logging (PDF, Word Document, etc.)."""
     suffix = path.suffix.lower()
 
     if suffix == ".pdf":

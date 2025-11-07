@@ -8,10 +8,13 @@ from typing import Any, Dict, List, Literal, Optional, Union
 import anyio
 import pandas as pd
 from pydantic import Field, PrivateAttr
-from struckdown import LLM, chatter_async
+from struckdown import LLM, StruckdownLLMError, chatter_async
 from struckdown.parsing import parse_syntax
 
-from ..base import TrackedItem, get_action_lookup, semaphore
+from soak.error_handlers import managed_llm_call
+from soak.models.base import TrackedItem, get_action_lookup, semaphore
+from soak.models.utils import extract_output_dict
+
 from .base import CompletionDAGNode, ItemsNode
 
 logger = logging.getLogger(__name__)
@@ -36,6 +39,9 @@ class Classifier(ItemsNode, CompletionDAGNode):
     template_text: str = None
     model_names: Optional[List[str]] = None  # Multiple models for agreement analysis
     agreement_fields: Optional[List[str]] = None  # Fields to calculate agreement on
+    ground_truths: Optional[Dict[str, Dict[str, Any]]] = (
+        None  # Ground truth comparison config
+    )
 
     # Private attributes - automatically excluded from serialization
     _processed_items: Optional[List[Any]] = PrivateAttr(default=None)
@@ -92,39 +98,63 @@ class Classifier(ItemsNode, CompletionDAGNode):
 
             results = [None] * len(items)
 
-            async with anyio.create_task_group() as tg:
-                for idx, item in enumerate(items):
+            # Use progress bar context manager - customize description for multi-model case
+            with self.progress_bar(
+                items, node_type=f"Classifier [{model_name}]"
+            ) as pbar:
+                async with anyio.create_task_group() as tg:
+                    for idx, item in enumerate(items):
 
-                    async def run_and_store(
-                        index=idx, item=item, current_model=model_name
-                    ):
-                        async with semaphore:
-                            # Create model instance for this specific model
-                            model = LLM(model_name=current_model)
+                        async def run_and_store(
+                            index=idx,
+                            item=item,
+                            current_model=model_name,
+                            progress_bar=pbar,
+                        ):
+                            async with semaphore:
+                                # Create model instance for this specific model
+                                model = LLM(model_name=current_model)
 
-                            # Run the classification template
-                            # Collect extra kwargs for LLM
-                            extra_kwargs = {}
-                            if self.max_tokens is not None:
-                                extra_kwargs["max_tokens"] = self.max_tokens
-                            extra_kwargs["temperature"] = self.temperature
-                            extra_kwargs["seed"] = self.dag.config.seed
+                                # Get LLM kwargs using helper method
+                                extra_kwargs = self.get_llm_kwargs()
 
-                            chatter_result = await chatter_async(
-                                multipart_prompt=self.template,
-                                context={**filtered_context, **item},
-                                model=model,
-                                credentials=self.dag.config.llm_credentials,
-                                action_lookup=get_action_lookup(),
-                                extra_kwargs=extra_kwargs,
-                            )
+                                try:
+                                    chatter_result = await managed_llm_call(
+                                        node_name=self.name,
+                                        config=self.dag.config,
+                                        llm_func=chatter_async,
+                                        item_index=index,
+                                        multipart_prompt=self.template,
+                                        context={**filtered_context, **item},
+                                        model=model,
+                                        credentials=self.dag.config.llm_credentials,
+                                        extra_kwargs=extra_kwargs,
+                                    )
+                                    results[index] = chatter_result
+                                except Exception as e:
+                                    # catch-all for any non-struckdown errors
+                                    logger.error(
+                                        f"Unexpected error in node '{self.name}' for item {index}: {e}"
+                                    )
+                                    # default to skip + continue for unknown errors
+                                    results[index] = None
+                                finally:
+                                    # Update progress bar on completion (success or failure)
+                                    if progress_bar is not None:
+                                        progress_bar.update(1)
 
-                            # Extract structured outputs from ChatterResult
-                            results[index] = chatter_result
+                        tg.start_soon(run_and_store)
 
-                    tg.start_soon(run_and_store)
+            # accumulate costs from results for this model
+            for result in results:
+                if result is not None:
+                    self._accumulate_costs(result)
 
             self._model_results[model_name] = results
+
+        # Auto-detect agreement fields if multiple models (before result() is called)
+        if len(self.model_names) >= 2:
+            self._auto_detect_agreement_fields()
 
         # Set output: single model returns list, multiple models return dict
         if len(self.model_names) == 1:
@@ -158,13 +188,10 @@ class Classifier(ItemsNode, CompletionDAGNode):
                     row = {"item_id": f"item_{idx}", "index": idx}
 
                 # Add classification outputs
-                if hasattr(output_item, "outputs"):
-                    output_dict = output_item.outputs
-                elif isinstance(output_item, dict):
-                    output_dict = {
-                        k: v for k, v in output_item.items() if not k.startswith("__")
-                    }
-                else:
+                output_dict = extract_output_dict(
+                    output_item, serialize_iterables=False
+                )
+                if not output_dict:
                     continue
 
                 # Convert non-hashable types (lists, BoxList) to strings for agreement calculation
@@ -181,9 +208,76 @@ class Classifier(ItemsNode, CompletionDAGNode):
                 rows.append(row)
 
             if rows:
-                model_dfs[model_name] = pd.DataFrame(rows)
+                from ..base import order_export_columns
+
+                df = pd.DataFrame(rows)
+                # Get output keys from ALL sections of template
+                output_keys = []
+                if self.template_text:
+                    sections = parse_syntax(self.template_text)
+                    for section in sections:
+                        output_keys.extend(section.keys())
+                # Extract ground truth column names if configured
+                ground_truth_columns = None
+                if self.ground_truths:
+                    ground_truth_columns = [
+                        config.get("existing")
+                        for config in self.ground_truths.values()
+                        if config.get("existing")
+                    ]
+                df = order_export_columns(
+                    df,
+                    output_keys=output_keys,
+                    template_text=self.template_text,
+                    ground_truth_columns=ground_truth_columns,
+                )
+                model_dfs[model_name] = df
 
         return model_dfs if model_dfs else None
+
+    def _auto_detect_agreement_fields(self) -> None:
+        """Auto-detect agreement fields from template output keys.
+
+        Only includes categorical fields suitable for nominal agreement metrics:
+        - [[pick:name|options]] - single-choice categorical
+        - [[bool:name]] - boolean fields
+
+        Excludes:
+        - Multi-select (pick*)
+        - Continuous data (int, float)
+        - Free text fields
+        """
+        if not self.agreement_fields and self.template_text:
+            CATEGORICAL_TYPES = {"pick", "bool"}
+
+            output_keys = []
+            sections = parse_syntax(self.template_text)
+
+            for section in sections:
+                for key, action in section.items():
+                    # Get action type (might be 'action_type' or 'type')
+                    action_type = getattr(action, "action_type", None) or getattr(
+                        action, "type", None
+                    )
+
+                    # Check for quantifier (pick* is multi-select)
+                    quantifier = getattr(action, "quantifier", None)
+                    is_multi_select = quantifier in ("*", "+", "?")
+
+                    # Only include single-select categorical fields
+                    if action_type in CATEGORICAL_TYPES and not is_multi_select:
+                        output_keys.append(key)
+
+            if output_keys:
+                self.agreement_fields = output_keys
+                logger.info(f"Auto-detected agreement fields: {output_keys}")
+            else:
+                self.agreement_fields = None
+                logger.warning(
+                    "No categorical fields (pick/bool) detected for agreement calculation. "
+                    "Agreement metrics require categorical variables. "
+                    "Use agreement_fields parameter to specify fields manually."
+                )
 
     def result(self) -> Dict[str, Any]:
         """Returns dict with metadata and classification results per model."""
@@ -213,19 +307,16 @@ class Classifier(ItemsNode, CompletionDAGNode):
             try:
                 from ...agreement import calculate_agreement_from_dataframes
 
-                # Auto-detect agreement fields if not set
+                # Agreement fields already auto-detected in run() if needed
                 if not self.agreement_fields:
-                    metadata_cols = {"item_id", "document", "filename", "index"}
-                    all_fields = {c for df in model_dfs.values() for c in df.columns}
-                    self.agreement_fields = sorted(
-                        f
-                        for f in all_fields
-                        if f not in metadata_cols and not f.endswith("__evidence")
+                    logger.warning(
+                        "No output fields detected for agreement calculation - skipping"
                     )
-
-                agreement_stats = calculate_agreement_from_dataframes(
-                    model_dfs, self.agreement_fields
-                )
+                    agreement_stats = None
+                else:
+                    agreement_stats = calculate_agreement_from_dataframes(
+                        model_dfs, self.agreement_fields
+                    )
 
                 # Convert to DataFrame for easier HTML rendering
                 if agreement_stats:
@@ -236,24 +327,69 @@ class Classifier(ItemsNode, CompletionDAGNode):
                 agreement_stats = None
                 agreement_stats_df = None
 
+        # Calculate ground truth metrics if configured
+        ground_truth_stats = None
+        ground_truth_stats_df = None
+        if self.ground_truths and model_dfs and self._processed_items:
+            try:
+                from ...ground_truth_metrics import calculate_ground_truth_metrics
+
+                ground_truth_stats = calculate_ground_truth_metrics(
+                    model_dfs=model_dfs,
+                    processed_items=self._processed_items,
+                    ground_truth_config=self.ground_truths,
+                )
+
+                # Flatten for DataFrame display
+                if ground_truth_stats:
+                    rows = []
+                    for field_name, model_metrics in ground_truth_stats.items():
+                        for model_name, metric_dict in model_metrics.items():
+                            row = {"field": field_name, "model": model_name}
+                            # Add scalar metrics only
+                            for key, value in metric_dict.items():
+                                if key not in [
+                                    "confusion_matrix",
+                                    "classification_report",
+                                    "labels",
+                                    "field",
+                                    "model",
+                                ]:
+                                    row[key] = value
+                            rows.append(row)
+
+                    if rows:
+                        ground_truth_stats_df = pd.DataFrame(rows)
+
+            except Exception as e:
+                logger.warning(f"Could not calculate ground truth metrics: {e}")
+                ground_truth_stats = None
+                ground_truth_stats_df = None
+
         # Add Classifier-specific data
         result["model_dfs"] = model_dfs if model_dfs else {}
         result["agreement_stats"] = agreement_stats  # Dict format
         result["agreement_stats_df"] = agreement_stats_df  # DataFrame format
+        result["ground_truth_stats"] = ground_truth_stats  # Dict format
+        result["ground_truth_stats_df"] = ground_truth_stats_df  # DataFrame format
         result["metadata"]["num_models"] = len(model_dfs) if model_dfs else 0
         result["metadata"]["model_names"] = list(model_dfs.keys()) if model_dfs else []
         result["metadata"]["agreement_fields"] = self.agreement_fields or []
+        result["metadata"]["ground_truth_fields"] = (
+            list(self.ground_truths.keys()) if self.ground_truths else []
+        )
 
         return result
 
     def export(self, folder: Path, unique_id: str = ""):
         """Export Classifier node with CSV output and individual responses."""
         from ...agreement import export_agreement_stats
-        from ...agreement_scripts import (collect_field_categories,
-                                          generate_human_rater_template,
-                                          write_agreement_scripts)
-        from ...export_utils import (export_to_csv, export_to_html,
-                                     export_to_json)
+        from ...agreement_scripts import (
+            collect_field_categories,
+            generate_human_rater_template,
+            write_agreement_scripts,
+        )
+        from ...export_utils import export_to_csv, export_to_html, export_to_json
         from ...helpers import build_combined_long_form_dataset
 
         super().export(folder, unique_id=unique_id)
@@ -282,38 +418,40 @@ class Classifier(ItemsNode, CompletionDAGNode):
             logger.warning(f"No results to export for {self.name}")
             return
 
-        # Export prompts once (same for all models)
-        prompts_folder = folder / "prompts"
-        prompts_folder.mkdir(parents=True, exist_ok=True)
+        # Export prompts for each model (prompts can differ when models build on previous completions)
+        for model_name, results in self._model_results.items():
+            if not results:
+                logger.warning(f"No results to export for model {model_name}")
+                continue
 
-        first_results = next(iter(self._model_results.values()))
-        if not first_results:
-            logger.warning(f"No results to export for {self.name}")
-            return
+            safe_model_name = model_name.replace("/", "_").replace(":", "_")
+            suffix = f"_{safe_model_name}" if len(self._model_results) > 1 else ""
+            prompts_folder = folder / f"prompts{suffix}"
+            prompts_folder.mkdir(parents=True, exist_ok=True)
 
-        for i, result_item in enumerate(first_results):
-            item = (
-                self._processed_items[i]
-                if self._processed_items and i < len(self._processed_items)
-                else None
-            )
-            safe_id = TrackedItem.make_safe_id(TrackedItem.extract_source_id(item))
-
-            # Export prompts and responses
-            if hasattr(result_item, "outputs"):
-                (prompts_folder / f"{i:04d}_{safe_id}_response.json").write_text(
-                    result_item.outputs.to_json()
+            for i, result_item in enumerate(results):
+                item = (
+                    self._processed_items[i]
+                    if self._processed_items and i < len(self._processed_items)
+                    else None
                 )
-                if hasattr(result_item, "results"):
-                    for k, v in result_item.results.items():
-                        (
-                            prompts_folder / f"{i:04d}_{safe_id}_{k}_prompt.txt"
-                        ).write_text(v.prompt)
-            else:
-                # Plain dict from JSON deserialization
-                (prompts_folder / f"{i:04d}_{safe_id}_response.json").write_text(
-                    json.dumps(result_item, indent=2, default=str)
-                )
+                safe_id = TrackedItem.make_safe_id(TrackedItem.extract_source_id(item))
+
+                # Export prompts and responses
+                if hasattr(result_item, "outputs"):
+                    (prompts_folder / f"{i:04d}_{safe_id}_response.json").write_text(
+                        result_item.outputs.to_json()
+                    )
+                    if hasattr(result_item, "results"):
+                        for k, v in result_item.results.items():
+                            (
+                                prompts_folder / f"{i:04d}_{safe_id}_{k}_prompt.txt"
+                            ).write_text(v.prompt)
+                else:
+                    # Plain dict from JSON deserialization
+                    (prompts_folder / f"{i:04d}_{safe_id}_response.json").write_text(
+                        json.dumps(result_item, indent=2, default=str)
+                    )
 
         # Export responses for each model
         responses_folder = folder / "responses"
@@ -342,57 +480,18 @@ class Classifier(ItemsNode, CompletionDAGNode):
                         json.dumps(result_item, indent=2, default=str)
                     )
 
-        # Export CSV for each model
-        for model_name, results in self._model_results.items():
+        # Build DataFrames for each model (reuse logic from _build_dataframes_from_results)
+        model_dfs = self._build_dataframes_from_results()
+
+        if not model_dfs:
+            logger.warning(f"No valid classification results to export")
+            return
+
+        # Export CSV for each model using pre-built DataFrames
+        for model_name, df in model_dfs.items():
             safe_model_name = model_name.replace("/", "_").replace(":", "_")
             suffix = f"_{safe_model_name}" if len(self._model_results) > 1 else ""
 
-            # Build rows with source_id tracking
-            rows = []
-            for idx, output_item in enumerate(results):
-                # Get metadata using TrackedItem helper
-                if self._processed_items and idx < len(self._processed_items):
-                    row = TrackedItem.extract_export_metadata(
-                        self._processed_items[idx], idx
-                    )
-                else:
-                    row = {
-                        "item_id": f"item_{idx}",
-                        "document": f"item_{idx}",
-                        "index": idx,
-                    }
-
-                # Add classification outputs
-                if hasattr(output_item, "outputs"):
-                    output_dict = output_item.outputs
-                elif isinstance(output_item, dict):
-                    output_dict = {
-                        k: v for k, v in output_item.items() if not k.startswith("__")
-                    }
-                else:
-                    continue
-
-                # Convert non-hashable types to strings
-                for k, v in output_dict.items():
-                    if (
-                        isinstance(v, (list, tuple))
-                        or hasattr(v, "__iter__")
-                        and not isinstance(v, str)
-                    ):
-                        row[k] = str(v)
-                    else:
-                        row[k] = v
-
-                rows.append(row)
-
-            if not rows:
-                logger.warning(
-                    f"No valid classification results to export for {model_name}"
-                )
-                continue
-
-            # Export CSV, HTML, JSON using utility functions
-            df = pd.DataFrame(rows)
             # Add unique_id to filename if provided
             uid_suffix = f"_{unique_id}" if unique_id else ""
             export_to_csv(
@@ -401,8 +500,10 @@ class Classifier(ItemsNode, CompletionDAGNode):
             export_to_html(
                 df, folder / f"classifications_{self.name}{suffix}{uid_suffix}.html"
             )
+            # Convert DataFrame back to list of dicts for JSON export
             export_to_json(
-                rows, folder / f"classifications_{self.name}{suffix}{uid_suffix}.json"
+                df.to_dict("records"),
+                folder / f"classifications_{self.name}{suffix}{uid_suffix}.json",
             )
 
         # Export combined long-form dataset for multi-model comparison
@@ -428,42 +529,80 @@ class Classifier(ItemsNode, CompletionDAGNode):
                 )
 
         # Calculate and export agreement statistics if multiple models
-        if len(self._model_results) >= 2:
+        if len(self._model_results) >= 2 and model_dfs:
             from ...agreement import calculate_agreement_from_dataframes
 
-            model_dfs = self._build_dataframes_from_results()
-            if model_dfs:
+            # Agreement fields already auto-detected in run() if needed
+            if not self.agreement_fields:
+                logger.warning(
+                    "No output fields detected for agreement calculation - skipping"
+                )
+            else:
                 stats = calculate_agreement_from_dataframes(
                     model_dfs, self.agreement_fields
                 )
 
-                # Auto-detect agreement fields if not set (same logic as in calculate_agreement_from_dataframes)
-                if not self.agreement_fields:
-                    metadata_cols = {"item_id", "document", "filename", "index"}
-                    all_fields = {c for df in model_dfs.values() for c in df.columns}
-                    self.agreement_fields = sorted(
-                        f
-                        for f in all_fields
-                        if f not in metadata_cols and not f.endswith("__evidence")
-                    )
+            if stats:
+                stats_prefix = str(folder / "agreement_stats")
+                export_agreement_stats(stats, stats_prefix)
+                logger.info(
+                    f"Exported agreement statistics to {stats_prefix}.csv and {stats_prefix}.json"
+                )
 
-                if stats:
-                    stats_prefix = str(folder / "agreement_stats")
-                    export_agreement_stats(stats, stats_prefix)
+            # Generate agreement calculation script and template
+            self._generate_agreement_script(folder, model_dfs)
+
+        # Calculate and export ground truth metrics if configured
+        if self.ground_truths and self._processed_items and model_dfs:
+            from ...ground_truth_metrics import (
+                calculate_ground_truth_metrics,
+                export_confusion_matrices,
+                export_ground_truth_metrics,
+            )
+
+            try:
+                ground_truth_stats = calculate_ground_truth_metrics(
+                    model_dfs=model_dfs,
+                    processed_items=self._processed_items,
+                    ground_truth_config=self.ground_truths,
+                )
+
+                if ground_truth_stats:
+                    # Export summary metrics with config info
+                    stats_prefix = str(folder / "ground_truth_metrics")
+                    export_ground_truth_metrics(
+                        ground_truth_stats, stats_prefix, self.ground_truths
+                    )
                     logger.info(
-                        f"Exported agreement statistics to {stats_prefix}.csv and {stats_prefix}.json"
+                        f"Exported ground truth metrics to {stats_prefix}.csv and {stats_prefix}.json"
                     )
 
-                # Generate agreement calculation script and template
-                self._generate_agreement_script(folder)
+                    # Export confusion matrices with config for metadata
+                    export_confusion_matrices(
+                        ground_truth_stats, folder, self.ground_truths
+                    )
 
-    def _generate_agreement_script(self, folder: Path):
-        """Generate a standalone Python script for agreement calculation."""
-        from ...agreement_scripts import (collect_field_categories,
-                                          generate_human_rater_template,
-                                          write_agreement_scripts)
+            except Exception as e:
+                logger.error(
+                    f"Error exporting ground truth metrics: {e}", exc_info=True
+                )
 
-        if not self._model_results or not self.agreement_fields:
+    def _generate_agreement_script(
+        self, folder: Path, model_dfs: Dict[str, pd.DataFrame]
+    ):
+        """Generate a standalone Python script for agreement calculation.
+
+        Args:
+            folder: Output folder for scripts
+            model_dfs: Pre-built DataFrames for each model from _build_dataframes_from_results()
+        """
+        from ...agreement_scripts import (
+            collect_field_categories,
+            generate_human_rater_template,
+            write_agreement_scripts,
+        )
+
+        if not self._model_results or not self.agreement_fields or not model_dfs:
             return
 
         # Get list of CSV files
@@ -477,48 +616,10 @@ class Classifier(ItemsNode, CompletionDAGNode):
             self._model_results, self.agreement_fields
         )
 
-        # Generate template CSV using extracted function
-        first_results = next(iter(self._model_results.values()))
-        first_model_name = next(iter(self._model_results.keys()))
+        # Use the first model's pre-built DataFrame for template generation
+        first_model_name = next(iter(model_dfs.keys()))
+        df = model_dfs[first_model_name]
 
-        # Build DataFrame for template generation
-        rows = []
-        for idx, output_item in enumerate(first_results):
-            # Get metadata using TrackedItem helper
-            if self._processed_items and idx < len(self._processed_items):
-                row = TrackedItem.extract_export_metadata(
-                    self._processed_items[idx], idx
-                )
-            else:
-                row = {
-                    "item_id": f"item_{idx}",
-                    "document": f"item_{idx}",
-                    "index": idx,
-                }
-
-            # Add classification outputs
-            if hasattr(output_item, "outputs"):
-                output_dict = output_item.outputs
-            elif isinstance(output_item, dict):
-                output_dict = {
-                    k: v for k, v in output_item.items() if not k.startswith("__")
-                }
-            else:
-                continue
-
-            for k, v in output_dict.items():
-                if (
-                    isinstance(v, (list, tuple))
-                    or hasattr(v, "__iter__")
-                    and not isinstance(v, str)
-                ):
-                    row[k] = str(v)
-                else:
-                    row[k] = v
-
-            rows.append(row)
-
-        df = pd.DataFrame(rows)
         generate_human_rater_template(
             folder, self.name, first_model_name, df, field_categories
         )

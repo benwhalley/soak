@@ -1,0 +1,17 @@
+name: test_partial_results
+
+nodes:
+  - name: process
+    type: Map
+    inputs:
+      - documents
+
+---#process
+
+Extract themes:
+
+<text>
+{{response}}
+</text>
+
+[[themes]]

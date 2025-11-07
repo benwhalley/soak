@@ -12,7 +12,6 @@ MERMAID_SHAPE_MAP = {
     "Map": ("[[", "]]"),  # standard rectangle
     "Reduce": ("{{", "}}"),  # hexagon
     "Transform": (">", "]"),  #
-    "TransformReduce": (">", "]"),  #
     "VerifyQuotes": ("[[", "]]"),  #
     "Batch": ("[[", "]]"),  # subroutine shape
     "Classifier": ("[/", "\\]"),  # parallelogram (for input/output operations)
@@ -40,11 +39,5 @@ def dag_to_mermaid(dag: "DAG") -> str:
     # Generate edges
     for edge in dag.edges:
         lines.append(f"    {edge.from_node} --> {edge.to_node}")
-
-    # Add styling
-    lines.append("""classDef heavyDotted stroke-dasharray: 4 4, stroke-width: 2px;""")
-    for node in dag.nodes:
-        if node.type == "TransformReduce":
-            lines.append("""class all_themes heavyDotted;""")
 
     return "\n".join(lines)

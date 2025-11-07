@@ -1,6 +1,6 @@
 # Thematic Analysis with soak
 
-This guide explains how soak performs inductive thematic analysis using the `zs.yaml` pipeline.
+This guide explains how soak performs thematic analysis using the `zs.soak` pipeline. inductive
 
 ## Pipeline Overview
 
@@ -17,7 +17,7 @@ The `zs` pipeline implements a standard thematic analysis workflow:
 ## Running the Pipeline
 
 ```bash
-uv run soak run zs data/interviews/*.txt --output results
+uv run soak zs data/interviews/*.txt --output results
 ```
 
 The pipeline processes all files in parallel, then consolidates results.
@@ -323,17 +323,17 @@ Smaller chunks = more granular coding, longer runtime:
 ### Change Model
 
 ```bash
-uv run soak run zs data/*.txt --output results --model-name openai/gpt-4o
+uv run soak zs --output results --model-name openai/gpt-4o data/*.txt
 ```
 
 ### Modify Prompts
 
-Copy `soak/pipelines/zs.yaml` locally and edit templates:
+Copy `soak/pipelines/zs.soak` locally and edit templates:
 
 ```bash
-cp soak/pipelines/zs.yaml my_analysis.yaml
-# Edit my_analysis.yaml
-uv run soak run my_analysis.yaml data/*.txt --output results
+cp soak/pipelines/zs.soak my_analysis.soak
+# Edit my_analysis.soak
+uv soak my_analysis.soak data/*.txt --output results run
 ```
 
 See [Customizing Your Analysis](../tutorials/customizing-analysis.md) for details.
@@ -341,7 +341,7 @@ See [Customizing Your Analysis](../tutorials/customizing-analysis.md) for detail
 ### Add Context Variables
 
 ```bash
-uv run soak run zs data/*.txt \
+uv run soak zs \ data/*.txt
   --output results \
   -c research_question="What are participants' experiences of recovery?"
 ```

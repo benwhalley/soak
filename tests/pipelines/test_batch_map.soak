@@ -1,0 +1,31 @@
+name: test_batch_map
+
+nodes:
+  - name: chunks
+    type: Split
+    split_unit: sentences
+    chunk_size: 2
+
+  - name: batched
+    type: Batch
+    batch_size: 3
+    inputs:
+      - chunks
+
+  - name: process_batches
+    type: Map
+    inputs:
+      - batched
+
+---#chunks
+{{input}}
+
+---#process_batches
+
+Process this batch:
+
+<batch>
+{{input}}
+</batch>
+
+[[batch_summary]]

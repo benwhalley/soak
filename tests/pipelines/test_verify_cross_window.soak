@@ -1,0 +1,25 @@
+name: test_verify_cross_window
+
+nodes:
+  - name: codes
+    type: Map
+    inputs:
+      - documents
+
+  - name: verify
+    type: VerifyQuotes
+    window_size: 150  # Small windows to force boundary spanning
+    expand_window_neighbors: 1
+    trim_spans: true
+    inputs:
+      - codes
+
+---#codes
+
+Extract key themes with longer quotes (50+ words each) from this text. Only include direct quotes from the text above.
+
+<text>
+{{input}}
+</text>
+
+[[codes:codes]]

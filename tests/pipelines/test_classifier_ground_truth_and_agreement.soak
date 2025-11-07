@@ -1,0 +1,28 @@
+name: test_classifier_ground_truth_and_agreement
+
+nodes:
+  - name: classify
+    type: Classifier
+    model_names:
+      - gpt-4o-mini
+      - openai/gpt-4o-mini
+    agreement_fields:
+      - condition_pred
+    ground_truths:
+      condition_pred:
+        existing: "condition"
+        labels: ["control", "treatment"]
+    inputs:
+      - documents
+
+---#classify
+
+Read this participant response and classify their condition:
+
+<response>
+{{response}}
+</response>
+
+Based on the response, predict if this participant was in the control or treatment group.
+
+[[pick:condition_pred|control,treatment]]

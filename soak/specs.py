@@ -7,9 +7,38 @@ import yaml
 
 from soak.models import DAGNode, QualitativeAnalysisPipeline
 
+# Import all node types to rebuild their schemas with BatchList
+from soak.models.nodes import (
+    Batch,
+    Classifier,
+    Filter,
+    Map,
+    Reduce,
+    Split,
+    Transform,
+    TransformReduce,
+    VerifyQuotes,
+)
+
+# Ensure BatchList is imported before model_rebuild to resolve forward references
+from soak.models.nodes.batch import BatchList  # noqa: F401
+
 logger = logging.getLogger(__name__)
 
-DAGNode.model_rebuild(force=True)
+# Rebuild all node types to resolve "BatchList" forward reference in OutputUnion
+for node_class in [
+    DAGNode,
+    Batch,
+    Classifier,
+    Filter,
+    Map,
+    Reduce,
+    Split,
+    Transform,
+    TransformReduce,
+    VerifyQuotes,
+]:
+    node_class.model_rebuild(force=True)
 
 
 def extract_templates_(text):
@@ -21,7 +50,7 @@ def extract_templates_(text):
     return sections
 
 
-# extract_templates_(open("new.yaml").read())
+# extract_templates_(open("new.soak").read())
 
 
 def load_template_bundle(template: Union[Path, str]) -> QualitativeAnalysisPipeline:

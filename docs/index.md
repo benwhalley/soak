@@ -32,6 +32,7 @@ Start here if you're new to soak:
 Complete workflows for specific tasks:
 
 - [Thematic Analysis](how-to/thematic-analysis.md) - Inductive coding and theme generation
+- [Working with Spreadsheet Data](how-to/working-with-spreadsheet-data.md) - Process CSV and Excel files
 - [Pre-extraction Workflow](how-to/pre-extract-workflow.md) - Filter text before analysis
 - [Build a Classifier](how-to/build-classifier.md) - Structured classification pipelines
 - [Configure Text Splitting](how-to/configure-splits.md) - Chunking strategies
@@ -81,7 +82,17 @@ uv run soak run classifier data/*.docx --output results
 
 See [Build a Classifier](how-to/build-classifier.md)
 
+### Spreadsheet Analysis
+
+Process CSV or Excel files (each row becomes a document):
+
+```bash
+uv run soak run classifier_tabular data/survey.csv --output results
+```
+
+See [Working with Spreadsheet Data](how-to/working-with-spreadsheet-data.md)
+
 ## Support
 
-- GitHub: https://github.com/benwhalley/soak-package
-- Issues: https://github.com/benwhalley/soak-package/issues
+- GitHub: https://github.com/benwhalley/soak
+- Issues: https://github.com/benwhalley/soak/issues
