@@ -36,7 +36,7 @@ class Classifier(ItemsNode, CompletionDAGNode):
 
     type: Literal["Classifier"] = "Classifier"
     temperature: float = 0.5
-    template_text: str = None
+    template: str = None
     model_names: Optional[List[str]] = None  # Multiple models for agreement analysis
     agreement_fields: Optional[List[str]] = None  # Fields to calculate agreement on
     ground_truths: Optional[Dict[str, Dict[str, Any]]] = (
@@ -48,13 +48,9 @@ class Classifier(ItemsNode, CompletionDAGNode):
     _model_results: Optional[Dict[str, List[Any]]] = PrivateAttr(default=None)
     _agreement_stats: Optional[Dict[str, Dict[str, float]]] = PrivateAttr(default=None)
 
-    @property
-    def template(self) -> str:
-        return self.template_text
-
     def validate_template(self):
         try:
-            parse_syntax(self.template_text)
+            parse_syntax(self.template)
             return True
         except Exception as e:
             logger.error(f"Template syntax error: {e}")
@@ -145,10 +141,11 @@ class Classifier(ItemsNode, CompletionDAGNode):
 
                         tg.start_soon(run_and_store)
 
-            # accumulate costs from results for this model
+            # accumulate costs and track for cache statistics
             for result in results:
                 if result is not None:
                     self._accumulate_costs(result)
+                    self._llm_results.append(result)
 
             self._model_results[model_name] = results
 
@@ -213,8 +210,8 @@ class Classifier(ItemsNode, CompletionDAGNode):
                 df = pd.DataFrame(rows)
                 # Get output keys from ALL sections of template
                 output_keys = []
-                if self.template_text:
-                    sections = parse_syntax(self.template_text)
+                if self.template:
+                    sections = parse_syntax(self.template)
                     for section in sections:
                         output_keys.extend(section.keys())
                 # Extract ground truth column names if configured
@@ -228,7 +225,7 @@ class Classifier(ItemsNode, CompletionDAGNode):
                 df = order_export_columns(
                     df,
                     output_keys=output_keys,
-                    template_text=self.template_text,
+                    template=self.template,
                     ground_truth_columns=ground_truth_columns,
                 )
                 model_dfs[model_name] = df
@@ -247,11 +244,11 @@ class Classifier(ItemsNode, CompletionDAGNode):
         - Continuous data (int, float)
         - Free text fields
         """
-        if not self.agreement_fields and self.template_text:
+        if not self.agreement_fields and self.template:
             CATEGORICAL_TYPES = {"pick", "bool"}
 
             output_keys = []
-            sections = parse_syntax(self.template_text)
+            sections = parse_syntax(self.template)
 
             for section in sections:
                 for key, action in section.items():
@@ -395,8 +392,8 @@ class Classifier(ItemsNode, CompletionDAGNode):
         super().export(folder, unique_id=unique_id)
 
         # Write template
-        if self.template_text:
-            (folder / "prompt_template.sd.md").write_text(self.template_text)
+        if self.template:
+            (folder / "prompt_template.sd").write_text(self.template)
 
         # Reconstruct _model_results if needed (e.g., from JSON deserialization)
         if not self._model_results:

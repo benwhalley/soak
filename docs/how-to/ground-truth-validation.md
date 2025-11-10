@@ -375,6 +375,5 @@ nodes:
 
 ## See Also
 
-- [Classifier Node Reference](../reference/nodes.md#classifier)
-- [Inter-rater Agreement](./inter-rater-agreement.md)
+- [Classifier Node Reference](../reference/node-reference.md#classifier)
 - [Working with Results](../tutorials/working-with-results.md)

@@ -1,0 +1,37 @@
+name: test_batch_split_filter
+
+nodes:
+  - name: by_doc
+    type: Batch
+    batch_size: 1
+    inputs: [documents]
+
+  - name: chunks
+    type: Split
+    split_unit: sentences
+    chunk_size: 2
+    inputs: [by_doc]
+
+  - name: is_relevant
+    type: Map
+    mode: template
+    inputs: [chunks]
+
+  - name: filtered
+    type: Filter
+    expression: "item.is_relevant == 'yes'"
+    inputs: [is_relevant]
+
+  - name: per_doc_summary
+    type: Reduce
+    inputs: [filtered]
+
+  - name: all_summaries
+    type: Ungroup
+    inputs: [per_doc_summary]
+
+---#is_relevant
+yes
+
+---#per_doc_summary
+{{input}}

@@ -1,0 +1,201 @@
+---
+title: "Setup data for ANNOMI classification examples"
+---
+
+
+Analysis of the Annomi dataset including
+
+- classification of utterances (in context) into questions/reflection etc
+- comparison of high and low quality examples 
+
+
+
+```{r}
+library(BayesFactor)
+library(tidyverse)
+library(slider)
+library(rstanarm)
+library(brms)
+```
+
+
+Sets up a new dataset with windows of 4-utterances.
+For every utterance:
+
+- take the previous 4 utterances 
+- concatenate into `utterance_context`
+- select therapist utterances only
+- split into test/train sets
+
+
+```{r}
+setwd('soak/data')
+df <- read_csv("annomi.csv")
+
+df <- df %>%
+  mutate(utterance_full = str_c(interlocutor, ": ", utterance_text, "\\n")) %>%
+  group_by(transcript_id) %>%
+  mutate(
+    context4 = slide_chr(
+      utterance_full,
+      .f = ~ str_c(.x, collapse = ""),
+      .before = 3,     # include previous 3 utterances + current
+      .complete = FALSE
+    )
+  ) %>%
+  ungroup() %>% 
+  filter(interlocutor=="therapist") %>% 
+  filter(!str_detect(context4, "#")) 
+  
+set.seed(42)
+annomi_with_ctx <- df %>%
+  # filter(mi_quality=="high") %>% 
+  select(transcript_id, interlocutor, mi_quality, utterance_text, utterance_context = context4, question_exists, question_subtype, reflection_exists) %>% 
+  mutate(i=runif(n()))
+
+trnscripts_train <- annomi_with_ctx %>% 
+  distinct(mi_quality, transcript_id) %>% 
+  group_by(mi_quality) %>% 
+  slice_head(n=80) %>% 
+  pull(transcript_id)
+
+annomi_with_ctx %>% 
+  filter(transcript_id %in% trnscripts_train) %>% 
+  group_by(mi_quality, transcript_id) %>% 
+  slice_head(n=50) %>% 
+  arrange(i) %>% 
+  glimpse %>% 
+  write_csv('annomi_with_ctx_train.csv')
+```
+
+
+# Use soak to classify the inputs
+
+```{bash, eval=F}
+# if soak not already installed
+uv init
+uv add soak-data
+uv sync
+```
+
+
+This uses `classifier_tabular.yaml` to categorise all of the contextualised utterances as questions, reflections etc. See below for categories.
+
+```{bash}
+uv run soak run soak/pipelines/classifier_tabular.yaml soak/data/annomi_with_ctx_train.csv -o anno10 -F -H 2000 --dump
+```
+
+
+# Results
+
+```{r}
+df2 <- read_csv("../../anno10_dump/01_Classifier_classify_utterances/classifications_classify_utterances_a2e6.csv")
+
+
+df2 %>% glimpse
+
+df2 %>% 
+  select(matches('question|reflection|quality')) %>%
+  mutate_all(factor) %>%
+  pivot_longer(everything()) %>% 
+  group_by(name, value) %>% 
+  count() %>% 
+  group_by(name) %>%
+  mutate(p = round(n/sum(n), 2))
+```
+
+
+```{r}
+df2 %>% select(question_subtype, question_type) %>% table(., useNA="ifany")
+df2 %>% select(reflection, reflection_exists) %>% table(., useNA="ifany")
+```
+
+
+
+
+Calculate the reflection/question ratio based on the new LLM classifications:
+
+- `reflection`
+- `question_type`
+
+```{r}
+rqdf <- df2 %>% 
+  group_by(mi_quality, transcript_id) %>% 
+    summarise(
+      N=n(),
+      Q = sum(str_detect('open|closed', question_subtype), na.rm=T), 
+      R = sum(str_detect('simple|complex', reflection), na.rm=T)
+    ) %>% 
+  mutate(RQ = R/Q) %>% 
+  filter(RQ<100&RQ>0) %>% 
+  mutate(logRQ = log(RQ+.0001))
+
+n_trans <- length(unique(rqdf$transcript_id))
+n_ <- length(df2$transcript_id)
+
+rqdf %>% 
+  ggplot(aes(RQ, color=mi_quality)) + 
+  geom_density() + 
+  # geom_density(aes(y = after_stat(count))) +
+  # geom_density(aes(y = after_stat(count / sum(count)))) +
+  scale_x_log10() + theme_minimal() + labs(color="MI Quality", y="Density", caption=glue::glue("{n_} utterances, from {n_trans} transcripts"))
+```
+
+
+Check if RQ differs between high and low quality examples:
+
+```{r}
+1/ttestBF(formula=RQ~mi_quality, data=rqdf)
+```
+
+
+Same test but with more appropropriate model:
+
+```{r}
+fit <- stan_glmer.nb(
+  R ~ mi_quality + offset(log(Q)) + (1 | transcript_id),
+  data = rqdf %>% filter(Q > 0),
+  # family = poisson(link = "log")
+)
+# summary(fit)
+exp(fixef(fit))
+hypothesis(fit, "exp(mi_qualitylow) < 1") 
+```
+
+```{r}
+library(broom.mixed)
+
+plotdf <- broom.mixed::tidy(fit, effects = "fixed", conf.int = TRUE) %>%
+  mutate(
+    OR = exp(estimate),
+    OR_low = exp(conf.low),
+    OR_high = exp(conf.high)
+  )
+
+plotdf %>%
+  filter(term != "(Intercept)") %>%  # optional
+  ggplot(aes(x = term, y = OR)) +
+  geom_pointrange(aes(ymin = OR_low, ymax = OR_high), position = position_dodge(width = 0.5)) +
+  geom_hline(yintercept = 1, linetype = 2, colour = "grey50") +
+  coord_flip() +
+  theme_minimal(base_size = 12) +
+  labs(
+    y = "Rate ratio (≈ Odds Ratio)",
+    x = "",
+    title = "Effect of MI quality on reflections per question"
+  )
+
+```
+
+```{r}
+1/ttestBF(formula = RQ ~ mi_quality, data=rqdf2)
+```
+
+```{r}
+rqdf %>% 
+  # select(-transcript_id) %>% 
+  group_by(mi_quality) %>% 
+  filter(RQ < Inf & RQ > 0) %>%
+  summarise_if(is.numeric, ~median(.x, na.rm=T)) %>% 
+  mutate_if(is.numeric, ~round(.x, 3))
+```

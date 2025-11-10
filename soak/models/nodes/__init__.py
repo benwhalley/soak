@@ -7,9 +7,11 @@ from .base import CompletionDAGNode, DAGNode, ItemsNode, Split, default_map_task
 from .batch import Batch, BatchList
 from .classifier import Classifier
 from .filter import Filter
+from .groupby import GroupBy
 from .map import Map
 from .reduce import Reduce
 from .transform import Transform
+from .ungroup import Ungroup
 from .verify import VerifyQuotes
 
 __all__ = [
@@ -23,9 +25,11 @@ __all__ = [
     "BatchList",
     "Classifier",
     "Filter",
+    "GroupBy",
     "Map",
     "Reduce",
     "Split",
     "Transform",
+    "Ungroup",
     "VerifyQuotes",
 ]

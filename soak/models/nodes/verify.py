@@ -3,6 +3,9 @@
 import json
 import logging
 import re
+import sys
+from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
@@ -10,11 +13,12 @@ import anyio
 import nltk
 import numpy as np
 import pandas as pd
-from pydantic import Field
+from pydantic import Field, PrivateAttr
 from rank_bm25 import BM25Okapi
 from sklearn.metrics.pairwise import cosine_similarity
-from struckdown import StruckdownLLMError, chatter_async
+from struckdown import ChatterResult, StruckdownLLMError, chatter_async
 from struckdown.parsing import parse_syntax
+from tqdm import tqdm
 
 from soak.error_handlers import (
     ErrorBehavior,
@@ -23,6 +27,7 @@ from soak.error_handlers import (
     managed_llm_call,
     should_continue_pipeline,
 )
+from soak.models.alignment import trim_span_to_quote
 from soak.models.base import (
     TrackedItem,
     get_action_lookup,
@@ -30,390 +35,260 @@ from soak.models.base import (
     safe_json_dump,
     semaphore,
 )
+from soak.models.text_utils import (
+    ELLIPSIS_RE,
+    create_document_boundaries,
+    extract_context_window,
+    find_source_document,
+    is_match_truncated,
+    make_windows,
+    snap_to_boundaries,
+)
 
 from .base import CompletionDAGNode
 
 logger = logging.getLogger(__name__)
 
 
-def make_windows(
-    text: str,
-    window_size: Optional[int] = None,
-    overlap: Optional[int] = None,
-    extracted_sentences: Optional[List[str]] = None,
-) -> List[Tuple[str, int, int]]:
-    """Create overlapping windows of text.
+# verification result models
 
-    Returns list of tuples: (window_text, start_pos, end_pos)
 
-    Defaults:
-    - overlap: 30% of window_size (helps catch quotes spanning window boundaries)
+@dataclass
+class LLMVerdict:
+    """Result from LLM-based existence check."""
+    is_contained: Optional[bool]
+    explanation: str
+    chatter_result: Optional[Any] = None
+
+
+@dataclass
+class LLMFairnessVerdict:
+    """Result from LLM-based fairness check."""
+    is_fair: Optional[bool]
+    explanation: str
+    chatter_result: Optional[Any] = None
+
+
+@dataclass
+class QuoteVerificationResult:
+    """Comprehensive verification result for a single quote.
+
+    Includes BM25 matching, embedding similarity, optional LLM checks,
+    and source attribution.
     """
+    # original quote
+    quote: str
+    quote_hash: str
 
-    if not overlap:
-        overlap = int(window_size * 0.3)  # 30% overlap for better boundary coverage
+    # source attribution
+    source_doc: str
+    source_doc_id: str  # reference to shared storage (not full content!)
 
-    windows = []
-    i = 0
-    while i < len(text):
-        start = i
-        end = min(i + window_size, len(text))
-        windows.append((text[start:end], start, end))
-        i += window_size - overlap
-    return windows
+    # match location
+    span_text: str
+    global_start: int
+    global_end: int
 
+    # matching metrics
+    bm25_score: float
+    bm25_ratio: float  # top1/top2 ratio (uniqueness)
+    cosine_similarity: float
+    match_ratio: Optional[float] = None  # fuzzy match confidence
 
-ELLIPSIS_RE = re.compile(r"\.{3,}|…")
+    # optional code/theme associations
+    code_slug: Optional[str] = None
+    theme_slug: Optional[str] = None
+    code_name: Optional[str] = None
+    code_description: Optional[str] = None
+    theme_name: Optional[str] = None
+    theme_description: Optional[str] = None
 
+    # context snippets (short extracts, not full document)
+    context_before: str = ""
+    context_after: str = ""
 
-def create_document_boundaries(
-    documents: List["TrackedItem"],
-) -> Tuple[List[Tuple[str, int, int]], Dict[str, str]]:
-    """Create a list of (doc_name, start_pos, end_pos) for each document in concatenated text.
+    # source line numbers
+    source_line_start: Optional[int] = None
+    source_line_end: Optional[int] = None
 
-    Assumes documents are joined with "\n\n" separator.
+    # LLM verdicts
+    llm_existence: Optional[LLMVerdict] = None
+    llm_fairness: Optional[LLMFairnessVerdict] = None
 
-    Returns:
-        Tuple of (boundaries, doc_content_map) where:
-        - boundaries: List of (doc_name, start_pos, end_pos)
-        - doc_content_map: Dict mapping doc_name to full document content
-    """
-    boundaries = []
-    doc_content_map = {}
-    current_pos = 0
+    # metadata
+    alignment_method: str = "hybrid"
+    matched_window_indices: List[int] = field(default_factory=list)
+    verification_timestamp: Optional[datetime] = None
 
-    for doc in documents:
-        content_len = len(doc.content)
-
-        doc_name = None
-        doc_name = (
-            doc.metadata.get("filename")
-            if hasattr(doc, "metadata") and doc.metadata
-            else (doc.id if hasattr(doc, "id") else getattr(doc, "path", "unknown"))
-        )
-        # Fall back to id or path attribute
-        if not doc_name:
-            doc_name = doc.id if hasattr(doc, "id") else getattr(doc, "path", "unknown")
-
-        doc_name_str = str(doc_name)
-        boundaries.append((doc_name_str, current_pos, current_pos + content_len))
-        doc_content_map[doc_name_str] = doc.content
-        current_pos += content_len + 2  # +2 for "\n\n" separator
-
-    return boundaries, doc_content_map
-
-
-def find_source_document(
-    position: int,
-    doc_boundaries: List[Tuple[str, int, int]],
-    doc_content_map: Dict[str, str],
-) -> Tuple[str, str]:
-    """Find which document a character position belongs to.
-
-    Returns:
-        Tuple of (doc_name, doc_content)
-    """
-    for doc_name, start, end in doc_boundaries:
-        if start <= position < end:
-            return doc_name, doc_content_map.get(doc_name, "")
-    return "unknown", ""
-
-
-def find_alignment_fuzzy(
-    quote: str, span: str, min_ratio: float = 0.6, context_pad: int = 30
-) -> Dict[str, Any]:
-    """Find best character offset in span where quote aligns using fuzzy matching.
-
-    Uses difflib.SequenceMatcher.get_matching_blocks() to find exact positions.
-
-    Returns dict with: start_char, end_char, match_ratio, matched_text
-    """
-    from difflib import SequenceMatcher
-
-    # Normalize for matching
-    clean = lambda s: re.sub(r"\s+", " ", s.strip().lower())
-    quote_clean = clean(quote)
-    span_clean = clean(span)
-
-    if not quote_clean or not span_clean:
-        return {"start_char": 0, "end_char": 0, "match_ratio": 0.0, "matched_text": ""}
-
-    # Fast path: exact substring
-    if quote_clean in span_clean:
-        offset = span_clean.index(quote_clean)
-        start = offset
-        end = offset + len(quote_clean)
-
-        # Snap to word boundaries
-        start, end = snap_to_boundaries(span, start, end, snap_to="word")
-
-        return {
-            "start_char": start,
-            "end_char": end,
-            "match_ratio": 1.0,
-            "matched_text": span[start:end],
-        }
-
-    # Use SequenceMatcher to find matching blocks
-    matcher = SequenceMatcher(None, span_clean, quote_clean)
-
-    # Get all matching blocks above minimum length
-    blocks = [b for b in matcher.get_matching_blocks() if b[2] > 5]
-
-    if not blocks:
-        # Fallback: no good match
-        return {
-            "start_char": 0,
-            "end_char": len(span),
-            "match_ratio": 0.0,
-            "matched_text": span,
-        }
-
-    # Find the best block (longest contiguous match)
-    best_block = max(blocks, key=lambda b: b[2])
-    i1, i2, n = best_block
-    match_ratio = matcher.ratio()
-
-    # Add context padding
-    start = max(i1 - context_pad, 0)
-    end = min(i1 + n + context_pad, len(span))
-
-    # Snap to word boundaries to avoid mid-word cuts
-    start, end = snap_to_boundaries(span, start, end, snap_to="word")
-
-    return {
-        "start_char": start,
-        "end_char": end,
-        "match_ratio": float(match_ratio),
-        "matched_text": span[start:end],
-    }
-
-
-def find_alignment_sliding_bm25(quote: str, span: str) -> Tuple[int, float]:
-    """Find best alignment using word-level sliding BM25.
-
-    Returns (start_char_offset, bm25_score)
-    """
-    quote_tokens = nltk.word_tokenize(quote.lower())
-    span_tokens = nltk.word_tokenize(span.lower())
-
-    if len(quote_tokens) > len(span_tokens):
-        return 0, 0.0
-
-    # Build windows
-    window_size = max(len(quote_tokens), int(len(quote_tokens) * 1.2))
-    windows = []
-    window_starts = []  # token positions
-
-    for i in range(len(span_tokens) - window_size + 1):
-        windows.append(span_tokens[i : i + window_size])
-        window_starts.append(i)
-
-    if not windows:
-        return 0, 0.0
-
-    # Score with BM25
-    bm25 = BM25Okapi(windows)
-    scores = bm25.get_scores(quote_tokens)
-    best_idx = int(np.argmax(scores))
-    best_token_offset = window_starts[best_idx] if best_idx < len(window_starts) else 0
-
-    # Convert token offset to character offset (approximate)
-    # Rebuild span up to that token
-    if best_token_offset > 0:
-        char_offset = len(" ".join(span_tokens[:best_token_offset])) + 1  # +1 for space
-    else:
-        char_offset = 0
-
-    return char_offset, float(scores[best_idx])
-
-
-def trim_span_to_quote(
-    quote: str,
-    span: str,
-    method: Literal["fuzzy", "sliding_bm25", "hybrid"] = "hybrid",
-    min_fuzzy_ratio: float = 0.6,
-    min_span_length_multiplier: float = 1.2,
-    context_pad: int = 30,
-) -> Dict[str, Any]:
-    """Trim span to align with quote start using matching blocks.
-
-    Returns dict with: matched_text, start_char, end_char, match_ratio
-    """
-    if not span or not quote:
-        return {
-            "matched_text": span,
-            "start_char": 0,
-            "end_char": len(span) if span else 0,
-            "match_ratio": 0.0,
-        }
-
-    # Don't trim very short quotes (unreliable)
-    if len(quote) < 20:
-        return {
-            "matched_text": span,
-            "start_char": 0,
-            "end_char": len(span),
-            "match_ratio": 0.0,
-        }
-
-    if method == "fuzzy":
-        result = find_alignment_fuzzy(quote, span, min_fuzzy_ratio, context_pad)
-
-    elif method == "sliding_bm25":
-        offset, confidence = find_alignment_sliding_bm25(quote, span)
-        start, end = offset, len(span)
-        # Snap to boundaries
-        start, end = snap_to_boundaries(span, start, end, snap_to="word")
-        # Convert to dict format
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary for backwards compatibility and export."""
         result = {
-            "start_char": start,
-            "end_char": end,
-            "match_ratio": confidence,
-            "matched_text": span[start:end],
+            "quote": self.quote,
+            "quote_hash": self.quote_hash,
+            "source_doc": self.source_doc,
+            "source_doc_id": self.source_doc_id,
+            "span_text": self.span_text,
+            "global_start": self.global_start,
+            "global_end": self.global_end,
+            "bm25_score": self.bm25_score,
+            "bm25_ratio": self.bm25_ratio,
+            "cosine_similarity": self.cosine_similarity,
+            "match_ratio": self.match_ratio,
+            "context_before": self.context_before,
+            "context_after": self.context_after,
+            "alignment_method": self.alignment_method,
         }
 
-    elif method == "hybrid":
-        # Try fuzzy first
-        result = find_alignment_fuzzy(quote, span, min_fuzzy_ratio, context_pad)
-        if result["match_ratio"] < min_fuzzy_ratio:
-            # Fall back to BM25
-            offset_bm25, confidence_bm25 = find_alignment_sliding_bm25(quote, span)
-            # Use BM25 result if it seems reasonable
-            if offset_bm25 < len(span) * 0.5:  # heuristic: not too far into span
-                start, end = offset_bm25, len(span)
-                # Snap to boundaries
-                start, end = snap_to_boundaries(span, start, end, snap_to="word")
-                result = {
-                    "start_char": start,
-                    "end_char": end,
-                    "match_ratio": confidence_bm25,
-                    "matched_text": span[start:end],
-                }
-    else:
-        result = {
-            "matched_text": span,
-            "start_char": 0,
-            "end_char": len(span),
-            "match_ratio": 0.0,
-        }
+        # add optional fields
+        if self.code_slug:
+            result["code_slug"] = self.code_slug
+        if self.theme_slug:
+            result["theme_slug"] = self.theme_slug
+        if self.code_name:
+            result["code_name"] = self.code_name
+        if self.code_description:
+            result["code_description"] = self.code_description
+        if self.theme_name:
+            result["theme_name"] = self.theme_name
+        if self.theme_description:
+            result["theme_description"] = self.theme_description
+        if self.source_line_start is not None:
+            result["source_line_start"] = self.source_line_start
+        if self.source_line_end is not None:
+            result["source_line_end"] = self.source_line_end
 
-    # Safety: don't trim if result would be too short (preserve some context)
-    min_result_length = int(len(quote) * min_span_length_multiplier)
-    matched_len = result["end_char"] - result["start_char"]
-    if matched_len < min_result_length and matched_len < len(span):
+        # add LLM verdicts
+        if self.llm_existence:
+            result["llm_is_contained"] = self.llm_existence.is_contained
+            result["llm_explanation"] = self.llm_existence.explanation
+        if self.llm_fairness:
+            result["llm_is_fair"] = self.llm_fairness.is_fair
+            result["llm_fairness_explanation"] = self.llm_fairness.explanation
+
+        return result
+
+
+@dataclass
+class VerificationSummary:
+    """Aggregate verification statistics for a Code or Theme."""
+    total_quotes: int
+    mean_bm25_score: float
+    mean_cosine_similarity: float
+    mean_match_ratio: float
+    failed_quotes: int  # quotes below threshold
+    llm_existence_checks: int = 0
+    llm_existence_failures: int = 0
+    llm_fairness_checks: int = 0
+    llm_fairness_failures: int = 0
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert to dictionary."""
         return {
-            "matched_text": span,
-            "start_char": 0,
-            "end_char": len(span),
-            "match_ratio": result["match_ratio"],
+            "total_quotes": self.total_quotes,
+            "mean_bm25_score": self.mean_bm25_score,
+            "mean_cosine_similarity": self.mean_cosine_similarity,
+            "mean_match_ratio": self.mean_match_ratio,
+            "failed_quotes": self.failed_quotes,
+            "llm_existence_checks": self.llm_existence_checks,
+            "llm_existence_failures": self.llm_existence_failures,
+            "llm_fairness_checks": self.llm_fairness_checks,
+            "llm_fairness_failures": self.llm_fairness_failures,
         }
 
-    return result
+
+# core verification functions
 
 
-def snap_to_boundaries(
-    text: str, start: int, end: int, snap_to: Literal["word", "sentence"] = "word"
-) -> Tuple[int, int]:
-    """Expand start/end to nearest word or sentence boundary.
-
-    Prevents ugly mid-word cuts by snapping outward to natural boundaries.
+def _calculate_bm25_ratio(scores: np.ndarray) -> Tuple[float, float, float]:
+    """Calculate BM25 top1, top2, and ratio from score array.
 
     Args:
-        text: Full text
-        start: Start index (inclusive)
-        end: End index (exclusive, as in text[start:end])
+        scores: Array of BM25 scores
+
+    Returns:
+        Tuple of (top1, top2, ratio) where ratio = top1 / (top2 + epsilon)
     """
-    if snap_to == "word":
-        # Define word boundary characters (whitespace and punctuation)
-        boundaries = {
-            " ",
-            "\n",
-            "\t",
-            "\r",
-            ".",
-            "!",
-            "?",
-            ",",
-            ";",
-            ":",
-            "-",
-            "(",
-            ")",
-            "[",
-            "]",
-            "{",
-            "}",
-            '"',
-            "'",
-            "/",
-            "\\",
-        }
-
-        # Expand left until we hit a boundary (or reach start of text)
-        while start > 0 and text[start - 1] not in boundaries:
-            start -= 1
-
-        # Expand right until we hit a boundary (or reach end of text)
-        # Note: end is exclusive (text[start:end]), so we check text[end] if it exists
-        while end < len(text) and text[end] not in boundaries:
-            end += 1
-
-        # Trim leading whitespace
-        while start < end and text[start] in (" ", "\n", "\t", "\r"):
-            start += 1
-
-        # Trim trailing whitespace
-        while end > start and text[end - 1] in (" ", "\n", "\t", "\r"):
-            end -= 1
-
-    elif snap_to == "sentence":
-        # Find sentence boundaries (periods, exclamation, question marks followed by space/newline)
-        sentence_pattern = r"[.!?][\s\n]+"
-        sentence_ends = [m.end() for m in re.finditer(sentence_pattern, text)]
-
-        # Expand left to previous sentence end (or beginning)
-        prev_end = 0
-        for pos in sentence_ends:
-            if pos < start:
-                prev_end = pos
-            else:
-                break
-        start = prev_end
-
-        # Expand right to next sentence end (or end of text)
-        next_end = len(text)
-        for pos in sentence_ends:
-            if pos > end:
-                next_end = pos
-                break
-        end = next_end
-
-    return start, end
+    sorted_scores = np.sort(scores)[::-1]
+    top1 = float(sorted_scores[0]) if len(sorted_scores) > 0 else 0.0
+    top2 = float(sorted_scores[1]) if len(sorted_scores) > 1 else 0.0
+    ratio = top1 / (top2 + 1e-6)
+    return top1, top2, ratio
 
 
-def is_match_truncated(
-    match_result: Dict[str, Any], span_text: str, boundary_threshold: int = 30
-) -> bool:
-    """Detect if a match looks truncated and might benefit from window expansion.
+def _expand_window(
+    best_idx: int,
+    original_windows: List[Tuple[str, int, int]],
+    original_text: str,
+    expand_neighbors: int
+) -> Tuple[str, int]:
+    """Expand window to include neighbors and return expanded span.
 
-    Only checks boundary positions (not match_ratio) because low ratio can mean
-    either truncation OR too much context (we can't distinguish).
+    Args:
+        best_idx: Index of best matching window
+        original_windows: List of (window_text, start_pos, end_pos) tuples
+        original_text: Full concatenated text
+        expand_neighbors: Number of neighbors to include on each side
 
-    Returns True if:
-    - Matched text starts very close to span beginning (might extend left)
-    - Matched text ends very close to span end (might extend right)
+    Returns:
+        Tuple of (expanded_span, start_pos)
     """
-    start_char = match_result.get("start_char", 0)
-    end_char = match_result.get("end_char", len(span_text))
+    if expand_neighbors > 0:
+        start_idx = max(0, best_idx - expand_neighbors)
+        end_idx = min(len(original_windows), best_idx + expand_neighbors + 1)
+        expanded_start_pos = original_windows[start_idx][1]
+        expanded_end_pos = original_windows[end_idx - 1][2]
+        return original_text[expanded_start_pos:expanded_end_pos], expanded_start_pos
+    else:
+        span, start_pos, _ = original_windows[best_idx]
+        return span, start_pos
 
-    # Match starts at/near beginning → might be left-truncated
-    starts_at_boundary = start_char < boundary_threshold
 
-    # Match ends at/near end → might be right-truncated
-    ends_at_boundary = end_char > len(span_text) - boundary_threshold
+def _trim_and_position(
+    quote: str,
+    span_text: str,
+    window_start_pos: int,
+    trim_spans: bool,
+    trim_method: str,
+    min_fuzzy_ratio: float
+) -> Tuple[str, int, int, Optional[float]]:
+    """Apply span trimming if enabled and return positioning info.
 
-    return starts_at_boundary or ends_at_boundary
+    Args:
+        quote: Quote text to match
+        span_text: Span text to trim
+        window_start_pos: Global start position of window
+        trim_spans: Whether to apply trimming
+        trim_method: Method to use for trimming
+        min_fuzzy_ratio: Minimum fuzzy match ratio
+
+    Returns:
+        Tuple of (span_text, global_start, global_end, match_ratio)
+    """
+    if trim_spans:
+        match_result = trim_span_to_quote(quote, span_text, trim_method, min_fuzzy_ratio)
+        return (
+            match_result["matched_text"],
+            window_start_pos + match_result["start_char"],
+            window_start_pos + match_result["end_char"],
+            match_result["match_ratio"]
+        )
+    else:
+        return (span_text, window_start_pos, window_start_pos + len(span_text), None)
+
+
+def _extract_llm_field(result, field_name: str, default=None):
+    """Extract a field from ChatterResult with safe attribute access.
+
+    Args:
+        result: ChatterResult object
+        field_name: Name of field to extract
+        default: Default value if field not found
+
+    Returns:
+        Field output value or default
+    """
+    field_obj = result.results.get(field_name, {})
+    return field_obj.output if hasattr(field_obj, "output") else default
 
 
 def verify_quotes_bm25_first(
@@ -437,7 +312,7 @@ def verify_quotes_bm25_first(
     - If no ellipsis: find best BM25 window
     - If ellipsis: match head/tail separately, reconstruct span
     - Always compute embedding similarity on combined span
-    - Return BM25 score, ratio (top1/top2), cosine similarity, hash, and full source document content
+    - Return BM25 score, ratio (top1/top2, indicating whether there is a single clear match for the quote), cosine similarity, hash, and full source document content
 
     Args:
         extracted_quotes: List of Quote objects to verify
@@ -465,90 +340,32 @@ def verify_quotes_bm25_first(
             # Simple case: single BM25 match
             query_tokens = nltk.word_tokenize(quote.lower())
             scores = bm25.get_scores(query_tokens)
-            sorted_scores = np.sort(scores)[::-1]
-
-            top1 = float(sorted_scores[0]) if len(sorted_scores) > 0 else 0.0
-            top2 = float(sorted_scores[1]) if len(sorted_scores) > 1 else 0.0
-            ratio = top1 / (top2 + 1e-6)
+            top1, top2, ratio = _calculate_bm25_ratio(scores)
 
             best_idx = int(np.argmax(scores))
             bm25_score = top1
 
-            # Get window with position info
-            single_window_text, window_start_pos, window_end_pos = original_windows[
-                best_idx
-            ]
-
-            if trim_spans:
-                # Try matching in single window
-                match_result = trim_span_to_quote(
-                    quote, single_window_text, trim_method, min_fuzzy_ratio
-                )
-
-                # Check if match looks truncated
-                if expand_window_neighbors > 0 and is_match_truncated(
-                    match_result, single_window_text
-                ):
-                    # Expand to neighbors and retry using original text
-                    start_idx = max(0, best_idx - expand_window_neighbors)
-                    end_idx = min(
-                        len(original_windows), best_idx + expand_window_neighbors + 1
-                    )
-
-                    # Get global positions for expanded range
-                    expanded_start_pos = original_windows[start_idx][1]
-                    expanded_end_pos = original_windows[end_idx - 1][2]
-                    expanded_span = original_text[expanded_start_pos:expanded_end_pos]
-
-                    # Retry matching in expanded span
-                    expanded_result = trim_span_to_quote(
-                        quote, expanded_span, trim_method, min_fuzzy_ratio
-                    )
-
-                    # Use expanded result if it's better
-                    if expanded_result.get("match_ratio", 0) > match_result.get(
-                        "match_ratio", 0
-                    ):
-                        match_result = expanded_result
-                        window_start_pos = expanded_start_pos  # Update base position
-
-                span_text = match_result["matched_text"]
-                window_relative_start = match_result["start_char"]
-                window_relative_end = match_result["end_char"]
-                match_ratio = match_result["match_ratio"]
-
-                # Convert to global positions
-                global_start = window_start_pos + window_relative_start
-                global_end = window_start_pos + window_relative_end
-            else:
-                span_text = single_window_text
-                global_start = window_start_pos
-                global_end = window_end_pos
-                match_ratio = None
-
-            # Find source document and get full document content
-            source_doc, source_doc_content = find_source_document(
-                global_start, doc_boundaries, doc_content_map
+            # Extract span with optional expansion
+            span_text, window_start_pos = _expand_window(
+                best_idx, original_windows, original_text, expand_window_neighbors
             )
+            trim_target = quote
 
         else:
             # Ellipsis case: match head and tail
             parts = [p.strip() for p in ELLIPSIS_RE.split(quote) if p.strip()]
-
             if len(parts) < 2:
-                # Degenerate case: ellipsis but only one part
                 parts = [quote.replace("...", "").replace("…", "").strip()]
 
             head = parts[0]
             tail = parts[-1]
 
-            # BM25 for head
+            # BM25 for head and tail
             head_tokens = nltk.word_tokenize(head.lower())
             head_scores = bm25.get_scores(head_tokens)
             head_idx = int(np.argmax(head_scores))
             head_score = float(head_scores[head_idx])
 
-            # BM25 for tail
             tail_tokens = nltk.word_tokenize(tail.lower())
             tail_scores = bm25.get_scores(tail_tokens)
             tail_idx = int(np.argmax(tail_scores))
@@ -560,104 +377,55 @@ def verify_quotes_bm25_first(
                 head_score, tail_score = tail_score, head_score
 
             # Check gap constraint
-            if (
+            gap_exceeded = (
                 ellipsis_max_gap is not None
                 and (tail_idx - head_idx) > ellipsis_max_gap
-            ):
-                # Fall back to single best window
+            )
+
+            if gap_exceeded:
+                # Use best single window
                 best_idx = head_idx if head_score >= tail_score else tail_idx
-
-                # Expand search space to include neighbor windows using original text
-                if expand_window_neighbors > 0:
-                    start_idx = max(0, best_idx - expand_window_neighbors)
-                    end_idx = min(
-                        len(original_windows), best_idx + expand_window_neighbors + 1
-                    )
-
-                    expanded_start_pos = original_windows[start_idx][1]
-                    expanded_end_pos = original_windows[end_idx - 1][2]
-                    expanded_span = original_text[expanded_start_pos:expanded_end_pos]
-                    window_start_pos = expanded_start_pos
-                else:
-                    expanded_span, window_start_pos, _ = original_windows[best_idx]
-
                 bm25_score = max(head_score, tail_score)
 
-                # Calculate ratio for the chosen part
+                # Calculate ratio for chosen part
                 scores = head_scores if head_score >= tail_score else tail_scores
-                sorted_scores = np.sort(scores)[::-1]
-                top1 = float(sorted_scores[0]) if len(sorted_scores) > 0 else 0.0
-                top2 = float(sorted_scores[1]) if len(sorted_scores) > 1 else 0.0
-                ratio = top1 / (top2 + 1e-6)
+                top1, top2, ratio = _calculate_bm25_ratio(scores)
 
-                # Trim span to align with the chosen part (using expanded search space)
-                if trim_spans:
-                    part_to_match = head if head_score >= tail_score else tail
-                    match_result = trim_span_to_quote(
-                        part_to_match, expanded_span, trim_method, min_fuzzy_ratio
-                    )
-                    span_text = match_result["matched_text"]
-                    window_relative_start = match_result["start_char"]
-                    window_relative_end = match_result["end_char"]
-                    match_ratio = match_result["match_ratio"]
-
-                    # Convert to global positions
-                    global_start = window_start_pos + window_relative_start
-                    global_end = window_start_pos + window_relative_end
-                else:
-                    span_text = expanded_span
-                    global_start = window_start_pos
-                    global_end = window_start_pos + len(expanded_span)
-                    match_ratio = None
-
-                # Find source document and get full document content
-                source_doc, source_doc_content = find_source_document(
-                    global_start, doc_boundaries, doc_content_map
+                # Extract span with expansion
+                span_text, window_start_pos = _expand_window(
+                    best_idx, original_windows, original_text, expand_window_neighbors
                 )
+
+                # Trim to chosen part
+                trim_target = head if head_score >= tail_score else tail
             else:
-                # Reconstruct span from head to tail using global positions
+                # Use head-to-tail span
                 head_start_pos = original_windows[head_idx][1]
                 tail_end_pos = original_windows[tail_idx][2]
                 span_text = original_text[head_start_pos:tail_end_pos]
+                window_start_pos = head_start_pos
 
+                # Average scores
                 bm25_score = (head_score + tail_score) / 2.0
 
-                # Calculate ratio as average of head and tail ratios
-                head_sorted = np.sort(head_scores)[::-1]
-                tail_sorted = np.sort(tail_scores)[::-1]
-
-                head_top1 = float(head_sorted[0]) if len(head_sorted) > 0 else 0.0
-                head_top2 = float(head_sorted[1]) if len(head_sorted) > 1 else 0.0
-                tail_top1 = float(tail_sorted[0]) if len(tail_sorted) > 0 else 0.0
-                tail_top2 = float(tail_sorted[1]) if len(tail_sorted) > 1 else 0.0
-
-                head_ratio = head_top1 / (head_top2 + 1e-6)
-                tail_ratio = tail_top1 / (tail_top2 + 1e-6)
+                # Average ratios
+                head_top1, head_top2, head_ratio = _calculate_bm25_ratio(head_scores)
+                tail_top1, tail_top2, tail_ratio = _calculate_bm25_ratio(tail_scores)
                 ratio = (head_ratio + tail_ratio) / 2.0
 
-                # Trim span to align with head part
-                if trim_spans:
-                    head_part = parts[0]
-                    match_result = trim_span_to_quote(
-                        head_part, span_text, trim_method, min_fuzzy_ratio
-                    )
-                    span_text = match_result["matched_text"]
-                    window_relative_start = match_result["start_char"]
-                    window_relative_end = match_result["end_char"]
-                    match_ratio = match_result["match_ratio"]
+                # Trim to head part
+                trim_target = head
 
-                    # Convert to global positions
-                    global_start = head_start_pos + window_relative_start
-                    global_end = head_start_pos + window_relative_end
-                else:
-                    global_start = head_start_pos
-                    global_end = tail_end_pos
-                    match_ratio = None
+        # Trim span (unified for all cases)
+        span_text, global_start, global_end, match_ratio = _trim_and_position(
+            trim_target, span_text, window_start_pos,
+            trim_spans, trim_method, min_fuzzy_ratio
+        )
 
-                # Find source document and get full document content
-                source_doc, source_doc_content = find_source_document(
-                    global_start, doc_boundaries, doc_content_map
-                )
+        # Find source document
+        source_doc, source_doc_content = find_source_document(
+            global_start, doc_boundaries, doc_content_map
+        )
 
         # Compute embedding similarity between original quote and identified span
         # For long spans (e.g., ellipsis quotes spanning multiple windows), we need to
@@ -709,6 +477,14 @@ class VerifyQuotes(CompletionDAGNode):
     """
 
     type: Literal["VerifyQuotes"] = "VerifyQuotes"
+
+    # Input configuration
+    quotes_from: Optional[str] = None  # Node to extract quotes from (replaces inputs[0])
+    search_in: Optional[str] = None  # Node to search in (None = documents)
+    check_fairness: bool = False  # Enable fairness checking for themes
+    context_window_size: int = 1000  # Context window for fairness check
+
+    # BM25/embedding parameters
     window_size: Optional[int] = 300
     overlap: Optional[int] = None
     bm25_k1: float = 1.5
@@ -718,23 +494,155 @@ class VerifyQuotes(CompletionDAGNode):
     trim_method: Literal["fuzzy", "sliding_bm25", "hybrid"] = "fuzzy"
     min_fuzzy_ratio: float = 0.6
     expand_window_neighbors: int = 1  # Search ±N windows around BM25 best match
-    template_text: Optional[str] = None  # Custom LLM-as-judge prompt template
 
+    # LLM judge templates
+    template: Optional[str] = None  # Custom LLM-as-judge prompt template
+    fairness_template: Optional[str] = None  # Custom fairness verification template
+
+    # Results
     stats: Optional[Dict[str, Any]] = None
     original_sentences: Optional[List[str]] = None
     extracted_sentences: Optional[List[str]] = None
     sentence_matches: Optional[List[Dict[str, Union[str, Any]]]] = None
+    verification_type: Optional[str] = None  # "code" or "theme"
+
+    # Private attribute for organizing LLM results by type (for export)
+    _llm_results_by_type: Dict[str, Dict[str, ChatterResult]] = PrivateAttr(default_factory=dict)
 
     def validate_template(self):
-        """Validate template_text if provided."""
-        if self.template_text:
+        """Validate template if provided."""
+        if self.template:
             try:
-                parse_syntax(self.template_text)
+                parse_syntax(self.template)
                 return True
             except Exception as e:
                 logger.error(f"Judge template syntax error: {e}")
                 return False
         return True
+
+    def extract_quotes_and_context(self, input_data) -> List[Dict[str, Any]]:
+        """Extract quotes with theme/code context if available.
+
+        Returns list of dicts with:
+        - quote: Quote object
+        - type: "code" or "theme"
+        - code: Code object (if available)
+        - theme: Theme object (if type=="theme")
+        """
+        from soak.models.base import CodeList, Themes
+
+        quotes_with_context = []
+
+        # Handle list of ChatterResults (from Map nodes)
+        if isinstance(input_data, list):
+            for result in input_data:
+                if hasattr(result, "outputs"):
+                    for output_val in result.outputs.values():
+                        if isinstance(output_val, Themes):
+                            # Extract from themes
+                            for theme in output_val.themes:
+                                for code in theme.resolved_codes:
+                                    for quote in code.all_quotes:
+                                        quotes_with_context.append({
+                                            "quote": quote,
+                                            "type": "theme",
+                                            "theme": theme,
+                                            "code": code,
+                                        })
+                        elif isinstance(output_val, CodeList):
+                            # Extract from codes
+                            for code in output_val.codes:
+                                for quote in code.all_quotes:
+                                    quotes_with_context.append({
+                                        "quote": quote,
+                                        "type": "code",
+                                        "code": code,
+                                    })
+        # Handle single ChatterResult
+        elif hasattr(input_data, "outputs"):
+            for output_val in input_data.outputs.values():
+                if isinstance(output_val, Themes):
+                    for theme in output_val.themes:
+                        for code in theme.resolved_codes:
+                            for quote in code.all_quotes:
+                                quotes_with_context.append({
+                                    "quote": quote,
+                                    "type": "theme",
+                                    "theme": theme,
+                                    "code": code,
+                                })
+                elif isinstance(output_val, CodeList):
+                    for code in output_val.codes:
+                        for quote in code.all_quotes:
+                            quotes_with_context.append({
+                                "quote": quote,
+                                "type": "code",
+                                "code": code,
+                            })
+        # Handle direct Themes or CodeList
+        elif isinstance(input_data, Themes):
+            for theme in input_data.themes:
+                for code in theme.resolved_codes:
+                    for quote in code.all_quotes:
+                        quotes_with_context.append({
+                            "quote": quote,
+                            "type": "theme",
+                            "theme": theme,
+                            "code": code,
+                        })
+        elif isinstance(input_data, CodeList):
+            for code in input_data.codes:
+                for quote in code.all_quotes:
+                    quotes_with_context.append({
+                        "quote": quote,
+                        "type": "code",
+                        "code": code,
+                    })
+
+        if not quotes_with_context:
+            raise ValueError("No quotes found in input. Check that input contains Code or Theme objects with quotes.")
+
+        # Set verification type based on first item
+        self.verification_type = quotes_with_context[0]["type"]
+
+        return quotes_with_context
+
+    def get_search_corpus(self) -> str:
+        """Get text corpus to search for quotes.
+
+        Returns concatenated text from either documents or specified node output.
+        """
+        if self.search_in is None:
+            # Default: search in documents
+            return "\n\n".join(doc.content for doc in self.dag.config.documents)
+        else:
+            # Search in specified node output
+            node_output = self.context.get(self.search_in)
+            if node_output is None:
+                raise ValueError(f"Node '{self.search_in}' not found in context")
+
+            # Extract text from various output types
+            if isinstance(node_output, str):
+                return node_output
+            elif isinstance(node_output, list):
+                # List of TrackedItems or strings
+                texts = []
+                for item in node_output:
+                    if isinstance(item, TrackedItem):
+                        texts.append(item.content)
+                    elif isinstance(item, str):
+                        texts.append(item)
+                    elif hasattr(item, "response"):
+                        # ChatterResult - use response text
+                        texts.append(str(item.response))
+                return "\n\n".join(texts)
+            elif isinstance(node_output, TrackedItem):
+                return node_output.content
+            elif hasattr(node_output, "response"):
+                # Single ChatterResult
+                return str(node_output.response)
+            else:
+                raise ValueError(f"Cannot extract text from node '{self.search_in}' output type: {type(node_output)}")
 
     async def llm_as_judge(self, quote: str, source: str) -> Dict[str, Any]:
         """Use LLM to verify if a quote is truly contained in the source text.
@@ -749,15 +657,15 @@ class VerifyQuotes(CompletionDAGNode):
             Dict with 'explanation' and 'is_contained' keys
         """
         # Use custom template if provided, otherwise load default from file
-        if self.template_text:
-            prompt = self.template_text
+        if self.template:
+            prompt = self.template
         else:
             # Templates are in soak/templates, not soak/models/templates
             template_path = (
                 Path(__file__).parent.parent.parent
                 / "templates"
                 / "nodes"
-                / "llm_as_judge.md"
+                / "llm_judge_quote_exists.sd"
             )
             prompt = template_path.read_text()
 
@@ -770,7 +678,7 @@ class VerifyQuotes(CompletionDAGNode):
             llm_func=chatter_async,
             item_index=None,
             multipart_prompt=prompt,
-            context={"text1": quote, "text2": source},
+            context={"source": source, "quote": quote},
             model=self.get_model(),
             credentials=self.dag.config.llm_credentials,
             extra_kwargs=extra_kwargs,
@@ -784,236 +692,327 @@ class VerifyQuotes(CompletionDAGNode):
         self._accumulate_costs(result)
 
         # Extract the parsed results
-        explanation = (
-            result.results.get("explanation", {}).output
-            if hasattr(result.results.get("explanation", {}), "output")
-            else ""
-        )
-        is_contained = (
-            result.results.get("is_contained", {}).output
-            if hasattr(result.results.get("is_contained", {}), "output")
-            else None
+        explanation = _extract_llm_field(result, "explanation", "")
+        is_contained = _extract_llm_field(result, "is_contained", None)
+
+        return {"explanation": explanation, "is_contained": is_contained, "chatter_result": result}
+
+    async def check_quote_fairness(
+        self,
+        theme_name: str,
+        theme_description: str,
+        code_name: str,
+        code_description: str,
+        quote: str,
+        original_text: str
+    ) -> Dict[str, Any]:
+        """Use LLM to verify if a quote is used fairly to support a theme.
+
+        Args:
+            theme_name: Name of the theme
+            theme_description: Description of the theme
+            code_name: Name of the code
+            code_description: Description of the code
+            quote: The quote being verified
+            original_text: Context window around the quote from source document
+
+        Returns:
+            Dict with 'explanation', 'is_fair', and 'chatter_result' keys
+        """
+        # Use custom template if provided, otherwise load default
+        if self.fairness_template:
+            prompt = self.fairness_template
+        else:
+            template_path = (
+                Path(__file__).parent.parent.parent
+                / "templates"
+                / "nodes"
+                / "verify_theme_quotes.sd"
+            )
+            prompt = template_path.read_text()
+
+        # Get LLM kwargs including seed
+        extra_kwargs = self.get_llm_kwargs()
+
+        # Build context for template
+        context = {
+            "theme_name": theme_name,
+            "theme_description": theme_description,
+            "code_name": code_name,
+            "code_description": code_description,
+            "quote": quote,
+            "original_text": original_text,
+        }
+
+        result = await managed_llm_call(
+            node_name=self.name,
+            config=self.dag.config,
+            llm_func=chatter_async,
+            item_index=None,
+            multipart_prompt=prompt,
+            context=context,
+            model=self.get_model(),
+            credentials=self.dag.config.llm_credentials,
+            extra_kwargs=extra_kwargs,
         )
 
-        return {"explanation": explanation, "is_contained": is_contained}
+        # If managed_llm_call returned None (error was skipped), return error indicator
+        if result is None:
+            return {
+                "explanation": "LLM Error occurred (skipped)",
+                "is_fair": None,
+                "chatter_result": None
+            }
+
+        # Accumulate cost from LLM call
+        self._accumulate_costs(result)
+
+        # Extract the parsed results
+        explanation = _extract_llm_field(result, "explanation", "")
+        is_fair = _extract_llm_field(result, "is_fair", None)
+
+        return {
+            "explanation": explanation,
+            "is_fair": is_fair,
+            "chatter_result": result
+        }
+
+    def extract_context_window(
+        self,
+        quote_text: str,
+        source_doc_content: str,
+        global_start: int,
+        global_end: int
+    ) -> str:
+        """Extract context window around a quote from the source document.
+
+        Args:
+            quote_text: The quote text
+            source_doc_content: Full source document content
+            global_start: Start position of quote in concatenated text
+            global_end: End position of quote in concatenated text
+
+        Returns:
+            Context window string (or full document if shorter than window size)
+        """
+        # If document is shorter than window, return full document
+        if len(source_doc_content) <= self.context_window_size:
+            return source_doc_content
+
+        # Calculate center of quote
+        quote_center = (global_start + global_end) // 2
+
+        # Calculate window bounds
+        half_window = self.context_window_size // 2
+        window_start = max(0, quote_center - half_window)
+        window_end = min(len(source_doc_content), quote_center + half_window)
+
+        # Adjust if we hit document boundaries
+        if window_start == 0:
+            window_end = min(len(source_doc_content), self.context_window_size)
+        elif window_end == len(source_doc_content):
+            window_start = max(0, len(source_doc_content) - self.context_window_size)
+
+        return source_doc_content[window_start:window_end]
 
     async def run(self) -> List[Any]:
         await super().run()
 
-        alldocs = "\n\n".join(doc.content for doc in self.dag.config.documents)
+        # Get search corpus (documents or custom node output)
+        search_corpus = self.get_search_corpus()
 
         # Create document boundaries for tracking source documents
         doc_boundaries, doc_content_map = create_document_boundaries(
             self.dag.config.documents
         )
 
-        # Get input - must produce CodeList(s)
-        if not self.inputs or len(self.inputs) != 1:
-            raise ValueError("VerifyQuotes requires exactly one input node")
+        # Backward compatibility: support both old inputs[0] and new quotes_from
+        source_node = self.quotes_from or (self.inputs[0] if self.inputs else None)
+        if not source_node:
+            raise ValueError("VerifyQuotes requires quotes_from parameter or inputs[0]")
 
-        input_data = self.context[self.inputs[0]]
+        input_data = self.context.get(source_node)
         if not input_data:
-            raise ValueError(f"No output from input node '{self.inputs[0]}'")
+            raise ValueError(f"No output from node '{source_node}'")
 
-        # Handle both single ChatterResult and list of ChatterResults
-        from soak.models.base import CodeList
+        # Extract quotes with context (handles Code and Themes)
+        quotes_with_context = self.extract_quotes_and_context(input_data)
 
-        if isinstance(input_data, list):
-            # Map node returns list of results - collect all CodeLists
-            all_codelists = []
-            for result in input_data:
-                if hasattr(result, "outputs"):
-                    codelists = [
-                        v for v in result.outputs.values() if isinstance(v, CodeList)
-                    ]
-                    all_codelists.extend(codelists)
+        logger.info(f"Verifying {len(quotes_with_context)} quotes (type: {self.verification_type})")
+        logger.info(f"Fairness checking: {'enabled' if self.check_fairness else 'disabled'}")
 
-            if not all_codelists:
-                raise ValueError(
-                    f"Input node '{self.inputs[0]}' must output CodeList(s)"
-                )
+        # Extract Quote objects for verification
+        quotes_to_verify = [item["quote"] for item in quotes_with_context]
 
-            # Merge all codelists into one
-            codelist = CodeList(codes=[])
-            for cl in all_codelists:
-                codelist.codes.extend(cl.codes)
-        else:
-            # Single ChatterResult
-            codelists = [
-                v for v in input_data.outputs.values() if isinstance(v, CodeList)
-            ]
+        # Stage 1: Verify quote existence using BM25 + embeddings
+        logger.info(f"Running BM25 + embedding verification on {len(quotes_to_verify)} quotes")
 
-            if len(codelists) > 1:
-                raise ValueError(
-                    f"Input node '{self.inputs[0]}' has multiple CodeList outputs"
-                )
-            if not codelists:
-                raise ValueError(
-                    f"Input node '{self.inputs[0]}' must output a CodeList"
-                )
+        quote_texts = [q.text for q in quotes_to_verify]
+        windows = make_windows(
+            search_corpus,
+            window_size=self.window_size,
+            overlap=self.overlap,
+            extracted_sentences=quote_texts,
+        )
 
-            codelist = codelists[0]
+        matches = verify_quotes_bm25_first(
+            quotes_to_verify,
+            windows,
+            search_corpus,
+            doc_boundaries,
+            doc_content_map,
+            get_embedding,
+            bm25_k1=self.bm25_k1,
+            bm25_b=self.bm25_b,
+            ellipsis_max_gap=self.ellipsis_max_gap,
+            trim_spans=self.trim_spans,
+            trim_method=self.trim_method,
+            min_fuzzy_ratio=self.min_fuzzy_ratio,
+            expand_window_neighbors=self.expand_window_neighbors,
+        )
 
-        # TODO: OPTIMIZE - Currently making windows once per source with quotes.
-        # Could be more efficient: make windows ONCE per document upfront, store in
-        # dict {source_id: windows}, then reuse for all quotes from that source.
-        # Would also allow cleaner fallback by concatenating all pre-made windows.
-
-        # Extract Quote objects (keep source)
-        quotes_to_verify = []
-        for code in codelist.codes:
-            quotes_to_verify.extend(code.all_quotes)
-
-        # Build doc lookup using TrackedItem.id and concatenated docs (for fallback)
-        doc_by_source = {doc.id: doc.content for doc in self.dag.config.documents}
-
-        # Group quotes by source (with fallback bucket)
-        from collections import defaultdict
-
-        quotes_by_source = defaultdict(list)
-        fallback_quotes = []  # Quotes without source or source not found
-
-        for quote in quotes_to_verify:
-            if quote.source and quote.source in doc_by_source:
-                quotes_by_source[quote.source].append(quote)
-            else:
-                # Track quotes without proper source
-                fallback_quotes.append(quote)
-
-                if not quote.source:
-                    logger.warning(f"Quote missing source: '{quote.text[:60]}...'")
-                elif quote.source not in doc_by_source:
-                    logger.warning(
-                        f"Quote source '{quote.source}' not found in documents: '{quote.text[:60]}...'"
-                    )
-
-        # Log summary of fallback quotes
-        if fallback_quotes:
-            logger.warning(
-                f"{len(fallback_quotes)} quotes without valid source will be verified across all documents. "
-                f"This may indicate post_process() didn't run or source tracking is broken."
-            )
-
-        # Verify per source
-        all_matches = []
-        all_windows = []  # For original_sentences
-
-        for source_id, quotes in quotes_by_source.items():
-            source_content = doc_by_source[source_id]
-
-            # make_windows expects strings, so extract text
-            quote_texts = [q.text for q in quotes]
-
-            windows = make_windows(
-                source_content,
-                window_size=self.window_size,
-                overlap=self.overlap,
-                extracted_sentences=quote_texts,
-            )
-
-            matches = verify_quotes_bm25_first(
-                quotes,  # Pass Quote objects
-                windows,
-                source_content,
-                doc_boundaries,
-                doc_content_map,
-                get_embedding,
-                bm25_k1=self.bm25_k1,
-                bm25_b=self.bm25_b,
-                ellipsis_max_gap=self.ellipsis_max_gap,
-                trim_spans=self.trim_spans,
-                trim_method=self.trim_method,
-                min_fuzzy_ratio=self.min_fuzzy_ratio,
-                expand_window_neighbors=self.expand_window_neighbors,
-            )
-
-            all_matches.extend(matches)
-            all_windows.extend(windows)
-
-        # Fallback: verify quotes without source across all docs
-        if fallback_quotes:
-
-            logger.info(
-                f"Verifying {len(fallback_quotes)} quotes without source across all documents"
-            )
-
-            # make_windows expects strings, so extract text
-            fallback_texts = [q.text for q in fallback_quotes]
-
-            windows = make_windows(
-                alldocs,
-                window_size=self.window_size,
-                overlap=self.overlap,
-                extracted_sentences=fallback_texts,
-            )
-
-            matches = verify_quotes_bm25_first(
-                fallback_quotes,  # Pass Quote objects
-                windows,
-                alldocs,
-                doc_boundaries,
-                doc_content_map,
-                get_embedding,
-                bm25_k1=self.bm25_k1,
-                bm25_b=self.bm25_b,
-                ellipsis_max_gap=self.ellipsis_max_gap,
-                trim_spans=self.trim_spans,
-                trim_method=self.trim_method,
-                min_fuzzy_ratio=self.min_fuzzy_ratio,
-                expand_window_neighbors=self.expand_window_neighbors,
-            )
-
-            all_matches.extend(matches)
-            all_windows.extend(windows)
-
-        # Check if any quotes verified
-        if not all_matches:
-            logger.error("No quotes found to verify")
-            import pdb
-
-            pdb.set_trace()
-            raise ValueError(
-                f"No quotes found to verify. Check that the '{self.inputs[0]}' node produces Code objects with quotes."
-            )
+        if not matches:
+            raise ValueError("No quotes found during existence verification")
 
         # Store windows and extracted sentences for compatibility
-        self.original_sentences = [w[0] for w in all_windows]
-        self.extracted_sentences = [q.text for q in quotes_to_verify]
+        self.original_sentences = [w[0] for w in windows]
+        self.extracted_sentences = quote_texts
 
-        # Use all_matches instead of matches for downstream processing
-        matches = all_matches
+        # Create lookup from quote hash to match results
+        quote_hash_to_match = {r["quote_hash"]: r for r in matches}
+
+        # Initialize storage for LLM ChatterResults (for export organization)
+        self._llm_results_by_type = {
+            "existence": {},  # quote_hash -> ChatterResult
+            "fairness": {}    # quote_hash -> ChatterResult  (for themes only)
+        }
 
         # --- Convert to dataframe and compute stats ---
         df = pd.DataFrame(matches)
 
-        # --- LLM-based verification for poor matches ---
-        # Identify poor matches based on multiple criteria
-        # TODO formalise why I picked this heuristic
+        # Stage 1.5: LLM-based existence verification for poor matches
+        # ratio < 2 means second match is >50% as good (ambiguous)
         poor_match_mask = ((df["bm25_score"] < 30) & (df["bm25_ratio"] < 2)) | (
             (df["bm25_score"] < 20) & (df["cosine_similarity"] < 0.7)
         )
         poor_matches = df[poor_match_mask]
 
         if len(poor_matches) > 0:
-            logger.info(f"Running LLM verification on {len(poor_matches)} poor matches")
+            logger.info(f"Running LLM existence verification on {len(poor_matches)} poor matches")
 
             # Initialize columns for all rows
             df["llm_explanation"] = None
             df["llm_is_contained"] = None
 
             # Run LLM judge on poor matches in parallel
-            async with anyio.create_task_group() as tg:
+            pbar = tqdm(
+                total=len(poor_matches),
+                desc="LLM quote existence checks",
+                file=sys.stderr,
+                unit="quote"
+            )
 
-                async def check_match(idx, quote, span_text):
-                    async with semaphore:
-                        result = await self.llm_as_judge(quote, span_text)
-                        df.at[idx, "llm_explanation"] = result["explanation"]
-                        df.at[idx, "llm_is_contained"] = result["is_contained"]
+            async with anyio.create_task_group() as tg:
+                async def check_match(idx, quote_hash, quote, span_text):
+                    try:
+                        async with semaphore:
+                            result = await self.llm_as_judge(quote, span_text)
+                            df.at[idx, "llm_explanation"] = result["explanation"]
+                            df.at[idx, "llm_is_contained"] = result["is_contained"]
+                            # Store ChatterResult for export and cache statistics
+                            if result["chatter_result"]:
+                                self._llm_results_by_type["existence"][quote_hash] = result["chatter_result"]
+                                self._llm_results.append(result["chatter_result"])
+                    finally:
+                        pbar.update(1)
 
                 for idx, row in poor_matches.iterrows():
                     tg.start_soon(
-                        check_match, idx, row["quote"], row["source_doc_content"]
+                        check_match, idx, row["quote_hash"], row["quote"], row["source_doc_content"]
                     )
+
+            pbar.close()
+
+        # Stage 2: Fairness verification for themes (optional)
+        if self.check_fairness and self.verification_type == "theme":
+            logger.info(f"Running fairness verification on {len(quotes_with_context)} theme-quote usages")
+
+            # Initialize fairness columns
+            df["theme"] = None
+            df["theme_description"] = None
+            df["code_name"] = None
+            df["code_description"] = None
+            df["llm_fairness_explanation"] = None
+            df["llm_is_fair"] = None
+
+            logger.debug(f"Initialized fairness columns. DataFrame has {len(df.columns)} columns: {list(df.columns)}")
+
+            # Run fairness checks in parallel
+            pbar_fairness = tqdm(
+                total=len(df),
+                desc="LLM quote 'fairness' checks",
+                file=sys.stderr,
+                unit="quote"
+            )
+
+            async with anyio.create_task_group() as tg:
+                async def check_fairness(idx, item, match_result):
+                    try:
+                        async with semaphore:
+                            # Use full source document for consistency with is_contained check
+                            source_doc_content = match_result.get("source_doc_content", "")
+
+                            # If no source document found, log warning and skip fairness check
+                            if not source_doc_content:
+                                logger.warning(
+                                    f"Cannot verify fairness for quote '{item['quote'].text[:60]}...' - "
+                                    f"source document not found. Skipping fairness check."
+                                )
+                                return  # Skip this quote's fairness check
+
+                            # Run fairness LLM check with full document
+                            fairness_result = await self.check_quote_fairness(
+                                theme_name=item["theme"].name,
+                                theme_description=item["theme"].description,
+                                code_name=item["code"].name,
+                                code_description=item["code"].description,
+                                quote=item["quote"].text,
+                                original_text=source_doc_content,
+                            )
+
+                            # Update dataframe
+                            df.at[idx, "theme"] = item["theme"].name
+                            df.at[idx, "theme_description"] = item["theme"].description
+                            df.at[idx, "code_name"] = item["code"].name
+                            df.at[idx, "code_description"] = item["code"].description
+                            df.at[idx, "llm_fairness_explanation"] = fairness_result["explanation"]
+                            df.at[idx, "llm_is_fair"] = fairness_result["is_fair"]
+
+                            # Store ChatterResult for export and cache statistics
+                            if fairness_result["chatter_result"]:
+                                quote_hash = item["quote"].hash()
+                                self._llm_results_by_type["fairness"][quote_hash] = fairness_result["chatter_result"]
+                                self._llm_results.append(fairness_result["chatter_result"])
+                    finally:
+                        pbar_fairness.update(1)
+
+                # Match quotes_with_context to df rows by quote hash
+                for idx, row in df.iterrows():
+                    quote_hash = row["quote_hash"]
+                    # Find matching context item
+                    context_item = None
+                    for item in quotes_with_context:
+                        if item["quote"].hash() == quote_hash:
+                            context_item = item
+                            break
+
+                    if context_item:
+                        match_result = quote_hash_to_match[quote_hash]
+                        tg.start_soon(check_fairness, idx, context_item, match_result)
+
+            pbar_fairness.close()
+        else:
+            logger.info(f"Skipping fairness verification (check_fairness={self.check_fairness}, verification_type={self.verification_type})")
 
         self.sentence_matches = df.to_dict(orient="records")
 
@@ -1058,6 +1057,16 @@ class VerifyQuotes(CompletionDAGNode):
                     ),
                 }
             )
+
+        # Add fairness stats if applicable
+        if "llm_is_fair" in df.columns and df["llm_is_fair"].notna().any():
+            valid_fair = df["llm_is_fair"].dropna()
+            n_fair = int(valid_fair.sum()) if len(valid_fair) > 0 else 0
+            self.stats.update({
+                "n_fair": n_fair,
+                "n_unfair": len(valid_fair) - n_fair,
+                "pct_fair": float(valid_fair.mean() * 100) if len(valid_fair) > 0 else None,
+            })
 
         return matches
 
@@ -1108,7 +1117,7 @@ class VerifyQuotes(CompletionDAGNode):
             }
         )
 
-        # Reorder columns: text columns first, then source_doc, then LLM judge, then metrics
+        # Reorder columns: text columns first, then theme info (if themes), then LLM verifications, then metrics
         priority_cols = [
             "extracted_quote",
             "found_in_original",
@@ -1116,26 +1125,37 @@ class VerifyQuotes(CompletionDAGNode):
             "full_original_text",
         ]
 
-        # Add LLM columns after full_original_text if they exist
+        # Add theme columns if present (for theme verification)
+        theme_cols = []
+        if "theme" in df.columns:
+            theme_cols.extend(["theme", "theme_description", "code_name", "code_description"])
+        priority_cols.extend(theme_cols)
+
+        # Add LLM columns
         llm_cols = []
         if "llm_is_contained" in df.columns:
-            llm_cols.append("llm_is_contained")
-        if "llm_explanation" in df.columns:
-            llm_cols.append("llm_explanation")
+            llm_cols.extend(["llm_is_contained", "llm_explanation"])
+        if "llm_is_fair" in df.columns:
+            llm_cols.extend(["llm_is_fair", "llm_fairness_explanation"])
 
         priority_cols.extend(llm_cols)
+
+        # All other columns at the end
         other_cols = [col for col in df.columns if col not in priority_cols]
         df = df[priority_cols + other_cols]
 
-        # Sort by LLM verification (False first) then BM25 metrics, so most problematic quotes appear at top
+        # Sort by fairness (False first), then LLM existence verification (False first), then BM25 metrics
+        # This puts most problematic quotes at top
         sort_cols = []
         sort_ascending = []
 
-        if "llm_is_contained" in df.columns:
+        if "llm_is_fair" in df.columns and df["llm_is_fair"].notna().any():
+            sort_cols.append("llm_is_fair")
+            sort_ascending.append(True)  # False sorts before True
+
+        if "llm_is_contained" in df.columns and df["llm_is_contained"].notna().any():
             sort_cols.append("llm_is_contained")
-            sort_ascending.append(
-                True
-            )  # False sorts before True, putting failed verifications first
+            sort_ascending.append(True)  # False sorts before True
 
         sort_cols.extend(["bm25_score", "bm25_ratio", "cosine_similarity"])
         sort_ascending.extend([True, True, True])
@@ -1174,10 +1194,27 @@ class VerifyQuotes(CompletionDAGNode):
                     for cell in column:
                         cell.alignment = Alignment(wrap_text=True, vertical="top")
                         cell.font = default_font
-                elif header_value == "llm_is_contained":
-                    # Boolean column - narrow
+                elif header_value in ["llm_is_contained", "llm_is_fair"]:
+                    # Boolean columns - narrow
                     worksheet.column_dimensions[column_letter].width = 18
                     for cell in column:
+                        cell.font = default_font
+                elif header_value == "llm_fairness_explanation":
+                    # Fairness explanation - wide with wrapping
+                    worksheet.column_dimensions[column_letter].width = 60
+                    for cell in column:
+                        cell.alignment = Alignment(wrap_text=True, vertical="top")
+                        cell.font = default_font
+                elif header_value in ["theme", "code_name"]:
+                    # Theme/code names - medium width
+                    worksheet.column_dimensions[column_letter].width = 25
+                    for cell in column:
+                        cell.font = default_font
+                elif header_value in ["theme_description", "code_description"]:
+                    # Descriptions - wide with wrapping
+                    worksheet.column_dimensions[column_letter].width = 60
+                    for cell in column:
+                        cell.alignment = Alignment(wrap_text=True, vertical="top")
                         cell.font = default_font
                 elif header_value in [
                     "bm25_score",
@@ -1206,3 +1243,25 @@ class VerifyQuotes(CompletionDAGNode):
                     worksheet.column_dimensions[column_letter].width = min(
                         max_length + 2, 30
                     )
+
+        # Export LLM prompts and responses
+        if self._llm_results_by_type:
+            from ..utils import export_chatter_result
+
+            # Export existence check LLM calls
+            if self._llm_results_by_type.get("existence"):
+                existence_folder = folder / "llm_existence_checks"
+                existence_folder.mkdir(exist_ok=True)
+
+                for idx, (quote_hash, result) in enumerate(sorted(self._llm_results_by_type["existence"].items())):
+                    file_prefix = f"{idx:04d}_{quote_hash}"
+                    export_chatter_result(result, existence_folder, file_prefix)
+
+            # Export fairness check LLM calls (themes only)
+            if self._llm_results_by_type.get("fairness"):
+                fairness_folder = folder / "llm_fairness_checks"
+                fairness_folder.mkdir(exist_ok=True)
+
+                for idx, (quote_hash, result) in enumerate(sorted(self._llm_results_by_type["fairness"].items())):
+                    file_prefix = f"{idx:04d}_{quote_hash}"
+                    export_chatter_result(result, fairness_folder, file_prefix)

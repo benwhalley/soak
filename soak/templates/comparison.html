@@ -50,6 +50,43 @@
 
         <hr class="mt-5">
 
+        <div class="embedding-details">
+            <h2>Embedding Details</h2>
+            <p class="text-muted">The actual strings that were embedded for similarity comparison. Labels are used in plots; embedded strings are used for calculating similarity.</p>
+
+            {% for result in comparison.results %}
+            <div class="card mb-4">
+                <div class="card-header">
+                    <strong>{{ result.name }}</strong>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-sm table-striped">
+                            <thead>
+                                <tr>
+                                    <th style="width: 25%;">Theme Name</th>
+                                    <th style="width: 25%;">Label (in plots)</th>
+                                    <th style="width: 50%;">Embedded String (for similarity)</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for item in comparison.embedded_strings.get(result.name, []) %}
+                                <tr>
+                                    <td><code class="small">{{ item.theme_name }}</code></td>
+                                    <td><span class="small">{{ item.label }}</span></td>
+                                    <td><span class="small text-primary"><strong>{{ item.embedded_string }}</strong></span></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <hr class="mt-5">
+
         <div class="comparison-results">
             <h2>Theme Network</h2>
             <p class="text-muted">Visualization showing similarity relationships between themes across analyses (threshold: {{ comparison.config.threshold }})</p>

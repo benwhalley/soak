@@ -1,13 +1,13 @@
 # Customizing Your Analysis
 
-This tutorial shows how to adapt soak pipelines your research needs by modifying prompts and pipeline structure. to
+This tutorial shows how to adapt soak pipelines to your research needs by modifying prompts and pipeline structure.
 
 ## Quick Customization: Context Variables
 
 The fastest way to customize is using context variables with `-c`:
 
 ```bash
-uv run soak zs \ data/*.txt
+uv run soak zs data/*.txt \
   --output results \
   -c research_question="What factors influence treatment adherence?" \
   -c persona="Health psychologist specializing in chronic illness"
@@ -20,7 +20,7 @@ Context variables inject into templates via `{{variable_name}}`.
 Check pipeline defaults:
 
 ```bash
-uv run soak show zs | grep -A 5 "default_context" pipeline
+uv run soak show pipeline zs | grep -A 5 "default_context"
 ```
 
 Common variables:
@@ -35,7 +35,7 @@ For more control, copy and modify pipeline files.
 ### Step 1: Get the Pipeline
 
 ```bash
-uv run soak show zs > my_analysis.soak pipeline
+uv run soak show pipeline zs > my_analysis.soak
 ```
 
 ### Step 2: Edit the YAML
@@ -208,7 +208,7 @@ When coding:
 
 ## Working with Return Types
 
-soak uses syntax for structured outputs: `[[return_type:field_name]]` struckdown
+soak uses struckdown syntax for structured outputs: `[[return_type:field_name]]`
 
 ### Available Return Types
 
@@ -345,8 +345,8 @@ uv run soak my_analysis.soak data/test_interview.txt -f json | jq '.codes'
 ### Check Intermediate Outputs
 
 ```bash
-# Dump execution to inspect each stage
-uv run soak my_analysis.soak data/test.txt -o test --dump
+# Run pipeline to inspect each stage (dump created automatically)
+uv run soak my_analysis.soak data/test.txt -o test
 
 # Review specific node output
 cat test_dump/02_Map_chunk_codes_and_themes/0000_*_response.json | jq

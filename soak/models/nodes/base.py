@@ -3,6 +3,7 @@
 import json
 import logging
 import math
+import sys
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
@@ -13,6 +14,7 @@ import numpy as np
 import pandas as pd
 import tiktoken
 from box import Box
+from tqdm import tqdm
 from jinja2 import Environment, TemplateSyntaxError
 from pydantic import BaseModel, Field, PrivateAttr
 from struckdown import LLM, ChatterResult, StruckdownLLMError, chatter_async
@@ -34,7 +36,7 @@ class DAGNode(BaseModel):
 
     name: str
     inputs: Optional[List[str]] = []
-    template_text: Optional[str] = None
+    template: Optional[str] = None
     output: Optional[OutputUnion] = Field(default=None)
 
     def get_model(self):
@@ -46,7 +48,7 @@ class DAGNode(BaseModel):
 
     def validate_template(self):
         try:
-            Environment().parse(self.template_text)
+            Environment().parse(self.template)
             return True
         except TemplateSyntaxError as e:
             raise e
@@ -78,12 +80,13 @@ class DAGNode(BaseModel):
 
         return ctx
 
-    @property
-    def template(self) -> str:
-        return self.template_text
-
     def get_input_items(self) -> Optional[List[Any]]:
-        """Get the input items that were processed by this node."""
+        """Get the input items that were processed by this node.
+
+        Returns a flat list, flattening any BatchList structures.
+        """
+        from .batch import BatchList
+
         if not self.inputs or not self.dag:
             return None
 
@@ -93,7 +96,13 @@ class DAGNode(BaseModel):
             return self.dag.config.documents
         elif input_name in self.dag.nodes_dict:
             input_node = self.dag.nodes_dict[input_name]
-            return input_node.output if input_node.output else None
+            output = input_node.output if input_node.output else None
+
+            # Flatten BatchList if needed
+            if isinstance(output, BatchList):
+                return output.flatten_all()
+
+            return output
 
         return None
 
@@ -106,8 +115,8 @@ class DAGNode(BaseModel):
         }
 
         # Add template text if available
-        if hasattr(self, "template_text") and self.template_text:
-            metadata["template_text"] = self.template_text
+        if hasattr(self, "template") and self.template:
+            metadata["template"] = self.template
 
         # Add model info if available
         if hasattr(self, "model_name") and self.model_name:
@@ -193,6 +202,7 @@ class CompletionDAGNode(DAGNode):
     _total_cost: float = PrivateAttr(default=0.0)
     _prompt_tokens: int = PrivateAttr(default=0)
     _completion_tokens: int = PrivateAttr(default=0)
+    _llm_results: List[ChatterResult] = PrivateAttr(default_factory=list)
 
     def _accumulate_costs(self, result: ChatterResult) -> None:
         """Extract and accumulate costs from a ChatterResult"""
@@ -233,378 +243,135 @@ class CompletionDAGNode(DAGNode):
             return ["input"]
 
 
-class Split(DAGNode):
-    type: Literal["Split"] = "Split"
-
-    name: str = "chunks"
-    template_text: str = "{{input}}"
-
-    chunk_size: int = 20000
-    min_split: int = 500
-    overlap: int = 0
-    split_unit: Literal["chars", "tokens", "words", "sentences", "paragraphs"] = (
-        "tokens"
-    )
-    encoding_name: str = "cl100k_base"
-
-    @property
-    def template(self):
-        return None
-
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        if len(self.inputs) > 1:
-            raise ValueError("Split node can only have one input")
-
-        if self.chunk_size < self.min_split:
-            logger.warning(
-                f"Chunk size must be larger than than min_split. Setting min_split to chunk_size // 2 = {self.chunk_size // 2}"
-            )
-            self.min_split = self.chunk_size // 2
-
-    async def run(self) -> List[Union[str, "TrackedItem"]]:
-        import numpy as np
-
-        await super().run()
-        input_docs = self.context[self.inputs[0]]
-
-        # Split each document and track provenance
-        all_chunks = []
-        for doc in input_docs:
-            if isinstance(doc, TrackedItem):
-                chunks = self.split_tracked_document(doc)
-            else:
-                # Backward compatibility: wrap plain strings
-                temp_tracked = TrackedItem(
-                    content=doc, id="unknown_doc", sources=["unknown_doc"], metadata={}
-                )
-                chunks = self.split_tracked_document(temp_tracked)
-            all_chunks.extend(chunks)
-
-        self.output = all_chunks
-
-        # Calculate stats on content
-        lens = [
-            len(
-                self.tokenize(
-                    chunk.content if isinstance(chunk, TrackedItem) else chunk,
-                    method=self.split_unit,
-                )
-            )
-            for chunk in self.output
-        ]
-        logger.debug(
-            f"CREATED {len(self.output)} chunks; average length ({self.split_unit}): {np.mean(lens).round(1)}, max: {max(lens)}, min: {min(lens)}."
-        )
-
-        return self.output
-
-    def split_tracked_document(self, doc: TrackedItem) -> List[TrackedItem]:
-        """Split a TrackedItem into multiple TrackedItems with hierarchical IDs.
-
-        The node name is included in the ID to track which Split node created the chunk.
-        Format: parent_id__nodename__index
-        Example: doc_A__sentences__0 (first chunk from 'sentences' Split node)
-        """
-        text_chunks = self.split_document(doc.content)
-
-        tracked_chunks = []
-        for idx, chunk in enumerate(text_chunks):
-            # Include node name in ID for tracking which split created this
-            new_id = f"{doc.id}__{self.name}__{idx}"
-
-            tracked_chunks.append(
-                TrackedItem(
-                    content=chunk,
-                    id=new_id,
-                    sources=[doc.id],  # This chunk comes from single parent
-                    metadata={
-                        **doc.metadata,
-                        "split_index": idx,
-                        "split_node": self.name,
-                        "parent_id": doc.id,
-                    },
-                )
-            )
-
-        return tracked_chunks
-
-    def split_document(self, doc: str) -> List[str]:
-        """Split a document string into chunks (backward compatibility)."""
-        if self.split_unit == "chars":
-            return self._split_by_length(doc, len_fn=len, overlap=self.overlap)
-
-        tokens = self.tokenize(doc, method=self.split_unit)
-        spans = self._compute_spans(
-            len(tokens), self.chunk_size, self.min_split, self.overlap
-        )
-        return [
-            self._format_chunk(tokens[start:end]) for start, end in spans if end > start
-        ]
-
-    def tokenize(self, doc: str, method: str) -> List[Union[int, str]]:
-        if method == "tokens":
-            return self.token_encoder.encode(doc)
-
-        elif method == "sentences":
-            from pysbd import Segmenter
-
-            seg = Segmenter(language="en", clean=True)
-            return seg.segment(doc)
-        elif method == "words":
-            import nltk
-
-            return nltk.word_tokenize(doc)
-        elif method == "paragraphs":
-            from nltk.tokenize import BlanklineTokenizer
-
-            return BlanklineTokenizer().tokenize(doc)
-        else:
-            raise ValueError(f"Unsupported tokenization method: {method}")
-
-    def _compute_spans(
-        self, n: int, chunk_size: int, min_split: int, overlap: int
-    ) -> List[Tuple[int, int]]:
-        if n <= chunk_size:
-            return [(0, n)]
-
-        n_chunks = max(1, math.ceil(n / chunk_size))
-        target = max(min_split, math.ceil(n / n_chunks))
-        spans = []
-        start = 0
-        for _ in range(n_chunks - 1):
-            end = min(n, start + target)
-            spans.append((start, end))
-            start = max(0, end - overlap)
-        spans.append((start, n))
-        return spans
-
-    def _format_chunk(self, chunk_tokens: List[Union[int, str]]) -> str:
-        if not chunk_tokens:
-            return ""
-        if self.split_unit == "tokens":
-            return self.token_encoder.decode(chunk_tokens).strip()
-        elif self.split_unit in {"words", "sentences"}:
-            return " ".join(chunk_tokens).strip()
-        elif self.split_unit == "paragraphs":
-            return "\n\n".join(chunk_tokens).strip()
-        else:
-            raise ValueError(
-                f"Unexpected split_unit in format_chunk: {self.split_unit}"
-            )
-
-    @property
-    def token_encoder(self):
-        return tiktoken.get_encoding(self.encoding_name)
-
-    def result(self) -> Dict[str, Any]:
-        """Returns dict with metadata and DataFrame of chunks with length statistics."""
-        # Get base metadata from parent
-        result = super().result()
-
-        if not self.output:
-            logger.warning(
-                f"Split node '{self.name}' has no output to create statistics from"
-            )
-            result["chunks_df"] = pd.DataFrame()
-            result["summary_stats"] = {}
-            result["metadata"]["split_unit"] = self.split_unit
-            result["metadata"]["chunk_size"] = self.chunk_size
-            result["metadata"]["num_chunks"] = 0
-            return result
-
-        # Debug: log what types we're seeing
-        type_counts = {}
-        for chunk in self.output:
-            type_name = type(chunk).__name__
-            type_counts[type_name] = type_counts.get(type_name, 0) + 1
-        logger.debug(f"Split node '{self.name}' output types: {type_counts}")
-
-        # Build DataFrame of chunks with comprehensive statistics
-        rows = []
-        for idx, chunk in enumerate(self.output):
-            # Handle both TrackedItem objects and deserialized dicts
-            if isinstance(chunk, dict):
-                # Deserialized from JSON
-                content = chunk.get("content", "")
-                metadata = chunk.get("metadata", {}) or {}
-                item_id = chunk.get("id", "")
-            elif isinstance(chunk, TrackedItem):
-                # Live object
-                content = chunk.content
-                metadata = chunk.metadata or {}
-                item_id = chunk.id
-            else:
-                # Try extract_content as fallback, but this likely won't work for wrong types
-                content = extract_content(chunk)
-                if not content:
-                    logger.debug(
-                        f"Skipping chunk {idx} - wrong type: {type(chunk).__name__}"
-                    )
-                    continue
-                metadata = getattr(chunk, "metadata", {}) or {}
-                item_id = getattr(chunk, "id", "")
-
-            if not content:
-                logger.debug(f"Skipping chunk {idx} - no content")
-                continue
-
-            # Extract filename from metadata or item_id
-            filename = metadata.get("filename", "")
-            if not filename:
-                # Try to extract filename from item_id (format: filename__node__index)
-                if item_id and "__" in item_id:
-                    filename = item_id.split("__")[0]
-                else:
-                    filename = item_id or "unknown"
-
-            # Get chunk index from metadata
-            chunk_index = metadata.get("split_index", idx)
-
-            # Compute various length statistics
-            length_chars = len(content)
-            length_words = len(content.split())
-
-            # Tokenize to get token count using tiktoken (OpenAI tokenizer)
-            try:
-                length_tokens = len(self.token_encoder.encode(content))
-            except Exception as e:
-                logger.debug(f"Failed to tokenize chunk {idx}: {e}")
-                length_tokens = 0
-
-            # Count sentences using nltk?
-            try:
-                from pysbd import Segmenter
-
-                seg = Segmenter(language="en", clean=True)
-                length_sentences = len(seg.segment(content))
-            except Exception as e:
-                logger.debug(f"Failed to count sentences in chunk {idx}: {e}")
-                length_sentences = 0
-
-            # Count paragraphs (split on blank lines)
-            length_paragraphs = len([p for p in content.split("\n\n") if p.strip()])
-
-            rows.append(
-                {
-                    "filename": filename,
-                    "chunk_index": chunk_index,
-                    "length_chars": length_chars,
-                    "length_words": length_words,
-                    "length_sentences": length_sentences,
-                    "length_paragraphs": length_paragraphs,
-                    "length_tokens": length_tokens,
-                }
-            )
-
-        df = pd.DataFrame(rows)
-
-        if df.empty:
-            logger.warning(
-                f"Split node '{self.name}' created empty DataFrame from {len(self.output)} chunks - check if output is the correct type"
-            )
-        else:
-            logger.debug(
-                f"Split node '{self.name}' created DataFrame with {len(df)} rows"
-            )
-
-        # Compute summary statistics
-        summary_stats = {}
-        if not df.empty:
-            for col in [
-                "length_chars",
-                "length_words",
-                "length_sentences",
-                "length_paragraphs",
-                "length_tokens",
-            ]:
-                if col in df.columns:
-                    summary_stats[col] = {
-                        "min": int(df[col].min()),
-                        "max": int(df[col].max()),
-                        "mean": float(df[col].mean()),
-                        "median": float(df[col].median()),
-                    }
-
-        # Add Split-specific data
-        result["chunks_df"] = df
-        result["summary_stats"] = summary_stats
-        result["metadata"]["split_unit"] = self.split_unit
-        result["metadata"]["chunk_size"] = self.chunk_size
-        result["metadata"]["num_chunks"] = len(self.output)
-
-        return result
-
-    def export(self, folder: Path, unique_id: str = ""):
-        """Export Split node details."""
-        super().export(folder, unique_id=unique_id)
-
-        if self.output:
-            import numpy as np
-
-            # Extract content from TrackedItems for statistics
-            lens = []
-            for doc in self.output:
-                # Handle TrackedItem, string, or dict (from JSON deserialization)
-                if isinstance(doc, TrackedItem):
-                    content = doc.content
-                elif isinstance(doc, str):
-                    content = doc
-                elif isinstance(doc, dict) and "content" in doc:
-                    content = doc["content"]
-                else:
-                    # Skip items that can't be processed (e.g., ChatterResult from wrong node type)
-                    logger.debug(
-                        f"Skipping non-text output in Split export: {type(doc)}"
-                    )
-                    continue
-
-                if content and isinstance(content, str):
-                    lens.append(len(self.tokenize(content, method=self.split_unit)))
-
-            if lens:
-                summary = f"""Split Summary
-==============
-Chunks created: {len(self.output)}
-Split unit: {self.split_unit}
-Chunk size: {self.chunk_size}
-Average length: {np.mean(lens).round(1)}
-Max length: {max(lens)}
-Min length: {min(lens)}
-"""
-            else:
-                summary = f"""Split Summary
-==============
-Chunks created: {len(self.output)}
-Split unit: {self.split_unit}
-Chunk size: {self.chunk_size}
-(Statistics unavailable - output not in expected format)
-"""
-            (folder / "split_summary.txt").write_text(summary)
-
-            # Export output chunks with source_id naming
-            outputs_folder = folder / "outputs"
-            outputs_folder.mkdir(exist_ok=True)
-
-            for idx, chunk in enumerate(self.output):
-                if isinstance(chunk, TrackedItem):
-                    # Use source_id in filename
-                    (outputs_folder / f"{idx:04d}_{chunk.safe_id}.txt").write_text(
-                        chunk.content
-                    )
-
-                    # Export metadata if present
-                    if chunk.metadata:
-                        (
-                            outputs_folder / f"{idx:04d}_{chunk.safe_id}_metadata.json"
-                        ).write_text(chunk.to_json())
-                else:
-                    # Backward compatibility: plain strings
-                    (outputs_folder / f"{idx:04d}_chunk.txt").write_text(str(chunk))
-
-
 class ItemsNode(DAGNode):
-    """Any note which applies to multiple items at once"""
+    """Base class for nodes that process multiple items.
+
+    Provides automatic BatchList handling:
+    - Operates at the innermost level of nested BatchLists
+    - Preserves grouping structure through processing
+    - Subclasses implement process_items() for their logic
+    """
+
+    def get_input_data(self) -> Union[List[Any], Any]:
+        """Get raw input data (may be flat list, BatchList, or single item)."""
+        if not self.inputs:
+            return self.dag.config.load_documents()
+
+        input_name = self.inputs[0]
+        if input_name == "documents":
+            return self.dag.config.load_documents()
+
+        return self.context[input_name]
+
+    async def run(self) -> Union[List[Any], Any]:
+        """Orchestrate processing with automatic BatchList handling."""
+        await super().run()
+        input_data = self.get_input_data()
+
+        # Create single progress bar for all items (including batched)
+        progress_bar = None
+        if self.dag.config.show_progress:
+            # Calculate total items (BatchList.__len__ uses flatten_all())
+            # Avoid counting string length - single string inputs are 1 item
+            from .batch import BatchList
+            if isinstance(input_data, (list, BatchList)):
+                total_items = len(input_data)
+            else:
+                total_items = 1
+            progress_bar = tqdm(
+                total=total_items,
+                desc=f"{self.type} '{self.name}'",
+                unit="item",
+                file=sys.stderr
+            )
+
+        try:
+            result = await self._run_recursive(input_data, progress_bar)
+            self.output = result
+            return result
+        finally:
+            if progress_bar:
+                progress_bar.close()
+
+    async def _run_recursive(
+        self,
+        data: Union[List[Any], Any],
+        progress_bar: Optional[Any] = None
+    ) -> Union[List[Any], Any]:
+        """Recursively process nested BatchLists with concurrent batch processing.
+
+        Args:
+            data: Input data (flat list, BatchList, or items)
+            progress_bar: Optional tqdm progress bar to update
+
+        Returns:
+            Processed data maintaining the same structure
+        """
+        # Import here to avoid circular import
+        from .batch import BatchList
+
+        if not isinstance(data, BatchList):
+            # Flat input: process directly
+            items = data if isinstance(data, list) else [data]
+            return await self.process_items(items, progress_bar)
+
+        # Check if nested
+        if data.is_nested():
+            # Nested BatchList: recurse on each inner BatchList concurrently
+            inner_results = [None] * len(data.batches)
+
+            async with anyio.create_task_group() as tg:
+                for idx, inner_batch in enumerate(data.batches):
+                    async def process_inner(index=idx, batch=inner_batch):
+                        inner_results[index] = await self._run_recursive(batch, progress_bar)
+
+                    tg.start_soon(process_inner)
+
+            return BatchList(
+                batches=inner_results,
+                group_field=data.group_field,
+                group_keys=data.group_keys,
+            )
+        else:
+            # Single-level BatchList: process each batch concurrently
+            batch_results = [None] * len(data.batches)
+
+            async with anyio.create_task_group() as tg:
+                for idx, batch in enumerate(data.batches):
+                    async def process_batch(index=idx, batch_items=batch):
+                        batch_results[index] = await self.process_items(batch_items, progress_bar)
+
+                    tg.start_soon(process_batch)
+
+            # Remove empty batches (Filter can create these)
+            non_empty_results = [r for r in batch_results if r]
+
+            return BatchList(
+                batches=non_empty_results,
+                group_field=data.group_field,
+                group_keys=data.group_keys,
+            )
+
+    async def process_items(
+        self,
+        items: List[Any],
+        progress_bar: Optional[Any] = None
+    ) -> List[Any]:
+        """Process a flat list of items.
+
+        Subclasses must override this method to implement their processing logic.
+        This method is called on each batch at the innermost level of nesting.
+
+        Args:
+            items: Flat list of items to process
+            progress_bar: Optional tqdm progress bar to update after processing items
+
+        Returns:
+            Processed list of items
+        """
+        raise NotImplementedError(
+            f"{self.__class__.__name__} must implement process_items()"
+        )
 
     async def get_items(self) -> List[Dict[str, Any]]:
         """Resolve all inputs, then zip together, combining multiple inputs.
@@ -738,3 +505,492 @@ async def template_map_task(template, context, **kwargs):
     Used when Map node has function="template" for pure templating.
     """
     return render_strict_template(template, context)
+
+
+class Split(ItemsNode):
+    type: Literal["Split"] = "Split"
+
+    name: str = "chunks"
+
+    chunk_size: int = 20000
+    min_split: int = 500
+    overlap: int = 0
+    split_unit: Literal["chars", "tokens", "words", "sentences", "paragraphs"] = (
+        "tokens"
+    )
+    encoding_name: str = "cl100k_base"
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        if len(self.inputs) > 1:
+            raise ValueError("Split node can only have one input")
+
+        if self.chunk_size < self.min_split:
+            logger.warning(
+                f"Chunk size must be larger than than min_split. Setting min_split to chunk_size // 2 = {self.chunk_size // 2}"
+            )
+            self.min_split = self.chunk_size // 2
+
+    async def process_items(
+        self, items: List[Any], progress_bar: Optional[Any] = None
+    ) -> List[TrackedItem]:
+        """Split each document in the batch into chunks.
+
+        Args:
+            items: List of documents (TrackedItem or strings) in this batch
+            progress_bar: Optional progress bar to update after processing each document
+
+        Returns:
+            Flat list of all chunks from all documents in the batch
+        """
+        import numpy as np
+
+        # Split each document and track provenance
+        all_chunks = []
+        for doc in items:
+            if isinstance(doc, TrackedItem):
+                chunks = self.split_tracked_document(doc)
+            else:
+                # Backward compatibility: wrap plain strings
+                temp_tracked = TrackedItem(
+                    content=doc, id="unknown_doc", sources=["unknown_doc"], metadata={}
+                )
+                chunks = self.split_tracked_document(temp_tracked)
+            all_chunks.extend(chunks)
+
+            # update progress bar after processing each document
+            if progress_bar is not None:
+                progress_bar.update(1)
+
+        # Calculate stats on content
+        if all_chunks:
+            lens = [
+                len(self.tokenize(chunk.content, method=self.split_unit))
+                for chunk in all_chunks
+            ]
+            logger.debug(
+                f"Split '{self.name}': Created {len(all_chunks)} chunks; "
+                f"average length ({self.split_unit}): {np.mean(lens).round(1)}, "
+                f"max: {max(lens)}, min: {min(lens)}"
+            )
+
+        return all_chunks
+
+    def split_tracked_document(self, doc: TrackedItem) -> List[TrackedItem]:
+        """Split a TrackedItem into multiple TrackedItems with hierarchical IDs.
+
+        The node name is included in the ID to track which Split node created the chunk.
+        Format: parent_id__nodename__index
+        Example: doc_A__sentences__0 (first chunk from 'sentences' Split node)
+        """
+        text_chunks = self.split_document(doc.content)
+
+        tracked_chunks = []
+        for idx, chunk in enumerate(text_chunks):
+            # Include node name in ID for tracking which split created this
+            new_id = f"{doc.id}__{self.name}__{idx}"
+
+            # Calculate overlap region if overlap > 0
+            content_excluding_overlap = None
+            if self.overlap > 0 and len(text_chunks) > 1:
+                content_excluding_overlap = self._calculate_overlap_region(
+                    chunk, idx, len(text_chunks)
+                )
+
+            tracked_chunks.append(
+                TrackedItem(
+                    content=chunk,
+                    id=new_id,
+                    sources=[doc.id],  # This chunk comes from single parent
+                    metadata={
+                        **doc.metadata,
+                        "split_index": idx,
+                        "split_node": self.name,
+                        "parent_id": doc.id,
+                    },
+                    content_excluding_overlap=content_excluding_overlap,
+                )
+            )
+
+        return tracked_chunks
+
+    def _calculate_overlap_region(
+        self, chunk: str, chunk_idx: int, total_chunks: int
+    ) -> Tuple[int, int]:
+        """Calculate the (start, end) indices for content excluding overlap.
+
+        Args:
+            chunk: The chunk text (including overlap)
+            chunk_idx: Index of this chunk (0-based)
+            total_chunks: Total number of chunks
+
+        Returns:
+            (start, end) tuple indicating core content region
+        """
+        chunk_len = len(chunk)
+
+        if chunk_idx == 0:
+            # First chunk: no pre-overlap, may have post-overlap
+            # For simplicity, we only track pre-overlap, so first chunk is fully core
+            return (0, chunk_len)
+
+        elif chunk_idx == total_chunks - 1:
+            # Last chunk: has pre-overlap, no post-overlap
+            # The pre-overlap is approximately self.overlap chars/tokens
+            # For char-level split, this is exact
+            # For token/word/sentence split, this is approximate
+            if self.split_unit == "chars":
+                overlap_chars = self.overlap
+            else:
+                # Approximate: assume average token length for estimation
+                # This is not perfect but works reasonably well
+                overlap_chars = self._estimate_overlap_chars(chunk, self.overlap)
+
+            return (min(overlap_chars, chunk_len), chunk_len)
+
+        else:
+            # Middle chunk: has both pre and post overlap
+            # We only exclude the pre-overlap region
+            if self.split_unit == "chars":
+                overlap_chars = self.overlap
+            else:
+                overlap_chars = self._estimate_overlap_chars(chunk, self.overlap)
+
+            return (min(overlap_chars, chunk_len), chunk_len)
+
+    def _estimate_overlap_chars(self, chunk: str, overlap_units: int) -> int:
+        """Estimate character length of overlap region for token/word/sentence splits.
+
+        Args:
+            chunk: The chunk text
+            overlap_units: Number of overlap units (tokens/words/sentences)
+
+        Returns:
+            Estimated character count for overlap region
+        """
+        if self.split_unit == "tokens":
+            # Tokenize the chunk and find where overlap_units tokens end
+            tokens = self.token_encoder.encode(chunk)
+            if len(tokens) <= overlap_units:
+                return len(chunk)
+            # Decode first overlap_units tokens to get character length
+            overlap_tokens = tokens[:overlap_units]
+            overlap_text = self.token_encoder.decode(overlap_tokens)
+            return len(overlap_text)
+
+        elif self.split_unit == "words":
+            # Split by words and find where overlap_units words end
+            import nltk
+            words = nltk.word_tokenize(chunk)
+            if len(words) <= overlap_units:
+                return len(chunk)
+            # Find character position after overlap_units words
+            # Reconstruct text from first overlap_units words
+            overlap_words = words[:overlap_units]
+            # Simple estimate: find position in original text
+            rejoined = " ".join(overlap_words)
+            return len(rejoined)
+
+        elif self.split_unit == "sentences":
+            # Split by sentences and find where overlap_units sentences end
+            from pysbd import Segmenter
+            seg = Segmenter(language="en", clean=True)
+            sentences = seg.segment(chunk)
+            if len(sentences) <= overlap_units:
+                return len(chunk)
+            # Sum length of first overlap_units sentences
+            overlap_text = " ".join(sentences[:overlap_units])
+            return len(overlap_text)
+
+        # Fallback: return 0 if can't estimate
+        return 0
+
+    def split_document(self, doc: str) -> List[str]:
+        """Split a document string into chunks (backward compatibility)."""
+        if self.split_unit == "chars":
+            return self._split_by_length(doc, len_fn=len, overlap=self.overlap)
+
+        tokens = self.tokenize(doc, method=self.split_unit)
+        spans = self._compute_spans(
+            len(tokens), self.chunk_size, self.min_split, self.overlap
+        )
+        return [
+            self._format_chunk(tokens[start:end]) for start, end in spans if end > start
+        ]
+
+    def tokenize(self, doc: str, method: str) -> List[Union[int, str]]:
+        if method == "tokens":
+            return self.token_encoder.encode(doc)
+
+        elif method == "sentences":
+            from pysbd import Segmenter
+
+            seg = Segmenter(language="en", clean=True)
+            return seg.segment(doc)
+        elif method == "words":
+            import nltk
+
+            return nltk.word_tokenize(doc)
+        elif method == "paragraphs":
+            from nltk.tokenize import BlanklineTokenizer
+
+            return BlanklineTokenizer().tokenize(doc)
+        else:
+            raise ValueError(f"Unsupported tokenization method: {method}")
+
+    def _compute_spans(
+        self, n: int, chunk_size: int, min_split: int, overlap: int
+    ) -> List[Tuple[int, int]]:
+        if n <= chunk_size:
+            return [(0, n)]
+
+        n_chunks = max(1, math.ceil(n / chunk_size))
+        target = max(min_split, math.ceil(n / n_chunks))
+        spans = []
+        start = 0
+        for _ in range(n_chunks - 1):
+            end = min(n, start + target)
+            spans.append((start, end))
+            start = max(0, end - overlap)
+        spans.append((start, n))
+        return spans
+
+    def _format_chunk(self, chunk_tokens: List[Union[int, str]]) -> str:
+        if not chunk_tokens:
+            return ""
+        if self.split_unit == "tokens":
+            return self.token_encoder.decode(chunk_tokens).strip()
+        elif self.split_unit in {"words", "sentences"}:
+            return " ".join(chunk_tokens).strip()
+        elif self.split_unit == "paragraphs":
+            return "\n\n".join(chunk_tokens).strip()
+        else:
+            raise ValueError(
+                f"Unexpected split_unit in format_chunk: {self.split_unit}"
+            )
+
+    @property
+    def token_encoder(self):
+        return tiktoken.get_encoding(self.encoding_name)
+
+    def result(self) -> Dict[str, Any]:
+        """Returns dict with metadata and DataFrame of chunks with length statistics."""
+        from .batch import BatchList
+
+        # Get base metadata from parent
+        result = super().result()
+
+        if not self.output:
+            logger.warning(
+                f"Split node '{self.name}' has no output to create statistics from"
+            )
+            result["chunks_df"] = pd.DataFrame()
+            result["summary_stats"] = {}
+            result["metadata"]["split_unit"] = self.split_unit
+            result["metadata"]["chunk_size"] = self.chunk_size
+            result["metadata"]["num_chunks"] = 0
+            return result
+
+        # Flatten BatchList if needed
+        if isinstance(self.output, BatchList):
+            all_items = self.output.flatten_all()
+        else:
+            all_items = self.output
+
+        # Debug: log what types we're seeing
+        type_counts = {}
+        for chunk in all_items:
+            type_name = type(chunk).__name__
+            type_counts[type_name] = type_counts.get(type_name, 0) + 1
+        logger.debug(f"Split node '{self.name}' output types: {type_counts}")
+
+        # Build DataFrame of chunks with comprehensive statistics
+        rows = []
+        for idx, chunk in enumerate(all_items):
+            # Handle both TrackedItem objects and deserialized dicts
+            if isinstance(chunk, dict):
+                # Deserialized from JSON
+                content = chunk.get("content", "")
+                metadata = chunk.get("metadata", {}) or {}
+                item_id = chunk.get("id", "")
+            elif isinstance(chunk, TrackedItem):
+                # Live object
+                content = chunk.content
+                metadata = chunk.metadata or {}
+                item_id = chunk.id
+            else:
+                # Try extract_content as fallback, but this likely won't work for wrong types
+                content = extract_content(chunk)
+                if not content:
+                    logger.debug(
+                        f"Skipping chunk {idx} - wrong type: {type(chunk).__name__}"
+                    )
+                    continue
+                metadata = getattr(chunk, "metadata", {}) or {}
+                item_id = getattr(chunk, "id", "")
+
+            if not content:
+                logger.debug(f"Skipping chunk {idx} - no content")
+                continue
+
+            # Extract filename from metadata or item_id
+            filename = metadata.get("filename", "")
+            if not filename:
+                # Try to extract filename from item_id (format: filename__node__index)
+                if item_id and "__" in item_id:
+                    filename = item_id.split("__")[0]
+                else:
+                    filename = item_id or "unknown"
+
+            # Get chunk index from metadata
+            chunk_index = metadata.get("split_index", idx)
+
+            # Compute various length statistics
+            length_chars = len(content)
+            length_words = len(content.split())
+
+            # Tokenize to get token count using tiktoken (OpenAI tokenizer)
+            try:
+                length_tokens = len(self.token_encoder.encode(content))
+            except Exception as e:
+                logger.debug(f"Failed to tokenize chunk {idx}: {e}")
+                length_tokens = 0
+
+            # Count sentences using nltk?
+            try:
+                from pysbd import Segmenter
+
+                seg = Segmenter(language="en", clean=True)
+                length_sentences = len(seg.segment(content))
+            except Exception as e:
+                logger.debug(f"Failed to count sentences in chunk {idx}: {e}")
+                length_sentences = 0
+
+            # Count paragraphs (split on blank lines)
+            length_paragraphs = len([p for p in content.split("\n\n") if p.strip()])
+
+            rows.append(
+                {
+                    "filename": filename,
+                    "chunk_index": chunk_index,
+                    "length_chars": length_chars,
+                    "length_words": length_words,
+                    "length_sentences": length_sentences,
+                    "length_paragraphs": length_paragraphs,
+                    "length_tokens": length_tokens,
+                }
+            )
+
+        df = pd.DataFrame(rows)
+
+        if df.empty:
+            logger.warning(
+                f"Split node '{self.name}' created empty DataFrame from {len(all_items)} chunks - check if output is the correct type"
+            )
+        else:
+            logger.debug(
+                f"Split node '{self.name}' created DataFrame with {len(df)} rows"
+            )
+
+        # Compute summary statistics
+        summary_stats = {}
+        if not df.empty:
+            for col in [
+                "length_chars",
+                "length_words",
+                "length_sentences",
+                "length_paragraphs",
+                "length_tokens",
+            ]:
+                if col in df.columns:
+                    summary_stats[col] = {
+                        "min": int(df[col].min()),
+                        "max": int(df[col].max()),
+                        "mean": float(df[col].mean()),
+                        "median": float(df[col].median()),
+                    }
+
+        # Add Split-specific data
+        result["chunks_df"] = df
+        result["summary_stats"] = summary_stats
+        result["metadata"]["split_unit"] = self.split_unit
+        result["metadata"]["chunk_size"] = self.chunk_size
+        result["metadata"]["num_chunks"] = len(all_items)
+
+        return result
+
+    def export(self, folder: Path, unique_id: str = ""):
+        """Export Split node details."""
+        super().export(folder, unique_id=unique_id)
+
+        if self.output:
+            import numpy as np
+            from .batch import BatchList
+
+            # Flatten BatchList if needed
+            if isinstance(self.output, BatchList):
+                all_items = self.output.flatten_all()
+            else:
+                all_items = self.output
+
+            # Extract content from TrackedItems for statistics
+            lens = []
+            for doc in all_items:
+                # Handle TrackedItem, string, or dict (from JSON deserialization)
+                if isinstance(doc, TrackedItem):
+                    content = doc.content
+                elif isinstance(doc, str):
+                    content = doc
+                elif isinstance(doc, dict) and "content" in doc:
+                    content = doc["content"]
+                else:
+                    # Skip items that can't be processed (e.g., ChatterResult from wrong node type)
+                    logger.debug(
+                        f"Skipping non-text output in Split export: {type(doc)}"
+                    )
+                    continue
+
+                if content and isinstance(content, str):
+                    lens.append(len(self.tokenize(content, method=self.split_unit)))
+
+            if lens:
+                summary = f"""Split Summary
+==============
+Chunks created: {len(all_items)}
+Split unit: {self.split_unit}
+Chunk size: {self.chunk_size}
+Average length: {np.mean(lens).round(1)}
+Max length: {max(lens)}
+Min length: {min(lens)}
+"""
+            else:
+                summary = f"""Split Summary
+==============
+Chunks created: {len(all_items)}
+Split unit: {self.split_unit}
+Chunk size: {self.chunk_size}
+(Statistics unavailable - output not in expected format)
+"""
+            (folder / "split_summary.txt").write_text(summary)
+
+            # Export output chunks with source_id naming
+            outputs_folder = folder / "outputs"
+            outputs_folder.mkdir(exist_ok=True)
+
+            for idx, chunk in enumerate(all_items):
+                if isinstance(chunk, TrackedItem):
+                    # Use source_id in filename
+                    (outputs_folder / f"{idx:04d}_{chunk.safe_id}.txt").write_text(
+                        chunk.content
+                    )
+
+                    # Export metadata if present
+                    if chunk.metadata:
+                        (
+                            outputs_folder / f"{idx:04d}_{chunk.safe_id}_metadata.json"
+                        ).write_text(chunk.to_json())
+                else:
+                    # Backward compatibility: plain strings
+                    (outputs_folder / f"{idx:04d}_chunk.txt").write_text(str(chunk))
+
+

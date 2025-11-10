@@ -239,15 +239,19 @@ a.code-badge:hover {
                 <span class="code-slug">{{ code.slug }}</span>
             </div>
             <div class="code-description">{{ code.description }}</div>
-            {% if code.quotes %}
+            {% if code.resolved_quotes %}
             <div class="quotes-section">
                 <div class="quotes-label">Supporting Quotes ({{ code.quotes|length }})</div>
-                {% for quote in code.quotes %}
+                {% for quote in code.all_quotes %}
                 <div class="quote">
                     {{ quote }}
                 </div>
                 {% endfor %}
             </div>
+            {% else %}
+                <div>
+                    There was a problem recalling the quotes selected for this Code.
+                </div>
             {% endif %}
         </div>
         {% endfor %}

@@ -68,7 +68,7 @@ Apply an LLM prompt to each item independently in parallel.
 |-----------|------|---------|-------------|
 | `name` | str | Required | Node name |
 | `inputs` | List[str] | Required | Input nodes |
-| `template_text` | str | Required | Jinja2 + struckdown template |
+| `template` | str | Required | Jinja2 + struckdown template |
 | `model_name` | str | From config | LLM model |
 | `max_tokens` | int | `4096` | Max response tokens |
 | `temperature` | float | `0.7` | LLM temperature |
@@ -124,7 +124,7 @@ Extract structured data from each item using multiple choice and typed fields.
 |-----------|------|---------|-------------|
 | `name` | str | Required | Node name |
 | `inputs` | List[str] | Required | Input nodes |
-| `template_text` | str | Required | Template with structured outputs |
+| `template` | str | Required | Template with structured outputs |
 | `model_name` | str | From config | Single model name |
 | `model_names` | List[str] | None | Multiple models for agreement analysis |
 | `agreement_fields` | List[str] | None | Fields to calculate agreement on |
@@ -211,7 +211,7 @@ Concatenate multiple items into single text.
 |-----------|------|---------|-------------|
 | `name` | str | Required | Node name |
 | `inputs` | List[str] | Required | Input nodes (max 1) |
-| `template_text` | str | `"{{input}}\n"` | Template for each item |
+| `template` | str | `"{{input}}\n"` | Template for each item |
 
 **Input:** List of items
 **Output:** Single concatenated string
@@ -251,7 +251,7 @@ Apply LLM prompt to single input item (often the output of Reduce).
 |-----------|------|---------|-------------|
 | `name` | str | Required | Node name |
 | `inputs` | List[str] | Required | Input nodes |
-| `template_text` | str | Required | Jinja2 + struckdown template |
+| `template` | str | Required | Jinja2 + struckdown template |
 | `model_name` | str | From config | LLM model |
 | `max_tokens` | int | `4096` | Max response tokens |
 | `temperature` | float | `0.7` | LLM temperature |
@@ -310,7 +310,11 @@ inputs:
 
 ### VerifyQuotes
 
-Verify that extracted quotes appear in source documents using BM25 lexical search and embedding-based semantic similarity.
+Unified quote verification node that can:
+- Extract quotes from **Codes** OR **Themes**
+- Search in **documents** OR any **custom node output**
+- Verify quote **existence** (BM25 + embeddings + LLM-as-judge)
+- Optionally verify **fairness** of quote usage (for themes)
 
 **Type:** `VerifyQuotes`
 
@@ -319,58 +323,100 @@ Verify that extracted quotes appear in source documents using BM25 lexical searc
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `name` | str | `"checkquotes"` | Node name |
-| `inputs` | List[str] | `["codes"]` | Input nodes |
-| `window_size` | int | `null` | Window size (auto: 1.1× max quote, cap 500) |
+| `quotes_from` | str | required* | Node containing quotes (Codes or Themes) |
+| `search_in` | str | `null` | Node to search in (null = documents) |
+| `check_fairness` | bool | `false` | Enable fairness verification (themes only) |
+| `context_window_size` | int | `1000` | Context window for fairness check |
+| `window_size` | int | `300` | Window size for BM25 search |
 | `overlap` | int | `null` | Window overlap (auto: 30% of window_size) |
 | `bm25_k1` | float | `1.5` | BM25 term frequency saturation |
-| `bm25_b` | float | `0.4` | BM25 length normalization (lower = less penalty) |
-| `ellipsis_max_gap` | int | `null` | Max windows between ellipsis head/tail |
-| `trim_spans` | bool | `true` | Enable span refinement to quote boundaries |
-| `trim_method` | str | `"fuzzy"` | Trimming method: `"fuzzy"`, `"sliding_bm25"`, `"hybrid"` |
+| `bm25_b` | float | `0.4` | BM25 length normalization |
+| `ellipsis_max_gap` | int | `3` | Max windows between ellipsis head/tail |
+| `trim_spans` | bool | `true` | Enable span refinement |
+| `trim_method` | str | `"fuzzy"` | Trimming: `"fuzzy"`, `"sliding_bm25"`, `"hybrid"` |
 | `min_fuzzy_ratio` | float | `0.6` | Minimum fuzzy match quality threshold |
 | `expand_window_neighbors` | int | `1` | Expand search to ±N windows if truncated |
+| `template` | str | `null` | Custom LLM existence verification template |
+| `fairness_template` | str | `null` | Custom fairness verification template |
 
-**Input:** Codes with quotes (expects node named "codes" in context)
-**Output:** Verification results with BM25 scores, cosine similarity, and source locations
+\* **Note:** For backward compatibility, `inputs[0]` is used if `quotes_from` is not specified.
+
+**Input:** Codes OR Themes (containing quotes)
+**Output:** Verification results with existence metrics and optional fairness verification
 
 **How it Works:**
 
-1. Creates overlapping windows from source documents (adaptive sizing)
-2. Builds BM25 index over windows
-3. For each quote:
-   - If no ellipsis: Finds best BM25 window
-   - If ellipsis: Matches head/tail separately, reconstructs span
-   - Trims span to align with quote boundaries (optional)
-   - Expands to neighbor windows if match appears truncated
-4. Computes embedding similarity between quote and matched span
-5. Tracks source document and character positions
+**Stage 1: Existence Verification (BM25 + Embeddings)**
+1. Extracts quotes from Codes or Themes
+2. Creates overlapping windows from search corpus
+3. Builds BM25 index over windows
+4. For each quote:
+   - Finds best BM25 window (with ellipsis support)
+   - Trims span to align with quote boundaries
+   - Expands to neighbor windows if truncated
+5. Computes embedding similarity
+6. Tracks source document and positions
 
-**Example:**
+**Stage 1.5: LLM Existence Check (for poor matches)**
+- Runs LLM-as-judge on quotes with low BM25/cosine scores
+- Asks: "Is this quote contained in the source text?"
+- Returns explanation + boolean verification
 
+**Stage 2: Fairness Verification (optional, themes only)**
+- If `check_fairness=True` and input is Themes:
+  - Extracts context window around each quote
+  - Presents LLM with: Theme + Code + Quote + Context
+  - Asks: "Is this quote used fairly to support this theme?"
+  - Returns explanation + boolean fairness judgment
+
+**Examples:**
+
+**Verify Code quotes (backward compatible):**
 ```yaml
 - name: checkquotes
   type: VerifyQuotes
-  inputs:
-    - codes
+  quotes_from: codes  # or use old 'inputs: [codes]'
   window_size: 450
-  overlap: 150
-  trim_method: "fuzzy"
-  expand_window_neighbors: 1
+```
+
+**Verify Theme quotes with fairness checking:**
+```yaml
+- name: verify_themes
+  type: VerifyQuotes
+  quotes_from: themes
+  check_fairness: true
+  context_window_size: 1000
+```
+
+**Search in custom corpus:**
+```yaml
+- name: verify_in_summaries
+  type: VerifyQuotes
+  quotes_from: codes
+  search_in: summaries  # Search in 'summaries' node output instead of documents
 ```
 
 **Export:**
 
 ```
 07_VerifyQuotes_checkquotes/
-├── quote_verification.xlsx      # Formatted Excel (sorted by confidence)
-├── stats.csv                    # Aggregate statistics
-├── info.txt                     # Algorithm description
-└── meta.txt
+├── quote_verification.xlsx           # Formatted Excel (sorted by fairness/confidence)
+├── stats.csv                          # Aggregate statistics
+├── info.txt                           # Algorithm description
+├── meta.txt
+├── llm_existence_checks/              # LLM prompts/responses for poor matches
+│   ├── 0000_{hash}_prompt.md
+│   ├── 0000_{hash}_response.txt
+│   └── 0000_{hash}_response.json
+└── llm_fairness_checks/               # LLM prompts/responses (themes only)
+    ├── 0000_{hash}_prompt.md
+    ├── 0000_{hash}_response.txt
+    └── 0000_{hash}_response.json
 ```
 
 **Output Metrics:**
 
-Each verified quote includes:
+**For all quotes:**
 - `bm25_score`: Lexical relevance score
 - `bm25_ratio`: Match uniqueness (top1/top2)
 - `cosine_similarity`: Embedding similarity (0-1)
@@ -378,17 +424,34 @@ Each verified quote includes:
 - `source_doc`: Source document name
 - `global_start`, `global_end`: Character positions
 - `span_text`: Matched text from source
-- `context_window`: ±300 chars around match
+- `llm_explanation`: LLM explanation (poor matches only)
+- `llm_is_contained`: Boolean existence verification (poor matches only)
+
+**Additionally for themes (if `check_fairness=True`):**
+- `theme`: Theme name
+- `theme_description`: Theme description
+- `code_name`: Code name
+- `code_description`: Code description
+- `llm_fairness_explanation`: LLM explanation for fairness
+- `llm_is_fair`: Boolean fairness judgment
 
 **Interpreting Results:**
 
-| BM25 Score | BM25 Ratio | Cosine Sim | Interpretation |
-|-----------|-----------|-----------|----------------|
-| High | High | ~1.0 | ✓ Perfect verbatim match |
-| High | High | >0.9 | ✓ Near-exact (minor edits) |
-| Low-Med | Low | >0.85 | ⚠ Paraphrase (verify manually) |
-| Medium | Low | >0.8 | ⚠ Possible truncation |
-| Low | Low | <0.7 | ✗ Likely hallucination |
+**Codes:**
+| BM25 Score | BM25 Ratio | Cosine Sim | LLM Contained | Interpretation |
+|-----------|-----------|-----------|---------------|----------------|
+| High | High | ~1.0 | N/A | ✓ Perfect verbatim match |
+| High | High | >0.9 | N/A | ✓ Near-exact (minor edits) |
+| Low | Low | >0.85 | True | ⚠ Poor match but LLM confirms |
+| Low | Low | <0.7 | False | ✗ Likely hallucination |
+
+**Themes:**
+| Existence | Fairness | Interpretation |
+|-----------|----------|----------------|
+| High BM25/Cosine | True | ✓ Quote exists and supports theme |
+| High BM25/Cosine | False | ⚠ Quote exists but taken out of context |
+| Low BM25/Cosine | True | ⚠ Poor match but fair usage |
+| Low BM25/Cosine | False | ✗ Hallucinated or misused |
 
 **See Also:**
 - [Quote Verification Algorithm](quote-verification.md) - Detailed algorithm specification

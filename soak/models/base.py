@@ -7,7 +7,7 @@ import logging
 import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Set, Union
+from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import anyio
 from decouple import config as env_config
@@ -26,13 +26,20 @@ QUOTE_HASH_LENGTH = int(os.getenv("QUOTE_HASH_LENGTH", "6"))
 SOAK_MAX_RUNTIME = 60 * 30  # 30 mins
 
 # Caching for embeddings
+# verbose=0 by default, but will show cache info at DEBUG level via our logging
 memory = Memory(Path(".embeddings"), verbose=0)
 
 
 @memory.cache
 def get_embedding(*args, **kwargs):
-    """Wrapper for struckdown get_embedding with cached embeddings."""
-    return get_embedding_(*args, **kwargs)
+    """Wrapper for struckdown get_embedding with cached embeddings.
+
+    Cache hits/misses are logged at DEBUG level.
+    """
+    logger.debug(f"get_embedding called with args={args[:1]}... kwargs keys={list(kwargs.keys())}")
+    result = get_embedding_(*args, **kwargs)
+    logger.debug(f"get_embedding completed")
+    return result
 
 
 # Concurrency settings
@@ -305,9 +312,22 @@ class TrackedItem:
     id: str  # THIS item's unique ID
     sources: List[str]  # IDs that contributed to this item
     metadata: Dict[str, Any] = field(default_factory=dict)
+    content_excluding_overlap: Optional[Tuple[int, int]] = None  # (start, end) indices for core content without overlap
 
     def __str__(self) -> str:
-        """Return content for template rendering."""
+        """Return content for template rendering (includes overlap for LLM context)."""
+        return str(self.content)
+
+    def get_core_content(self) -> str:
+        """Return content excluding overlap regions.
+
+        Returns content[start:end] if content_excluding_overlap is set,
+        otherwise returns full content. Use this when joining chunks
+        to avoid duplicating overlapped content.
+        """
+        if self.content_excluding_overlap is not None and isinstance(self.content, str):
+            start, end = self.content_excluding_overlap
+            return self.content[start:end]
         return str(self.content)
 
     def __repr__(self) -> str:
@@ -456,7 +476,7 @@ class TrackedItem:
 def order_export_columns(
     df: "pd.DataFrame",
     output_keys: Optional[List[str]] = None,
-    template_text: Optional[str] = None,
+    template: Optional[str] = None,
     ground_truth_columns: Optional[List[str]] = None,
 ) -> "pd.DataFrame":
     """Order DataFrame columns: identifiers → template-used → ground_truth → outputs → other metadata.
@@ -464,7 +484,7 @@ def order_export_columns(
     Args:
         df: DataFrame to reorder
         output_keys: List of output field names (classification results, etc.)
-        template_text: Optional template to detect which metadata columns were used
+        template: Optional template to detect which metadata columns were used
         ground_truth_columns: Optional list of ground truth column names to place before outputs
 
     Returns:
@@ -485,12 +505,12 @@ def order_export_columns(
 
     # Detect template-used columns
     template_used = set()
-    if template_text:
+    if template:
         try:
             from jinja2 import Environment, meta
 
             env = Environment()
-            ast = env.parse(template_text)
+            ast = env.parse(template)
             # Get all variables referenced in template
             all_vars = meta.find_undeclared_variables(ast)
             # Filter to actual column names that exist in df
@@ -576,6 +596,7 @@ class QualitativeAnalysisComparison(BaseModel):
     comparison_plots: Dict[str, Dict[str, Any]]  # eg. heatmaps.xxxyyy = List
     additional_plots: Dict[str, Any]
     config: dict
+    embedded_strings: Dict[str, List[Dict[str, str]]] = {}  # analysis_name -> list of theme embedding details
 
     def by_comparisons(self) -> Dict[str, Dict[str, Any]]:
         """

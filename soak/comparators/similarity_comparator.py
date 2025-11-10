@@ -9,21 +9,10 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any, Dict, List
 
-from joblib import Memory
-from struckdown import get_embedding as get_embedding_
-
 from soak.models import QualitativeAnalysis, QualitativeAnalysisComparison
+from soak.models.base import get_embedding, memory
 
 logger = logging.getLogger(__name__)
-
-memory = Memory(Path(".embeddings"), verbose=0)
-
-
-@memory.cache
-def get_embedding(*args, **kwargs):
-    logger.debug("Getting embedding...")
-    logger.debug(f"Args: {args}, kwargs: {kwargs}")
-    return get_embedding_(*args, **kwargs)
 
 
 class Base64ImageFile:
@@ -350,6 +339,7 @@ def create_pairwise_heatmap(
     use_threshold=True,
     label_template="{name}",
     embedding_template="{name}",
+    sort_by_average=False,
 ) -> str:
     """Create a heatmap visualization for a single pair of pipeline results.
 
@@ -360,6 +350,7 @@ def create_pairwise_heatmap(
         use_threshold: Whether to use threshold-based binary heatmap
         label_template: Python format string for axis labels. Available: {name}, {description}
         embedding_template: Python format string for embeddings. Available: {name}, {description}
+        sort_by_average: If True, sort rows and columns by average similarity (highest first)
     """
     import matplotlib
 
@@ -403,6 +394,22 @@ def create_pairwise_heatmap(
     )
 
     similarity_matrix = comparison["similarity_matrix"]
+
+    # Sort by average similarity if requested
+    if sort_by_average:
+        # Calculate average similarity for each row (A themes) and column (B themes)
+        row_averages = similarity_matrix.mean(axis=1)  # average across B themes
+        col_averages = similarity_matrix.mean(axis=0)  # average across A themes
+
+        # Get sorting indices (descending order -- highest similarity first)
+        row_order = np.argsort(row_averages)[::-1]
+        col_order = np.argsort(col_averages)[::-1]
+
+        # Reorder matrix and labels together
+        similarity_matrix = similarity_matrix[row_order, :][:, col_order]
+        themes_a_display = [themes_a_display[i] for i in row_order]
+        themes_b_display = [themes_b_display[i] for i in col_order]
+
     df_sim = pd.DataFrame(
         similarity_matrix, index=themes_a_display, columns=themes_b_display
     )
@@ -488,8 +495,26 @@ class SimilarityComparator:
         method = config.get("method", "umap")
         label_template = config.get("label_template", "{name}")
         embedding_template = config.get("embedding_template", "{name}")
+        sort_by_average = config.get("sort_by_average", False)
 
         result_combinations = list(itertools.combinations(pipeline_results, 2))
+
+        # Build embedded strings mapping for each result
+        embedded_strings_map = {}
+        for result in pipeline_results:
+            embedded_strings_map[result.name] = [
+                {
+                    "theme_name": theme.name,
+                    "theme_description": theme.description,
+                    "label": label_template.format(
+                        name=theme.name, description=theme.description
+                    ),
+                    "embedded_string": embedding_template.format(
+                        name=theme.name, description=theme.description
+                    ),
+                }
+                for theme in result.themes
+            ]
 
         # run synchronously
         similarity_results = [
@@ -507,6 +532,7 @@ class SimilarityComparator:
                 use_threshold=False,
                 label_template=label_template,
                 embedding_template=embedding_template,
+                sort_by_average=sort_by_average,
             )
             for a, b in result_combinations
         ]
@@ -518,6 +544,7 @@ class SimilarityComparator:
                 threshold=threshold,
                 label_template=label_template,
                 embedding_template=embedding_template,
+                sort_by_average=sort_by_average,
             )
             for a, b in result_combinations
         ]
@@ -558,6 +585,7 @@ class SimilarityComparator:
                 "network_plot": network_plot,
             },
             config=config,
+            embedded_strings=embedded_strings_map,
         )
 
 

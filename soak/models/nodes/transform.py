@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, Literal
+from typing import Any, Dict, List, Literal
 
 from pydantic import Field
 from struckdown import StruckdownLLMError, chatter_async
@@ -25,19 +25,28 @@ class Transform(ItemsNode, CompletionDAGNode):
     """Single-item transformation node using LLM."""
 
     type: Literal["Transform"] = "Transform"
-    template_text: str = Field(default="{{input}} <prompt>: [[output]]")
+    template: str = Field(default="{{input}} <prompt>: [[output]]")
 
-    @property
-    def template(self) -> str:
-        return self.template_text
+    async def process_items(self, items: List[Any], progress_bar: Any = None) -> List[Any]:
+        """Process exactly one item (Transform requires single-item batches).
 
-    async def run(self):
-        items = await self.get_items()
+        Args:
+            items: Must contain exactly 1 item
+            progress_bar: Optional progress bar to update after processing
 
-        if not isinstance(items, str):
-            assert len(items) == 1, "Transform nodes must have exactly one input item"
+        Returns:
+            List with single ChatterResult
+        """
+        assert len(items) == 1, (
+            f"Transform node '{self.name}' requires exactly one input item per batch, "
+            f"got {len(items)}. Use Batch with batch_size=1 or GroupBy before Transform."
+        )
 
-        rt = render_strict_template(self.template, {**self.context, **items[0]})
+        # Get items with proper context
+        items_with_context = await self.get_items()
+        assert len(items_with_context) == 1, "Context mismatch in Transform"
+
+        rt = render_strict_template(self.template, {**self.context, **items_with_context[0]})
 
         # Get LLM kwargs using helper method
         extra_kwargs = self.get_llm_kwargs()
@@ -51,7 +60,7 @@ class Transform(ItemsNode, CompletionDAGNode):
                     for node in self.dag.nodes
                     if node.output is not None
                 }
-                merged_context = {**self.context, **full_dag_context, **items[0]}
+                merged_context = {**self.context, **full_dag_context, **items_with_context[0]}
 
                 result = await managed_llm_call(
                     node_name=self.name,
@@ -64,54 +73,86 @@ class Transform(ItemsNode, CompletionDAGNode):
                     credentials=self.dag.config.llm_credentials,
                     extra_kwargs=extra_kwargs,
                 )
-                self.output = result
             except Exception as e:
                 # catch-all for any non-struckdown errors
                 logger.error(f"Unexpected error in node '{self.name}': {e}")
                 # default to skip + continue for unknown errors
-                self.output = None
+                result = None
 
-        # accumulate costs if we got a result
-        if self.output is not None:
-            self._accumulate_costs(self.output)
+        # accumulate costs and track for cache statistics
+        if result is not None:
+            self._accumulate_costs(result)
+            self._llm_results.append(result)
 
-        return self.output
+        # update progress bar after processing the item
+        if progress_bar is not None:
+            progress_bar.update(1)
+
+        return [result] if result else []
 
     def result(self) -> Dict[str, Any]:
         """Returns dict with metadata, prompt, response object, and raw ChatterResult."""
         # Get base metadata from parent
         result = super().result()
 
+        # Handle list output (Transform wraps ChatterResult in a list)
+        chatter = self.output[0] if isinstance(self.output, list) and len(self.output) > 0 else self.output
+
         # Add Transform-specific data
-        result["prompt"] = extract_prompt(self.output)
+        result["prompt"] = extract_prompt(chatter)
         result["response_obj"] = (
-            self.output.response if hasattr(self.output, "response") else None
+            chatter.response if hasattr(chatter, "response") else None
         )
         result["response_text"] = (
-            str(self.output.response) if hasattr(self.output, "response") else None
+            str(chatter.response) if hasattr(chatter, "response") else None
         )
-        result["chatter_result"] = self.output
+        result["chatter_result"] = chatter
 
         return result
 
     def export(self, folder: Path, unique_id: str = ""):
-        """Export Transform node details with single prompt/response."""
-        from ..utils import export_chatter_result
+        """Export Transform node details.
+
+        For unbatched: exports slots as individual text files in the main folder
+        For batched: creates batch_N subfolders with slots as text files
+        """
+        from .batch import BatchList
+        from ..utils import export_slots_as_text_files
 
         super().export(folder, unique_id=unique_id)
 
         # Write template
-        if self.template_text:
-            (folder / "prompt_template.sd.md").write_text(self.template_text)
+        if self.template:
+            (folder / "prompt_template.sd").write_text(self.template)
+        
+        if not self.output:
+            return
 
-        # Write prompt and response using utility function
-        # Note: for Transform, we use simple filenames without index prefix
-        if self.output:
-            export_chatter_result(self.output, folder, "")
-            # Rename files to Transform's preferred names (without prefix)
-            if (folder / "_prompt.md").exists():
-                (folder / "_prompt.md").rename(folder / "prompt.md")
-            if (folder / "_response.txt").exists():
-                (folder / "_response.txt").rename(folder / "response.txt")
-            if (folder / "_response.json").exists():
-                (folder / "_response.json").rename(folder / "response.json")
+        # Handle different output types
+        if isinstance(self.output, BatchList):
+            # Batched output: create batch_N subfolders
+            batches = self.output.flatten_one_level()
+            for batch_idx, batch in enumerate(batches):
+                batch_folder = folder / f"batch_{batch_idx}"
+                batch_folder.mkdir(parents=True, exist_ok=True)
+
+                # Each batch contains a single ChatterResult (may be wrapped in list)
+                result = batch[0] if isinstance(batch, list) and len(batch) > 0 else batch
+                export_slots_as_text_files(result, batch_folder)
+
+                # Also export full JSON for reference
+                (batch_folder / "response.json").write_text(safe_json_dump(result))
+
+        elif isinstance(self.output, list):
+            # Unbatched output: plain list with single ChatterResult
+            if len(self.output) > 0:
+                result = self.output[0]
+                export_slots_as_text_files(result, folder)
+                (folder / "response.json").write_text(safe_json_dump(result))
+            else:
+                logger.warning(f"Transform node '{self.name}' has empty output list")
+
+        else:
+            # Single ChatterResult (edge case)
+            export_slots_as_text_files(self.output, folder)
+            (folder / "response.json").write_text(safe_json_dump(self.output))

@@ -1,0 +1,33 @@
+<div class="node-result groupby-result">
+    <h4>GroupBy: {{ node.name }}</h4>
+
+    <table class="table table-sm">
+        <tr>
+            <th>Group By</th>
+            <td><code>{{ node.group_by }}</code></td>
+        </tr>
+        {% if result.metadata.num_groups %}
+        <tr>
+            <th>Groups Created</th>
+            <td>{{ result.metadata.num_groups }}</td>
+        </tr>
+        {% endif %}
+        {% if result.metadata.depth %}
+        <tr>
+            <th>Nesting Depth</th>
+            <td>{{ result.metadata.depth }}</td>
+        </tr>
+        {% endif %}
+    </table>
+
+    {% if result.metadata.group_keys %}
+    <details>
+        <summary>Group Keys ({{ result.metadata.group_keys|length }})</summary>
+        <ul>
+            {% for key in result.metadata.group_keys %}
+            <li><code>{{ key }}</code></li>
+            {% endfor %}
+        </ul>
+    </details>
+    {% endif %}
+</div>

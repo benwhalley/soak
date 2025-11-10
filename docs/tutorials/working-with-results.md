@@ -7,7 +7,7 @@ This tutorial shows how to analyze and interpret soak output data.
 After running a pipeline, you get two files:
 
 ```bash
-uv run soak run zs data/*.txt --output results
+uv run soak zs data/*.txt --output results
 
 # Creates:
 results.json    # Full pipeline data
@@ -219,13 +219,13 @@ Copy directly into your results section.
 
 ## Detailed Execution Dump
 
-For detailed inspection, use `--dump`:
+When you run a pipeline, a detailed execution dump is automatically created:
 
 ```bash
-uv run soak run zs data/*.txt --output results --dump
+uv run soak zs data/*.txt --output results
 ```
 
-Creates `results_dump/` folder:
+This creates both output files and a `results_dump/` folder:
 
 ```
 results_dump/
@@ -296,7 +296,7 @@ for file in os.listdir("results_dump/01_Split_chunks/outputs/"):
 For classifier pipelines, outputs include CSV:
 
 ```bash
-uv run soak run classifier data/*.txt --output results --dump
+uv run soak classifier data/*.txt --output results
 ```
 
 Check `results_dump/XX_Classifier_*/classifications.csv`:
@@ -365,9 +365,9 @@ Fix by:
 Run same pipeline multiple times with different parameters:
 
 ```bash
-uv run soak run zs data/*.txt -o run1
-uv run soak run zs data/*.txt -o run2 --model-name openai/gpt-4o
-uv run soak run zs data/*.txt -o run3 -c persona="Clinical psychologist"
+uv run soak zs data/*.txt -o run1
+uv run soak zs data/*.txt -o run2 --model-name openai/gpt-4o
+uv run soak zs data/*.txt -o run3 -c persona="Clinical psychologist"
 ```
 
 Compare:
@@ -446,12 +446,6 @@ cat results.json | jq '[.nodes[] | select(.name=="codes") | .result.codes[].quot
 
 ```bash
 cat results.json | jq -r '.nodes[] | select(.name=="narrative") | .result.report' > narrative.md
-```
-
-**Re-export with different template:**
-
-```bash
-uv run soak export results.json -t my_custom.html
 ```
 
 **Inspect specific node:**

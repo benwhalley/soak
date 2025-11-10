@@ -89,6 +89,30 @@ def export_chatter_result(result, folder: Path, file_prefix: str) -> None:
         logger.warning(f"Failed to export ChatterResult for {file_prefix}: {e}")
 
 
+def export_slots_as_text_files(result, folder: Path) -> None:
+    """Export each response slot as a separate text file.
+
+    For Transform nodes where we have one ChatterResult with multiple slots,
+    this creates one .txt file per slot instead of a combined response.txt.
+
+    Args:
+        result: ChatterResult object to export
+        folder: Directory to write files to
+    """
+    try:
+        if not hasattr(result, "results") or not result.results:
+            logger.warning("No output slots found in ChatterResult")
+            return
+
+        # export each slot as a separate text file
+        for slot_name, segment_result in result.results.items():
+            slot_file = folder / f"{slot_name}.txt"
+            slot_file.write_text(str(segment_result))
+
+    except Exception as e:
+        logger.warning(f"Failed to export slots as text files: {e}")
+
+
 def _export_structured_response_to_csv(
     response, folder: Path, file_prefix: str
 ) -> None:
@@ -386,14 +410,9 @@ def post_process_theme_code_refs(theme, context: Dict[str, Any]):
     for slug in theme.code_slugs:
         matched_code = fuzzy_match_code_slug(slug, input_codes)
         if matched_code:
-            # Store minimal Code metadata (not full object to avoid circular refs)
-            matched_codes.append(
-                {
-                    "slug": matched_code.slug,
-                    "name": matched_code.name,
-                    "description": matched_code.description,
-                }
-            )
+            # Store complete Code data including quotes and resolved_quotes
+            code_data = matched_code.model_dump()
+            matched_codes.append(code_data)
 
     theme.resolved_code_refs = matched_codes
 

@@ -45,7 +45,7 @@ But this is different - it's like my body just stopped working properly.
 Use the built-in `zs` (zero-shot) pipeline for thematic analysis:
 
 ```bash
-soak run zs data/interview.txt --output my_first_analysis
+soak zs data/interview.txt --output my_first_analysis
 ```
 
 This will:
@@ -131,6 +131,6 @@ A written report (sort of) ready for your results section:
 
 - **Customize the analysis**: See [Customizing Your Analysis](customizing-analysis.md)
 - **Understand the pipeline**: See [Thematic Analysis How-to](../how-to/thematic-analysis.md)
-- **Work with multiple files**: `soak run zs data/*.txt --output results`
+- **Work with multiple files**: `soak zs data/*.txt --output results`
 - **Try classification**: See [Build a Classifier](../how-to/build-classifier.md)
 

@@ -1,0 +1,47 @@
+
+# CONTEXT
+
+We are validating quotes are used correctly to support themes in a qualitative analysis.
+
+ORIGINAL TEXT (we quotes from this source document):
+<original text>
+{{original_text}}
+</original text>
+
+
+# THEME/CODE AND QUOTE TO CHECK
+
+<theme>
+THEME: {{theme_name}}
+{{theme_description}}
+</theme>
+
+<code>
+CODE: {{code_name}}
+{{code_description}}
+</code>
+
+
+Quote to check:
+
+<quote>
+{{quote}}
+</quote>
+
+
+# TASK NOW
+
+We must avoid taking quotes out of context to support a theme at all costs.
+Is the quote above used in the theme (above) in a way that is fair and reasonable?
+- Consider the original text
+- Consider the quote's meaning
+- Check that the _direction_ of the meaning is the same in the theme as the original text.
+
+
+First, does the original text contain the quote? [[pick:contains_quote|yes,no]]
+
+Briefly explain your thinking about whether the quote is fairly used within the theme:
+[[explanation]]
+
+Now pick true/false
+[[bool:is_fair]]

@@ -4,10 +4,10 @@ It's probably best to start from an existing pipeline.
 Export a copy to a local file like this:
 
 ```bash
-soak show zs > my_pipeline.soak pipeline
+soak show pipeline zs > my_pipeline.soak
 ```
 
-A pipeline consist of 2 pars:
+A pipeline consists of 2 parts:
 
 - a YAML header, which defines each node, its type, and other configuration
 - a series of markdown templates, one for each Node that uses an LLM
@@ -74,8 +74,8 @@ Create themes from the codes above
 [[themes:themes]]
 ```
 
-The [[codes:codes]] and [[themes:themes]] placeholders are used to identify that LLM completions of specific types (codes/themes) should be extracted from the LLM output. That is, it's a prompt to soak to structured data from the LLM. request
+The [[codes:codes]] and [[themes:themes]] placeholders are used to identify that LLM completions of specific types (codes/themes) should be extracted from the LLM output. That is, it's a prompt to soak to request structured data from the LLM.
 
-To adapt the pipeline to your needs, simple edit the YAML file to add your own nodes and prompts. See the documentation for details of all the node types and options.
+To adapt the pipeline to your needs, simply edit the YAML file to add your own nodes and prompts. See the documentation for details of all the node types and options.
 
 

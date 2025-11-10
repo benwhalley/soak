@@ -1,0 +1,19 @@
+Interviewer: Can you tell me about your experience learning to code?
+
+Participant: Sure. I'd say the biggest challenge was getting over that initial hurdle of not knowing where to start. There are so many languages, so many resources, and everyone tells you something different. I spent probably two weeks just researching before I wrote a single line of code. It was overwhelming.
+
+Interviewer: What helped you get past that?
+
+Participant: Honestly, I just picked something -- Python, because everyone said it was beginner-friendly -- and committed to it. I found a structured course online and just worked through it methodically. The key was not jumping around. I had to resist the urge to constantly switch to "the next best thing" and just stick with one path.
+
+Interviewer: Were there moments when you wanted to give up?
+
+Participant: Oh absolutely. There was this one week where I was stuck on understanding functions and scope. I'd watch tutorial after tutorial and it just wouldn't click. I remember feeling really stupid, like maybe programming just wasn't for me. But then I found a different explanation that used a real-world analogy -- comparing it to a recipe -- and suddenly it made sense. That taught me that sometimes you just need the right explanation, not more intelligence.
+
+Interviewer: What do you wish you'd known when you started?
+
+Participant: That struggling is normal. I think beginners see experienced developers and assume they never get stuck, but that's not true. Everyone gets stuck. The difference is that experienced people have developed strategies for getting unstuck -- they know how to search for solutions, how to break down problems, how to ask for help effectively. I wish someone had told me that debugging and problem-solving are skills you develop, not innate abilities you either have or don't have.
+
+Interviewer: How has learning to code affected other areas of your life?
+
+Participant: It's made me more patient and systematic in how I approach problems. In coding, you can't skip steps -- if your logic is flawed, the program won't work. That's taught me to slow down and think things through carefully, rather than just rushing to a solution. I apply that thinking to other areas now too.

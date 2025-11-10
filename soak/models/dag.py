@@ -30,6 +30,7 @@ from soak.document_utils import (
     unpack_zip_to_temp_paths_if_needed,
 )
 from soak.models.base import SOAK_MAX_RUNTIME, TrackedItem, get_default_llm_credentials
+from soak.export_utils import export_to_csv
 
 if TYPE_CHECKING:
     from .nodes.base import DAGNode
@@ -61,6 +62,11 @@ class DAGConfig(BaseModel):
     fail_on_context_exceeded: bool = True  # if False, skip item with warning
     skip_content_policy_violations: bool = True  # if False, fail pipeline
     log_failed_prompts: bool = True  # log offending prompts to stderr
+
+    # incremental export configuration
+    export_enabled: bool = False  # export nodes as they finish
+    export_folder: Optional[Path] = None  # folder to export to
+    export_metadata: Dict[str, Any] = Field(default_factory=dict)  # metadata for export
 
     def get_model(self):
         """Create LLM instance with configured model_name."""
@@ -259,6 +265,18 @@ async def run_node(node):
     try:
         result = await node.run()
         logger.debug(f"COMPLETED: {node.name}\n")
+
+        # Export node if incremental export is enabled
+        if (
+            node.dag.config.export_enabled
+            and hasattr(node.dag, "_node_export_folders")
+            and node.name in node.dag._node_export_folders
+        ):
+            node_folder = node.dag._node_export_folders[node.name]
+            unique_id = node.dag.config.export_metadata.get("unique_id", "")
+            await anyio.to_thread.run_sync(node.export, node_folder, unique_id)
+            logger.info(f"✓ Exported node: {node.name} to {node_folder.name}")
+
         return result
     except Exception as e:
         logger.error(f"Node {node.name} failed: {e}")
@@ -295,10 +313,11 @@ DAGNodeUnion = Annotated[
         "Transform",
         "Batch",
         "Split",
-        "TransformReduce",
         "VerifyQuotes",
         "Classifier",
         "Filter",
+        "GroupBy",
+        "Ungroup",
     ],
     Field(discriminator="type"),
 ]
@@ -342,12 +361,12 @@ class DAG(BaseModel):
     def validate_node_templates(self) -> "DAG":
         """Validate that nodes requiring templates have them defined."""
         # Node types that require templates
-        template_required_types = {"Map", "Transform", "Classifier", "Filter"}
+        template_required_types = {"Map", "Transform", "Classifier"}
 
         for node in self.nodes:
             if node.type in template_required_types:
-                # Check if template_text exists and is not None/empty
-                if not hasattr(node, "template_text") or not node.template_text:
+                # Check if template exists and is not None/empty
+                if not hasattr(node, "template") or not node.template:
                     raise ValueError(
                         f"Node '{node.name}' of type '{node.type}' requires a template, "
                         f"but none was found. Add a template section like '---#{node.name}' "
@@ -426,6 +445,11 @@ class DAG(BaseModel):
             self.config.load_documents()
             if not self.config.llm_credentials:
                 raise Exception("LLMCredentials must be set for DAG")
+
+            # Pre-compute node export folders if incremental export is enabled
+            if self.config.export_enabled and self.config.export_folder:
+                self._prepare_incremental_export()
+
             for batch in self.get_execution_order():
                 # use anyio structured concurrency - start all tasks in batch concurrently
                 with anyio.fail_after(SOAK_MAX_RUNTIME):
@@ -437,6 +461,10 @@ class DAG(BaseModel):
             # aggregate costs after all nodes complete
             self._aggregate_costs()
 
+            # finalize incremental export with cost data
+            if self.config.export_enabled:
+                self._finalize_incremental_export()
+
             return self, None
         except Exception as e:
             import traceback
@@ -444,6 +472,52 @@ class DAG(BaseModel):
             err = f"DAG execution failed: {str(e)}\n{traceback.format_exc()}"
             logger.error(err)
             return self, str(e)
+
+    def _prepare_incremental_export(self) -> None:
+        """Prepare for incremental node export by creating folder structure and metadata.
+
+        Creates the export folder, writes meta.txt, and computes node export paths.
+        Stores node_export_folders mapping for use by run_node().
+        """
+        output_dir = Path(self.config.export_folder)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        logger.info(f"Preparing incremental export to {output_dir}")
+
+        # Write metadata file
+        metadata = self.config.export_metadata
+        meta_content = f"""DAG Execution Export
+====================
+DAG Name: {self.name}
+Export Time: {datetime.now().isoformat()}
+
+"""
+        if metadata:
+            meta_content += "Runtime Configuration:\n"
+            for key, value in metadata.items():
+                meta_content += f"  {key}: {value}\n"
+
+        meta_content += f"\nDefault Context:\n"
+        for key, value in self.default_context.items():
+            meta_content += f"  {key}: {value}\n"
+
+        meta_content += f"  Documents: {len(self.config.documents)}\n"
+
+        (output_dir / "meta.txt").write_text(meta_content)
+
+        # Get execution order for numbering
+        execution_order = self.get_execution_order()
+
+        # Create node_to_order mapping and store export folders
+        self._node_export_folders = {}
+        for batch_idx, batch in enumerate(execution_order):
+            for node_name in batch:
+                order = batch_idx + 1
+                node = self.nodes_dict[node_name]
+                folder_name = f"{order:02d}_{node.type}_{node.name}"
+                self._node_export_folders[node_name] = output_dir / folder_name
+
+        logger.debug(f"Prepared export folders for {len(self._node_export_folders)} nodes")
 
     def _aggregate_costs(self) -> None:
         """Aggregate costs from all completion nodes and store summary."""
@@ -547,23 +621,26 @@ class DAG(BaseModel):
         return all(result.all_costs_unknown for result in outputs)
 
     def _node_cache_stats(self, node) -> Tuple[float, int, int]:
-        """Extract cache statistics from node outputs
+        """Extract cache statistics from node outputs and _llm_results
 
         Returns:
             Tuple of (fresh_cost, fresh_count, cached_count)
         """
-        if not hasattr(node, "output") or node.output is None:
-            return 0.0, 0, 0
-
         from struckdown import ChatterResult
 
         outputs = []
-        if isinstance(node.output, list):
-            outputs = [o for o in node.output if isinstance(o, ChatterResult)]
-        elif isinstance(node.output, dict):
-            outputs = [o for o in node.output.values() if isinstance(o, ChatterResult)]
-        elif isinstance(node.output, ChatterResult):
-            outputs = [node.output]
+
+        # Primary: Check _llm_results attribute (CompletionDAGNode standard)
+        if hasattr(node, '_llm_results') and node._llm_results:
+            outputs.extend(node._llm_results)
+        # Fallback: Check node.output ONLY if _llm_results is empty/missing (backward compatibility)
+        elif hasattr(node, "output") and node.output is not None:
+            if isinstance(node.output, list):
+                outputs.extend([o for o in node.output if isinstance(o, ChatterResult)])
+            elif isinstance(node.output, dict):
+                outputs.extend([o for o in node.output.values() if isinstance(o, ChatterResult)])
+            elif isinstance(node.output, ChatterResult):
+                outputs.append(node.output)
 
         fresh_cost = sum(result.fresh_cost for result in outputs)
         fresh_count = sum(result.fresh_call_count for result in outputs)
@@ -587,6 +664,95 @@ class DAG(BaseModel):
                 "by_node": {},
             },
         )
+
+    def _format_cost_summary_text(self, cost_summary: Dict[str, Any]) -> str:
+        """Format cost summary as text for meta.txt display.
+
+        Args:
+            cost_summary: Dict from get_cost_summary()
+
+        Returns:
+            Formatted text block with cost information
+        """
+        lines = [
+            "\nCost Summary",
+            "============",
+            f"Total Cost: ${cost_summary['total_cost']:.4f}",
+            f"Fresh Cost: ${cost_summary.get('fresh_cost', 0.0):.4f}",
+            f"Total Tokens: {cost_summary['total_prompt_tokens']:,} in / {cost_summary['total_completion_tokens']:,} out",
+            f"Calls: {cost_summary.get('fresh_count', 0)} fresh, {cost_summary.get('cached_count', 0)} cached",
+        ]
+
+        if cost_summary.get('has_unknown_costs', False):
+            lines.append("Note: Some costs are unknown (check costs.csv for details)")
+
+        return "\n".join(lines)
+
+    def _export_costs_csv(self, output_dir: Path) -> None:
+        """Export per-node cost breakdown as CSV file.
+
+        Creates costs.csv in the output directory with columns:
+        node_name, node_type, cost, fresh_cost, prompt_tokens, completion_tokens,
+        fresh_count, cached_count, has_unknown
+
+        Args:
+            output_dir: Directory to write costs.csv to
+        """
+        import pandas as pd
+
+        cost_summary = self.get_cost_summary()
+        by_node = cost_summary.get("by_node", {})
+
+        if not by_node:
+            logger.debug("No node costs to export")
+            return
+
+        rows = []
+        for node_name, node_data in by_node.items():
+            # get node type from nodes_dict
+            node = self.nodes_dict.get(node_name)
+            node_type = node.type if node else "Unknown"
+
+            rows.append({
+                "node_name": node_name,
+                "node_type": node_type,
+                "cost": node_data["cost"],
+                "fresh_cost": node_data.get("fresh_cost", 0.0),
+                "prompt_tokens": node_data["prompt_tokens"],
+                "completion_tokens": node_data["completion_tokens"],
+                "fresh_count": node_data.get("fresh_count", 0),
+                "cached_count": node_data.get("cached_count", 0),
+                "has_unknown": node_data.get("has_unknown", False),
+            })
+
+        df = pd.DataFrame(rows)
+        csv_path = output_dir / "costs.csv"
+        export_to_csv(df, csv_path)
+        logger.info(f"✓ Exported cost breakdown to costs.csv")
+
+    def _finalize_incremental_export(self) -> None:
+        """Finalize incremental export with cost data after all nodes complete.
+
+        Updates meta.txt with cost summary and creates costs.csv.
+        Called at the end of run() after _aggregate_costs().
+        """
+        if not self.config.export_enabled or not self.config.export_folder:
+            return
+
+        output_dir = Path(self.config.export_folder)
+
+        # update meta.txt with cost summary
+        cost_summary = self.get_cost_summary()
+        cost_text = self._format_cost_summary_text(cost_summary)
+
+        meta_path = output_dir / "meta.txt"
+        if meta_path.exists():
+            content = meta_path.read_text()
+            content += f"\n{cost_text}"
+            meta_path.write_text(content)
+
+        # export costs.csv
+        self._export_costs_csv(output_dir)
 
     def get_dependencies_for_node(self, node_name: str) -> Set[str]:
         """Get nodes that must complete before this node can run."""
@@ -664,6 +830,11 @@ Export Time: {datetime.now().isoformat()}
 
         meta_content += f"  Documents: {len(self.config.documents)}\n"
 
+        # add cost summary
+        cost_summary = self.get_cost_summary()
+        cost_text = self._format_cost_summary_text(cost_summary)
+        meta_content += f"\n{cost_text}\n"
+
         (output_dir / "meta.txt").write_text(meta_content)
 
         # Get execution order for numbering
@@ -689,6 +860,9 @@ Export Time: {datetime.now().isoformat()}
                 import traceback
 
                 traceback.print_exc()
+
+        # export cost breakdown
+        self._export_costs_csv(output_dir)
 
         logger.debug(f"Export complete: {output_dir}")
 

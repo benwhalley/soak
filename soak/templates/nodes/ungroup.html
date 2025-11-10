@@ -1,0 +1,26 @@
+<div class="node-result ungroup-result">
+    <h4>Ungroup: {{ node.name }}</h4>
+
+    <table class="table table-sm">
+        <tr>
+            <th>Type</th>
+            <td>Flatten all grouping layers</td>
+        </tr>
+        {% if result.metadata.total_items %}
+        <tr>
+            <th>Total Items</th>
+            <td>{{ result.metadata.total_items }}</td>
+        </tr>
+        {% endif %}
+        {% if result.metadata.input_depth %}
+        <tr>
+            <th>Input Depth</th>
+            <td>{{ result.metadata.input_depth }} level(s)</td>
+        </tr>
+        {% endif %}
+    </table>
+
+    <p class="text-muted">
+        <small>Flattened all grouping structure to a single flat list.</small>
+    </p>
+</div>

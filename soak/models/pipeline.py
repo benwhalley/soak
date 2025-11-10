@@ -154,28 +154,54 @@ class QualitativeAnalysisPipeline(DAG):
     def result(self):
         """Extract QualitativeAnalysis result from pipeline execution."""
 
-        def safe_get_output(name):
+        def safe_get_output(name, key):
+            """Extract output from node, handling both live and serialized formats.
+
+            Uses ChatterResult.outputs property which maps segment names to their .output values.
+            For codes: outputs['codes'] returns CodeList, need to extract .codes
+            For themes: outputs['themes'] returns Themes, need to extract .themes
+            For narrative: outputs[key] returns direct string
+            """
             try:
-                return self.nodes_dict.get(name).output.response
-            except Exception:
-                logger.warning(f"Error getting output {name}")
+                from soak.models.base import CodeList, Themes
+
+                node = self.nodes_dict.get(name)
+                if not node or not node.output:
+                    return None
+
+                # Handle list output (ChatterResult)
+                if isinstance(node.output, list) and len(node.output) > 0:
+                    chatter = node.output[0]
+
+                    # Use .outputs property for cleaner access (maps to SegmentResult.output values)
+                    if hasattr(chatter, 'outputs'):
+                        outputs = chatter.outputs
+                        if key in outputs:
+                            segment_output = outputs[key]
+
+                            # Handle CodeList: extract .codes attribute
+                            if isinstance(segment_output, CodeList):
+                                return segment_output.codes
+
+                            # Handle Themes: extract .themes attribute
+                            if isinstance(segment_output, Themes):
+                                return segment_output.themes
+
+                            # For legacy dict format: {'codes': [...]}
+                            if isinstance(segment_output, dict) and key in segment_output:
+                                return segment_output[key]
+
+                            # For narrative or other direct values
+                            return segment_output
+
+                return None
+            except Exception as e:
+                logger.debug(f"Error getting output {name}.{key}: {e}")
                 return None
 
-        try:
-            codes = self.nodes_dict.get("codes").output.response["codes"]
-        except Exception:
-            codes = []
-        try:
-            themes = self.nodes_dict.get("themes").output.response["themes"]
-        except Exception:
-            themes = []
-
-        try:
-            narrative = self.nodes_dict.get("narrative").output.response.get(
-                "report", ""
-            )
-        except Exception:
-            narrative = ""
+        codes = safe_get_output("codes", "codes") or []
+        themes = safe_get_output("themes", "themes") or []
+        narrative = safe_get_output("narrative", "report") or ""
 
         return QualitativeAnalysis(
             codes=codes,

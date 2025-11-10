@@ -1,0 +1,34 @@
+# TASK
+
+We need to determine whether a quote is contained within a source text.
+
+## SOURCE TEXT
+
+<source>
+{{source}}
+</source>
+
+# QUOTE TO FIND 
+
+<quote>
+{{quote}}
+</quote>
+
+
+# TASK 
+
+Is the quote contained within the source text. 
+
+Respond `True` if the quote is 
+
+- contained within the source text.
+- is a close paraphrase or abridged version of the quote, but retains the same meaning
+
+Respond `False` if the quote is 
+
+- not contained within the source text
+- is paraphrased or amended such that the implied meaning changes
+
+Briefly, make notes on whether the quote is contained within the source text: [[explanation]]
+
+Now pick True/False. Is the quote found in the source? [[bool:is_contained]]

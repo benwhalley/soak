@@ -26,7 +26,8 @@
         .sim-low { color: red; }
         .sim-verylow { color: grey; }
       </style>
-      {{ result.matches_df|df_to_html|safe }}
+      {% set display_df = result.matches_df.drop(columns=['source_doc_content'], errors='ignore') %}
+      {{ display_df|df_to_html|safe }}
     </div>
   </details>
   {% endif %}

@@ -16,7 +16,6 @@ from soak.models.nodes import (
     Reduce,
     Split,
     Transform,
-    TransformReduce,
     VerifyQuotes,
 )
 
@@ -35,7 +34,6 @@ for node_class in [
     Reduce,
     Split,
     Transform,
-    TransformReduce,
     VerifyQuotes,
 ]:
     node_class.model_rebuild(force=True)
@@ -79,7 +77,7 @@ def load_template_bundle(template: Union[Path, str]) -> QualitativeAnalysisPipel
         for node in loaded["nodes"]:
             node_name = node.get("name")
             if node_name and node_name in templates:
-                node["template_text"] = templates[node_name]
+                node["template"] = templates[node_name]
 
     pipeline = QualitativeAnalysisPipeline.model_validate(loaded)
     for i in pipeline.nodes:
@@ -100,9 +98,9 @@ def pipeline_to_template_bundle(pipeline: QualitativeAnalysisPipeline) -> str:
     # use model_dump to get the pipeline data, excluding computed/internal fields
 
     dumped = pipeline.model_dump(
-        exclude={"nodes": {"__all__": {"template_text"}}, "config": True}
+        exclude={"nodes": {"__all__": {"template"}}, "config": True}
     )
-    templates = {k.name: k.template_text for k in pipeline.nodes if k.template_text}
+    templates = {k.name: k.template for k in pipeline.nodes if k.template}
 
     # generate yaml content
     yaml_content = yaml.dump(dumped, default_flow_style=False, sort_keys=False)

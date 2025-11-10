@@ -162,6 +162,75 @@ async def test_filter_node():
 
 
 @pytest.mark.anyio
+async def test_filter_preserves_metadata():
+    """Test that Filter node preserves TrackedItem metadata for excluded items."""
+    from soak.models.base import TrackedItem
+    from soak.models.nodes.filter import Filter
+    from soak.models.dag import DAG, DAGConfig
+
+    # create test items with metadata
+    items = [
+        TrackedItem(
+            content="This is about coffee",
+            id="doc1__chunk__0",
+            sources=["doc1"],
+            metadata={"original_path": "test.txt", "index": 0, "category": "food"}
+        ),
+        TrackedItem(
+            content="This is about tea",
+            id="doc1__chunk__1",
+            sources=["doc1"],
+            metadata={"original_path": "test.txt", "index": 1, "category": "food"}
+        ),
+    ]
+
+    # create minimal DAG
+    config = DAGConfig(
+        llm_credentials=LLMCredentials()
+    )
+    dag = DAG(
+        name="test_filter",
+        config=config
+    )
+
+    # create filter node (simple mode)
+    filter_node = Filter(
+        name="test_filter",
+        inputs=[],
+        expression="'coffee' in input",
+        mode="simple",
+        dag=dag,
+        context={}
+    )
+
+    # process items
+    result = await filter_node.process_items(items)
+
+    # should still have 2 items (included + excluded with "...")
+    assert len(result) == 2, "Filter should keep both included and excluded items"
+
+    # first item should be included (has coffee)
+    included_item = result[0]
+    assert included_item.content == "This is about coffee"
+    assert included_item.metadata.get("original_path") == "test.txt"
+    assert included_item.metadata.get("index") == 0
+    assert included_item.metadata.get("category") == "food"
+    assert "filtered" not in included_item.metadata
+
+    # second item should be excluded (no coffee)
+    excluded_item = result[1]
+    assert excluded_item.content == " ... ", "Excluded item should have omitted_text"
+    assert excluded_item.metadata.get("filtered") == True, "Excluded item should have filtered=True"
+    assert excluded_item.metadata.get("original_path") == "test.txt", "Excluded item should preserve original_path"
+    assert excluded_item.metadata.get("index") == 1, "Excluded item should preserve index"
+    assert excluded_item.metadata.get("category") == "food", "Excluded item should preserve category"
+
+    # verify IDs are preserved
+    assert excluded_item.id == "doc1__chunk__1", "Excluded item should preserve ID"
+    assert excluded_item.sources == ["doc1"], "Excluded item should preserve sources"
+
+
+@pytest.mark.anyio
 async def test_transform_node_multi_slot():
     """Test Transform node with multi-slot struckdown prompts."""
     pipeline = load_template_bundle(Path("tests/pipelines/test_transform.soak"))

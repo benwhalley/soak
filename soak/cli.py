@@ -405,6 +405,49 @@ def run(
     if progress:
         logger.debug("Progress bars enabled")
 
+    # Always create dump folder for incremental export
+    dump_path = Path(f"{output}_dump")
+
+    # Remove existing dump folder if force is enabled
+    if dump_path.exists() and force:
+        logger.info(f"Removing existing dump folder: {dump_path}")
+        shutil.rmtree(dump_path)
+
+    # Build command string for metadata
+    cmd_parts = [f"soak {pipeline_arg}"]
+    for inp in input:
+        cmd_parts.append(f"--input {inp}")
+    cmd_parts.append(f"--output {output}")
+    if model_name:
+        cmd_parts.append(f"--model-name {model_name}")
+    if context:
+        for ctx in context:
+            cmd_parts.append(f"--context {ctx}")
+
+    # Generate config hash for dump folder naming
+    config_hash = hash_run_config(
+        input_files=input,
+        model_name=model_name,
+        context=context,
+        template=template,
+    )
+
+    metadata = {
+        "command": " ".join(cmd_parts),
+        "pipeline_file": str(pipyml),
+        "model_name": model_name,
+        "templates": template,
+        "unique_id": config_hash,
+    }
+    if context:
+        metadata["context_overrides"] = dict([c.split("=", 1) for c in context])
+
+    # Enable incremental export (nodes export as they finish)
+    pipeline.config.export_enabled = True
+    pipeline.config.export_folder = dump_path
+    pipeline.config.export_metadata = metadata
+    logger.info(f"Incremental export enabled to {dump_path}")
+
     try:
         with unpack_zip_to_temp_paths_if_needed(input) as docfiles:
             if not docfiles:
@@ -443,7 +486,14 @@ def run(
                 has_unknown_costs=cost_summary.get("has_unknown_costs", False),
                 all_costs_unknown=cost_summary.get("all_costs_unknown", False),
             )
+
+            # print base summary
             print(summary.format_summary(include_breakdown=True), file=sys.stderr)
+
+            # add total API calls count
+            total_calls = cost_summary.get("fresh_count", 0) + cost_summary.get("cached_count", 0)
+            if total_calls > 0:
+                print(f"  Total API calls: {total_calls}", file=sys.stderr)
 
             # print per-node breakdown (only if verbose mode is enabled)
             if logging.getLogger("soak").level <= logging.INFO:
@@ -486,60 +536,25 @@ def run(
     html_outputs = generate_all_html_outputs(
         pipeline_for_html, template, on_error="raise"
     )
-
-    # Generate config hash for dump folder naming (needed even if output not specified)
-    config_hash = hash_run_config(
-        input_files=input,
-        model_name=model_name,
-        context=context,
-        template=template,
-    )
-
+    
     # Write output files
-    logger.info(f"Writing json output to {output}.json")
+    typer.echo(f"Writing output files")
+    
     with open(output + ".json", "w", encoding="utf-8") as f:
         f.write(jsoncontent)
+        logger.info(f"Wrote json output to {output}.json")
 
     for tmpl in template:
         template_stem = Path(resolve_template(tmpl)).stem
         html_filename = f"{output}_{template_stem}.html"
         logger.info(
-            f"Writing HTML output with template '{template_stem}' to {html_filename}"
+            f"Wrote HTML output with template '{template_stem}' to {html_filename}"
         )
         with open(html_filename, "w", encoding="utf-8") as f:
             f.write(html_outputs[tmpl])
 
-    # Always create dump folder
-    dump_path = Path(f"{output}_dump")
-
-    # Remove existing dump folder if force is enabled
-    if dump_path.exists() and force:
-        logger.info(f"Removing existing dump folder: {dump_path}")
-        shutil.rmtree(dump_path)
-
-    # Build command string for metadata
-    cmd_parts = [f"soak {pipeline_arg}"]
-    for inp in input:
-        cmd_parts.append(f"--input {inp}")
-    cmd_parts.append(f"--output {output}")
-    if model_name:
-        cmd_parts.append(f"--model-name {model_name}")
-    if context:
-        for ctx in context:
-            cmd_parts.append(f"--context {ctx}")
-
-    metadata = {
-        "command": " ".join(cmd_parts),
-        "pipeline_file": str(pipyml),
-        "model_name": model_name,
-        "templates": template,
-        "unique_id": config_hash,
-    }
-    if context:
-        metadata["context_overrides"] = dict([c.split("=", 1) for c in context])
-
-    logger.info(f"Dumping execution details to {dump_path}")
-    analysis.export_execution(dump_path, metadata=metadata)
+    # Note: Execution details already exported incrementally to {dump_path}
+    # during pipeline execution (nodes exported as they finished)
     logger.info(f"✓ Execution dump saved to: {dump_path}")
 
 
@@ -650,6 +665,11 @@ def compare(
         "-e",
         help="Python format string for generating theme embeddings. Available: {name}, {description}",
     ),
+    sort_heatmaps: bool = typer.Option(
+        False,
+        "--sort-heatmaps",
+        help="Sort heatmap rows and columns by average similarity (highest first)",
+    ),
 ):
     """Compare multiple analysis results and generate comparison report."""
 
@@ -703,6 +723,7 @@ def compare(
             "min_dist": 0.01,
             "label_template": label,
             "embedding_template": embedding_template,
+            "sort_by_average": sort_heatmaps,
         },
     )
 

@@ -2,7 +2,7 @@
 
 import logging
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Literal
+from typing import Any, Callable, Dict, List, Literal, Optional
 
 import anyio
 import pandas as pd
@@ -26,58 +26,75 @@ class Map(ItemsNode, CompletionDAGNode):
 
     type: Literal["Map"] = "Map"
 
-    function: Literal["llm", "template"] = (
+    mode: Literal["llm", "template"] = (
         "llm"  # llm = LLM call, template = Jinja2 only
     )
     task: Callable = Field(default=default_map_task, exclude=True)
-    template_text: str = None
-
-    @property
-    def template(self) -> str:
-        return self.template_text
+    template: str = None
 
     def validate_template(self):
         try:
-            parse_syntax(self.template_text)
+            parse_syntax(self.template)
             return True
         except Exception as e:
             logger.error(f"Template syntax error: {e}")
             return False
 
-    async def run(self) -> List[Any]:
-        # Import here to avoid circular import
+    async def process_items(
+        self,
+        items: List[Any],
+        progress_bar: Optional[Any] = None
+    ) -> List[Any]:
+        """Process items in parallel at this batch level.
+
+        Args:
+            items: Flat list of items to process in this batch
+            progress_bar: Optional tqdm progress bar to update
+
+        Returns:
+            Flat list of results (ChatterResult or rendered strings)
+        """
+        # Convert items to Box items for templates
+        boxed_items = []
+        for item in items:
+            if isinstance(item, TrackedItem):
+                boxed_items.append(Box({"input": item.content, "tracked_item": item}))
+            elif isinstance(item, dict):
+                boxed_items.append(Box(item))
+            else:
+                boxed_items.append(Box({"input": item}))
+
+        # Filter context to remove BatchList objects
         from .batch import BatchList
 
-        input_data = self.context[self.inputs[0]] if self.inputs else None
-        is_batch = isinstance(input_data, BatchList)
+        filtered_context = {
+            k: v for k, v in self.context.items() if not isinstance(v, BatchList)
+        }
 
-        # Flatten batch input if needed
-        if is_batch:
-            all_items = []
-            batch_sizes = []
-            for batch in input_data.batches:
-                batch_items = [Box({"input": item}) for item in batch]
-                all_items.extend(batch_items)
-                batch_sizes.append(len(batch))
-            items = all_items
-            filtered_context = {
-                k: v for k, v in self.context.items() if not isinstance(v, BatchList)
-            }
-        else:
-            items = await self.get_items()
-            filtered_context = self.context
+        results = [None] * len(boxed_items)
 
-        results = [None] * len(items)
+        # Use passed-in progress bar if available, otherwise create local one
+        pbar = progress_bar
+        if pbar is None:
+            # Create local progress bar for backward compatibility (non-batched case)
+            if self.dag.config.show_progress:
+                from tqdm import tqdm
+                import sys
+                pbar = tqdm(
+                    total=len(boxed_items),
+                    desc=f"{self.type} '{self.name}'",
+                    unit="item",
+                    file=sys.stderr
+                )
 
-        # Use progress bar context manager
-        with self.progress_bar(items) as pbar:
+        try:
             async with anyio.create_task_group() as tg:
-                for idx, item in enumerate(items):
+                for idx, item in enumerate(boxed_items):
 
                     async def run_and_store(index=idx, item=item, progress_bar=pbar):
                         async with semaphore:
                             try:
-                                if self.function == "template":
+                                if self.mode == "template":
                                     # Template-only mode: just render Jinja2, no LLM call
                                     results[index] = await template_map_task(
                                         template=self.template,
@@ -109,46 +126,44 @@ class Map(ItemsNode, CompletionDAGNode):
                                     progress_bar.update(1)
 
                     tg.start_soon(run_and_store)
+        finally:
+            # Only close progress bar if we created it locally
+            if progress_bar is None and pbar is not None:
+                pbar.close()
 
-        # accumulate costs from all results (only for LLM mode)
-        if self.function == "llm":
+        # accumulate costs and track for cache statistics (only for LLM mode)
+        if self.mode == "llm":
             for result in results:
                 if result is not None:
                     self._accumulate_costs(result)
+                    self._llm_results.append(result)
 
-        if is_batch:
-            # Reconstruct BatchList structure
-            from .batch import BatchList
-
-            reconstructed_batches = []
-            result_idx = 0
-            for batch_size in batch_sizes:
-                batch_results = results[result_idx : result_idx + batch_size]
-                reconstructed_batches.append(batch_results)
-                result_idx += batch_size
-            batch_list_result = BatchList(batches=reconstructed_batches)
-            self.output = batch_list_result
-            return batch_list_result
-        else:
-            self.output = results
-            return results
+        return results
 
     def result(self) -> Dict[str, Any]:
         """Returns dict with metadata and DataFrame of mapped items."""
+        from .batch import BatchList
+
         # Get base metadata from parent
         result = super().result()
 
         input_items = self.get_input_items()
         rows = []
 
-        output_list = self.output if isinstance(self.output, list) else []
+        # Flatten BatchList if needed
+        if isinstance(self.output, BatchList):
+            output_list = self.output.flatten_all()
+        elif isinstance(self.output, list):
+            output_list = self.output
+        else:
+            output_list = []
 
         for idx, output_item in enumerate(output_list):
             item = input_items[idx] if input_items and idx < len(input_items) else None
 
             row = TrackedItem.extract_export_metadata(item, idx)
 
-            if self.function == "template":
+            if self.mode == "template":
                 # Template mode: output is plain string
                 row.update(
                     {
@@ -179,31 +194,40 @@ class Map(ItemsNode, CompletionDAGNode):
         # Add Map-specific data
         result["data"] = pd.DataFrame(rows)
         result["metadata"]["num_items"] = len(output_list)
-        result["metadata"]["function"] = self.function
+        result["metadata"]["mode"] = self.mode
 
         return result
 
     def export(self, folder: Path, unique_id: str = ""):
         """Export Map node details with numbered prompts and responses."""
         from ..utils import export_chatter_result
+        from .batch import BatchList
 
         super().export(folder, unique_id=unique_id)
 
         # Write template
-        if self.template_text:
+        if self.template:
             template_filename = (
                 "template.md"
-                if self.function == "template"
-                else "prompt_template.sd.md"
+                if self.mode == "template"
+                else "prompt_template.sd"
             )
-            (folder / template_filename).write_text(self.template_text)
+            (folder / template_filename).write_text(self.template)
 
         # Get input items for source tracking
         input_items = self.get_input_items()
 
+        # Flatten BatchList if needed
+        if isinstance(self.output, BatchList):
+            output_list = self.output.flatten_all()
+        elif isinstance(self.output, list):
+            output_list = self.output
+        else:
+            output_list = None
+
         # Write each output with source tracking
-        if self.output and isinstance(self.output, list):
-            for idx, result in enumerate(self.output):
+        if output_list:
+            for idx, result in enumerate(output_list):
                 # Get source_id if available
                 item = (
                     input_items[idx] if input_items and idx < len(input_items) else None
@@ -211,7 +235,7 @@ class Map(ItemsNode, CompletionDAGNode):
                 safe_id = TrackedItem.make_safe_id(TrackedItem.extract_source_id(item))
                 file_prefix = f"{idx:04d}_{safe_id}"
 
-                if self.function == "template":
+                if self.mode == "template":
                     # Template mode: export rendered text
                     (folder / f"{file_prefix}_rendered.txt").write_text(str(result))
                 else:

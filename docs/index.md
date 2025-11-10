@@ -13,7 +13,7 @@ export LLM_API_KEY=your_api_key
 export LLM_API_BASE=https://api.openai.com/v1
 
 # Run thematic analysis
-uv run soak run zs data/interviews.txt --output results
+uv run soak zs data/interviews.txt --output results
 open results.html
 ```
 
@@ -35,9 +35,6 @@ Complete workflows for specific tasks:
 - [Working with Spreadsheet Data](how-to/working-with-spreadsheet-data.md) - Process CSV and Excel files
 - [Pre-extraction Workflow](how-to/pre-extract-workflow.md) - Filter text before analysis
 - [Build a Classifier](how-to/build-classifier.md) - Structured classification pipelines
-- [Configure Text Splitting](how-to/configure-splits.md) - Chunking strategies
-- [Track Provenance](how-to/track-provenance.md) - Source tracking through the pipeline
-- [Multi-model Agreement](how-to/multi-model-agreement.md) - Inter-rater reliability
 
 ### Explanation (Understanding-oriented)
 
@@ -47,7 +44,6 @@ Conceptual background:
 - [DAG Architecture](explanation/dag-architecture.md) - Why pipelines, execution model
 - [Node Types](explanation/node-types.md) - Understanding different processing nodes
 - [Template System](explanation/template-system.md) - Jinja2 and struckdown syntax
-- [Provenance Tracking](explanation/provenance-tracking.md) - How lineage works
 - [Quote Verification Approach](explanation/quote-verification-approach.md) - Design and rationale for quote validation
 
 ### Reference (Information-oriented)
@@ -56,8 +52,6 @@ Technical specifications:
 
 - [CLI Reference](reference/cli.md) - Command-line interface
 - [Node Reference](reference/node-reference.md) - All node types and parameters
-- [Pipeline Format](reference/pipeline-format.md) - YAML specification
-- [Configuration](reference/configuration.md) - Environment variables
 - [Quote Verification Algorithm](reference/quote-verification.md) - Technical specification of quote validation
 
 ## Common Use Cases
@@ -67,7 +61,7 @@ Technical specifications:
 Analyze interview transcripts, survey responses, or other qualitative data:
 
 ```bash
-uv run soak run zs data/*.txt --output analysis
+uv run soak zs data/*.txt --output analysis
 ```
 
 See [Thematic Analysis](how-to/thematic-analysis.md)
@@ -77,7 +71,7 @@ See [Thematic Analysis](how-to/thematic-analysis.md)
 Extract structured data from text:
 
 ```bash
-uv run soak run classifier data/*.docx --output results
+uv run soak classifier data/*.docx --output results
 ```
 
 See [Build a Classifier](how-to/build-classifier.md)
@@ -87,7 +81,7 @@ See [Build a Classifier](how-to/build-classifier.md)
 Process CSV or Excel files (each row becomes a document):
 
 ```bash
-uv run soak run classifier_tabular data/survey.csv --output results
+uv run soak classifier_tabular data/survey.csv --output results
 ```
 
 See [Working with Spreadsheet Data](how-to/working-with-spreadsheet-data.md)

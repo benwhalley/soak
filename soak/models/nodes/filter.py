@@ -1,340 +1,473 @@
-"""Filter node for boolean filtering with LLM."""
+"""Filter node for boolean filtering of items using safe expressions."""
 
-import json
 import logging
-import re
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 
 import anyio
 import pandas as pd
-from struckdown import ChatterResult, StruckdownLLMError, chatter_async
+from box import Box
+from pydantic import Field, PrivateAttr
+from simpleeval import AttributeDoesNotExist, EvalWithCompoundTypes, NameNotDefined
 
 from soak.error_handlers import managed_llm_call
-from soak.models.base import TrackedItem, get_action_lookup, safe_json_dump, semaphore
+from soak.models.base import TrackedItem, extract_content, safe_json_dump, semaphore
 
-from .base import CompletionDAGNode, ItemsNode
+from .base import CompletionDAGNode, ItemsNode, default_map_task, render_strict_template
 
 logger = logging.getLogger(__name__)
 
 
 class Filter(ItemsNode, CompletionDAGNode):
     """
-    Filter items based on a boolean LLM completion.
+    Filter items based on a boolean expression.
 
-    Each input item is processed through an LLM prompt containing at least one boolean
-    completion slot. Only items where the filter field evaluates to True are passed to output.
+    Supports two modes:
+    - llm: Run template through LLM, evaluate expression on extracted fields
+    - simple: Evaluate expression directly on item data
 
-    Filter field identification:
-    1. If a field named 'filter' exists (must be boolean), it's used
-    2. Otherwise, the last completion slot is used (must be boolean)
-    3. Validation error if the identified field is not boolean
+    Mode is auto-detected: if template is provided, defaults to 'llm',
+    otherwise defaults to 'simple'.
 
-    Output: List[TrackedItem] containing only included items (filter == True)
+    Examples:
+        # LLM mode - combines Map + Filter
+        expression: "funny == True"
+        template: "Is this funny? [[bool:funny]]"
+
+        # Simple mode - filter on content length
+        expression: "len(input) > 100"
+
+        # Simple mode - filter on metadata
+        expression: "category == 'relevant'"
     """
 
-    type: Literal["Filter"] = "Filter"
-    template_text: str = None
+    model_config = {
+        "discriminator": "type",
+    }
 
-    # Internal state for export (not Pydantic fields, just plain attributes)
-    _excluded_items: Optional[List[Any]] = None
-    _filter_results: Optional[List[Any]] = None
-    _processed_items: Optional[List[Any]] = None
+    type: Literal["Filter"] = "Filter"
+    expression: str = Field(
+        ..., description="Boolean expression to filter items (e.g., 'funny == True')"
+    )
+    
+    omitted_text: str = Field(
+        default=" ... ",
+        description="Text to insert when items are omitted; defaults to ellipsis (...)."
+    )
+
+    template: Optional[str] = Field(
+        default=None, description="Optional LLM template for extraction before filtering"
+    )
+    mode: Optional[Literal["llm", "simple"]] = Field(
+        default=None,
+        description="Filter mode: 'llm' (use template + LLM) or 'simple' (evaluate on item data). Auto-detected if None.",
+    )
+
+    # statistics tracking
+    _total_items: int = PrivateAttr(default=0)
+    _included_count: int = PrivateAttr(default=0)
+    _excluded_count: int = PrivateAttr(default=0)
+    _all_input_items: List[Any] = PrivateAttr(default_factory=list)
+    _included_items: List[Any] = PrivateAttr(default_factory=list)
 
     @property
-    def template(self) -> str:
-        return self.template_text
+    def effective_mode(self) -> str:
+        """Determine the effective mode based on mode field and template."""
+        if self.mode is not None:
+            return self.mode
+        return "llm" if self.template is not None else "simple"
 
-    def validate_template(self):
-        """Validate template has at least one boolean field."""
-        try:
-            # Just check for [[bool: or [[boolean: or [[decide: syntax without parsing
-            bool_pattern = r"\[\[(bool|boolean|decide):"
-            if not re.search(bool_pattern, self.template_text, re.IGNORECASE):
-                raise ValueError(
-                    f"Filter node '{self.name}' template must have at least one boolean completion slot (use [[bool:fieldname]])"
-                )
-            return True
-        except Exception as e:
-            logger.error(f"Template validation error: {e}")
-            raise e
+    def _create_evaluator(self) -> EvalWithCompoundTypes:
+        """Create an evaluator with safe defaults and attribute access enabled."""
+        evaluator = EvalWithCompoundTypes()
 
-    def _identify_filter_field(self) -> str:
-        """Identify which boolean field to use for filtering.
+        # allow safe builtins only
+        evaluator.names = {
+            "len": len,
+            "str": str,
+            "int": int,
+            "float": float,
+            "bool": bool,
+            "True": True,
+            "False": False,
+            "None": None,
+        }
 
-        Returns:
-            str: The field name to use for filtering
-        """
-        # Find all boolean field names using regex
-        # Pattern matches: [[bool:name]], [[boolean:name]], [[decide:name]]
-        bool_pattern = r"\[\[(bool|boolean|decide):(\w+)\]"
-        matches = re.findall(bool_pattern, self.template_text, re.IGNORECASE)
+        return evaluator
 
-        if not matches:
-            raise ValueError(f"Filter node '{self.name}' has no boolean fields")
-
-        # Extract field names (second group from each match)
-        boolean_fields = [m[1] for m in matches]
-
-        # Convention: prefer field named 'filter'
-        if "filter" in boolean_fields:
-            return "filter"
-
-        # Fallback: use last boolean field
-        return boolean_fields[-1]
-
-    def _extract_filter_value(self, result: ChatterResult, filter_field: str) -> bool:
-        """Extract the boolean filter value from a ChatterResult.
+    def _evaluate_expression(self, context: Dict[str, Any]) -> bool:
+        """Safely evaluate expression with given context.
 
         Args:
-            result: ChatterResult from LLM
-            filter_field: Name of the field to extract
+            context: Dictionary of variables available to the expression
 
         Returns:
-            bool: The filter decision (defaults to False if extraction fails)
+            Boolean result of expression evaluation (False on error)
         """
+        evaluator = self._create_evaluator()
+
         try:
-            if hasattr(result, "outputs") and filter_field in result.outputs:
-                return bool(result.outputs[filter_field])
-            elif hasattr(result, "results") and filter_field in result.results:
-                return bool(result.results[filter_field].output)
-            else:
-                logger.warning(
-                    f"Could not find filter field '{filter_field}' in result, defaulting to False (exclude)"
-                )
-                return False
-        except Exception as e:
+            # add context to evaluator
+            evaluator.names.update(context)
+
+            # evaluate expression
+            result = evaluator.eval(self.expression)
+
+            # convert to bool
+            return bool(result)
+
+        except NameNotDefined as e:
+            logger.warning(f"Filter '{self.name}': Undefined name in expression: {e}")
+            return False
+        except AttributeDoesNotExist as e:
             logger.warning(
-                f"Error extracting filter value: {e}, defaulting to False (exclude)"
+                f"Filter '{self.name}': Attribute does not exist in expression: {e}"
             )
             return False
+        except Exception as e:
+            logger.warning(f"Filter '{self.name}': Error evaluating expression: {e}")
+            return False
 
-    async def run(self) -> List[Any]:
-        """Process each item through filter template, split into included/excluded."""
-        await super().run()
+    async def _process_llm_mode(
+        self,
+        items: List[Any],
+        progress_bar: Optional[Any] = None
+    ) -> List[Any]:
+        """Process items using LLM template extraction + expression filtering.
 
-        # Import here to avoid circular import
+        Args:
+            items: Flat list of items to process in this batch
+            progress_bar: Optional tqdm progress bar to update
+
+        Returns:
+            Filtered list of original items where expression evaluated to True
+        """
+        # convert items to Box items for templates
+        boxed_items = []
+        for item in items:
+            if isinstance(item, TrackedItem):
+                boxed_items.append(Box({"input": item.content, "tracked_item": item}))
+            elif isinstance(item, dict):
+                boxed_items.append(Box(item))
+            else:
+                boxed_items.append(Box({"input": item}))
+
+        # filter context to remove BatchList objects
         from .batch import BatchList
 
-        input_data = self.context[self.inputs[0]] if self.inputs else None
-        if not input_data:
-            raise Exception("Filter node must have input data")
+        filtered_context = {
+            k: v for k, v in self.context.items() if not isinstance(v, BatchList)
+        }
 
-        if isinstance(input_data, BatchList):
-            raise Exception("Filter node does not support batch input")
+        # run LLM for each item to extract fields
+        llm_results = [None] * len(boxed_items)
 
-        items = await self.get_items()
-        filtered_context = self.context
+        # Use passed-in progress bar if available, otherwise create local one
+        pbar = progress_bar
+        if pbar is None:
+            # Create local progress bar for backward compatibility (non-batched case)
+            if self.dag.config.show_progress:
+                from tqdm import tqdm
+                import sys
+                pbar = tqdm(
+                    total=len(boxed_items),
+                    desc=f"{self.type} '{self.name}'",
+                    unit="item",
+                    file=sys.stderr
+                )
 
-        # Store for export
-        self._processed_items = items
-
-        # Identify which field to use for filtering
-        filter_field = self._identify_filter_field()
-        logger.info(
-            f"Filter node '{self.name}' using field '{filter_field}' for filtering"
-        )
-
-        # Process all items concurrently
-        results = [None] * len(items)
-
-        # Use progress bar context manager
-        with self.progress_bar(items) as pbar:
+        try:
             async with anyio.create_task_group() as tg:
-                for idx, item in enumerate(items):
+                for idx, item in enumerate(boxed_items):
 
                     async def run_and_store(index=idx, item=item, progress_bar=pbar):
                         async with semaphore:
-                            # Get LLM kwargs using helper method
-                            extra_kwargs = self.get_llm_kwargs()
-
                             try:
-                                # Run the filter template
-                                chatter_result = await managed_llm_call(
+                                extra_kwargs = self.get_llm_kwargs()
+                                llm_results[index] = await managed_llm_call(
                                     node_name=self.name,
                                     config=self.dag.config,
-                                    llm_func=chatter_async,
+                                    llm_func=default_map_task,
                                     item_index=index,
-                                    multipart_prompt=self.template,
+                                    template=self.template,
                                     context={**filtered_context, **item},
                                     model=self.get_model(),
                                     credentials=self.dag.config.llm_credentials,
-                                    extra_kwargs=extra_kwargs,
+                                    **extra_kwargs,
                                 )
-                                results[index] = chatter_result
                             except Exception as e:
-                                # catch-all for any non-struckdown errors
                                 logger.error(
-                                    f"Unexpected error in node '{self.name}' for item {index}: {e}"
+                                    f"Filter '{self.name}': Error in LLM call for item {index}: {e}"
                                 )
-                                # default to skip + continue for unknown errors
-                                results[index] = None
+                                raise
                             finally:
-                                # Update progress bar on completion
                                 if progress_bar is not None:
                                     progress_bar.update(1)
 
                     tg.start_soon(run_and_store)
+        finally:
+            # Only close progress bar if we created it locally
+            if progress_bar is None and pbar is not None:
+                pbar.close()
 
-        # accumulate costs from all filter results
-        for result in results:
+        # accumulate costs from all results and store for cache statistics
+        for result in llm_results:
             if result is not None:
                 self._accumulate_costs(result)
+                self._llm_results.append(result)
 
-        # Store all results for export
-        self._filter_results = results
+        # now filter based on expression
+        included = []
+        for idx, (item, llm_result) in enumerate(zip(items, llm_results)):
+            if llm_result is None:
+                logger.debug(f"Filter '{self.name}': Item {idx} has no LLM result, excluding")
+                self._excluded_count += 1
+                continue
 
-        # Split items based on filter field
-        included_items = []
-        excluded_items = []
+            # build evaluation context from LLM result
+            # the expression references extracted fields directly (e.g., "funny == True")
+            context = {}
 
-        for idx, (item, result) in enumerate(zip(items, results)):
-            filter_value = self._extract_filter_value(result, filter_field)
+            # add extracted fields from ChatterResult
+            if hasattr(llm_result, "response"):
+                response = llm_result.response
+                if isinstance(response, dict):
+                    # Box or dict response - spread fields into context
+                    context.update(response)
+                elif hasattr(response, "__dict__"):
+                    # object with attributes
+                    context.update(response.__dict__)
 
-            # Get the original TrackedItem from the item dict
-            if hasattr(item, "tracked_item") and isinstance(
-                item.tracked_item, TrackedItem
-            ):
-                tracked = item.tracked_item
-            elif "tracked_item" in item:
-                tracked = item["tracked_item"]
-            elif isinstance(item, TrackedItem):
-                tracked = item
+            # add outputs if available
+            if hasattr(llm_result, "outputs"):
+                context.update(llm_result.outputs)
+
+            # also make the full ChatterResult available
+            context["_chatter_result"] = llm_result
+
+            # evaluate expression
+            eval_result = self._evaluate_expression(context)
+            logger.debug(f"Filter '{self.name}': Item {idx} → {eval_result}")
+
+            if eval_result:
+                included.append(item)
+                self._included_count += 1
             else:
-                # Fallback: create TrackedItem from content
-                content = (
-                    item.get("input", str(item))
-                    if isinstance(item, dict)
-                    else str(item)
-                )
-                tracked = TrackedItem(
-                    content=content, source_id=f"item_{idx}", metadata={}
-                )
+                # create new TrackedItem to preserve original metadata
+                if isinstance(item, TrackedItem):
+                    filtered_item = TrackedItem(
+                        content=self.omitted_text,
+                        id=item.id,
+                        sources=item.sources,
+                        metadata={**(item.metadata or {}), 'filtered': True}
+                    )
+                    included.append(filtered_item)
+                else:
+                    # non-TrackedItem, keep as-is
+                    included.append(item)
+                self._excluded_count += 1
 
-            if filter_value:
-                included_items.append(tracked)
-            else:
-                excluded_items.append(tracked)
+        self._total_items += len(items)
+        self._all_input_items.extend(items)
+        self._included_items.extend(included)
 
-        # Store excluded items for export
-        self._excluded_items = excluded_items
-
-        # Store included items as output
-        self.output = included_items
-
-        logger.info(
-            f"Filter '{self.name}': {len(included_items)} included, {len(excluded_items)} excluded"
+        logger.debug(
+            f"Filter '{self.name}' (LLM mode): {len(included)}/{len(items)} items included"
         )
 
-        return self.output
+        return included
+
+    async def _process_simple_mode(
+        self,
+        items: List[Any],
+        progress_bar: Optional[Any] = None
+    ) -> List[Any]:
+        """Process items using direct expression evaluation on item data.
+
+        Args:
+            items: Flat list of items to process in this batch
+            progress_bar: Optional tqdm progress bar to update
+
+        Returns:
+            Filtered list of items where expression evaluated to True
+        """
+        included = []
+
+        for idx, item in enumerate(items):
+            # build evaluation context from item
+            context = {}
+
+            if isinstance(item, TrackedItem):
+                # make content available as 'input'
+                context["input"] = item.content
+
+                # spread metadata into context
+                if item.metadata:
+                    context.update(item.metadata)
+
+                # also provide full item
+                context["tracked_item"] = item
+            elif isinstance(item, dict):
+                # dict item - spread into context
+                context.update(item)
+                # also make available as 'input' if there's a content-like field
+                if "content" in item:
+                    context["input"] = item["content"]
+            else:
+                # plain value - make available as 'input'
+                context["input"] = item
+
+            # evaluate expression
+            eval_result = self._evaluate_expression(context)
+            logger.debug(f"Filter '{self.name}': Item {idx} → {eval_result}")
+
+            if eval_result:
+                included.append(item)
+                self._included_count += 1
+            else:
+                # create new TrackedItem to preserve original metadata
+                if isinstance(item, TrackedItem):
+                    filtered_item = TrackedItem(
+                        content=self.omitted_text,
+                        id=item.id,
+                        sources=item.sources,
+                        metadata={**(item.metadata or {}), 'filtered': True}
+                    )
+                    included.append(filtered_item)
+                else:
+                    # non-TrackedItem, keep as-is
+                    included.append(item)
+                self._excluded_count += 1
+
+            # Update progress bar after processing each item
+            if progress_bar is not None:
+                progress_bar.update(1)
+
+        self._total_items += len(items)
+        self._all_input_items.extend(items)
+        self._included_items.extend(included)
+
+        logger.debug(
+            f"Filter '{self.name}' (simple mode): {len(included)}/{len(items)} items included"
+        )
+
+        return included
+
+    async def process_items(
+        self,
+        items: List[Any],
+        progress_bar: Optional[Any] = None
+    ) -> List[Any]:
+        """Filter items based on mode and expression.
+
+        Args:
+            items: Flat list of items to process in this batch
+            progress_bar: Optional tqdm progress bar to update
+
+        Returns:
+            Filtered list of items where expression evaluated to True
+        """
+        mode = self.effective_mode
+
+        if mode == "llm":
+            return await self._process_llm_mode(items, progress_bar)
+        else:
+            return await self._process_simple_mode(items, progress_bar)
 
     def result(self) -> Dict[str, Any]:
-        """Returns dict with metadata, included/excluded items and filter statistics."""
-        # Get base metadata from parent
+        """Returns dict with metadata and filter statistics."""
         result = super().result()
 
+        result["metadata"]["mode"] = self.effective_mode
+        result["metadata"]["expression"] = self.expression
+        result["metadata"]["total_items"] = self._total_items
+        result["metadata"]["included_count"] = self._included_count
+        result["metadata"]["excluded_count"] = self._excluded_count
+
+        # build DataFrame of included items for HTML display
         included_rows = []
-        if self.output:
-            for idx, item in enumerate(self.output):
-                included_rows.append(
-                    {
-                        "index": idx,
-                        "source_id": item.source_id,
-                        "content": item.content,
-                        "metadata": item.metadata,
-                    }
-                )
+        for idx, item in enumerate(self._included_items):
+            if isinstance(item, TrackedItem):
+                content = item.content
+                source_id = item.id
+            elif isinstance(item, dict) and "content" in item:
+                content = item["content"]
+                source_id = item.get("id", "N/A")
+            else:
+                content = str(item)
+                source_id = "N/A"
 
-        excluded_rows = []
-        if self._excluded_items:
-            for idx, item in enumerate(self._excluded_items):
-                excluded_rows.append(
-                    {
-                        "index": idx,
-                        "source_id": getattr(item, "source_id", None),
-                        "content": getattr(item, "content", None),
-                        "metadata": getattr(item, "metadata", None),
-                    }
-                )
+            # truncate content for display
+            display_content = (
+                content[:100] + "..." if len(content) > 100 else content
+            )
 
-        # Add Filter-specific data
-        result["included"] = pd.DataFrame(included_rows)
-        result["excluded"] = pd.DataFrame(excluded_rows)
-        result["filter_field"] = (
-            self._identify_filter_field() if self.template_text else None
+            included_rows.append(
+                {
+                    "index": idx,
+                    "source_id": source_id,
+                    "content": display_content,
+                }
+            )
+
+        result["included_items_df"] = (
+            pd.DataFrame(included_rows) if included_rows else pd.DataFrame()
         )
-        result["metadata"]["num_included"] = len(included_rows)
-        result["metadata"]["num_excluded"] = len(excluded_rows)
+
+        # stats DataFrame for display
+        stats_data = {
+            "mode": [self.effective_mode],
+            "expression": [self.expression],
+            "total_items": [self._total_items],
+            "included_count": [self._included_count],
+            "excluded_count": [self._excluded_count],
+        }
+        result["stats_df"] = pd.DataFrame(stats_data)
 
         return result
 
     def export(self, folder: Path, unique_id: str = ""):
-        """Export Filter node with included/excluded items and all prompts."""
+        """Export Filter node with statistics and filtered items."""
         super().export(folder, unique_id=unique_id)
 
-        # Write template
-        if self.template_text:
-            (folder / "prompt_template.sd.md").write_text(self.template_text)
+        # write mode and expression
+        (folder / "mode.txt").write_text(self.effective_mode)
+        (folder / "expression.txt").write_text(self.expression)
 
-        # Write summary statistics
-        n_included = len(self.output) if self.output else 0
-        n_excluded = len(self._excluded_items) if self._excluded_items else 0
-        n_total = n_included + n_excluded
+        # write template if in LLM mode
+        if self.template:
+            (folder / "template.sd").write_text(self.template)
 
-        pct_included = (n_included / n_total * 100) if n_total > 0 else 0
-        pct_excluded = (n_excluded / n_total * 100) if n_total > 0 else 0
+        # write statistics
+        stats = {
+            "mode": self.effective_mode,
+            "expression": self.expression,
+            "total_items": self._total_items,
+            "included_count": self._included_count,
+            "excluded_count": self._excluded_count,
+        }
 
-        summary = f"""Filter Summary
-==============
-Total items processed: {n_total}
-Included (filter=True): {n_included} ({pct_included:.1f}%)
-Excluded (filter=False): {n_excluded} ({pct_excluded:.1f}%)
+        stats_df = pd.DataFrame([stats])
+        stats_df.to_csv(folder / "filter_stats.csv", index=False)
 
-Filter field: {self._identify_filter_field() if self.template_text else 'unknown'}
-"""
-        (folder / "filter_summary.txt").write_text(summary)
-
-        # Export included items (outputs folder)
-        if self.output:
+        # export included items to outputs/ folder
+        if self._included_items:
             outputs_folder = folder / "outputs"
             outputs_folder.mkdir(exist_ok=True)
 
-            for idx, item in enumerate(self.output):
-                safe_id = item.safe_id
-                (outputs_folder / f"{idx:04d}_{safe_id}.txt").write_text(item.content)
+            for idx, item in enumerate(self._included_items):
+                # get item ID for filename
+                if isinstance(item, TrackedItem):
+                    item_id = item.safe_id
+                    content = item.content
+                else:
+                    item_id = f"item_{idx}"
+                    content = str(item)
 
-                if item.metadata:
-                    (outputs_folder / f"{idx:04d}_{safe_id}_metadata.json").write_text(
-                        item.to_json()
-                    )
+                output_file = outputs_folder / f"{idx:04d}_{item_id}.txt"
+                output_file.write_text(content)
 
-        # Export excluded items (excluded folder)
-        if self._excluded_items:
-            excluded_folder = folder / "excluded"
-            excluded_folder.mkdir(exist_ok=True)
-
-            for idx, item in enumerate(self._excluded_items):
-                safe_id = item.safe_id
-                (excluded_folder / f"{idx:04d}_{safe_id}.txt").write_text(item.content)
-
-                if item.metadata:
-                    (excluded_folder / f"{idx:04d}_{safe_id}_metadata.json").write_text(
-                        item.to_json()
-                    )
-
-        # Export all prompts and responses (prompts folder)
-        if self._filter_results and self._processed_items:
-            from ..utils import export_chatter_result
-
-            prompts_folder = folder / "prompts"
-            prompts_folder.mkdir(exist_ok=True)
-
-            for idx, (item, result) in enumerate(
-                zip(self._processed_items, self._filter_results)
-            ):
-                # Get source_id for filename
-                safe_id = TrackedItem.make_safe_id(TrackedItem.extract_source_id(item))
-                file_prefix = f"{idx:04d}_{safe_id}"
-
-                # Export using utility function
-                export_chatter_result(result, prompts_folder, file_prefix)
+                # export metadata if TrackedItem
+                if isinstance(item, TrackedItem) and item.metadata:
+                    metadata_file = outputs_folder / f"{idx:04d}_{item_id}_metadata.json"
+                    metadata_file.write_text(item.to_json())
