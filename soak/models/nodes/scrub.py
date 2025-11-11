@@ -14,7 +14,6 @@ from joblib import Memory
 from pydantic import Field, PrivateAttr
 
 from soak.models.base import TrackedItem
-from soak.models.text_utils import escape_struckdown_chars
 
 from .base import ItemsNode
 
@@ -518,9 +517,8 @@ class Scrub(ItemsNode):
                     self._filth_log.append(filth_entry)
 
             # create new TrackedItem with scrubbed content
-            # escape @ symbols to prevent struckdown parsing errors
+            # note: escaping is now handled automatically by Jinja2 finalize in struckdown
             final_content = scrubbed_content if self.redact else content
-            final_content = escape_struckdown_chars(final_content)
 
             new_item = TrackedItem(
                 content=final_content,

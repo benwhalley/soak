@@ -292,8 +292,18 @@ def get_template_variables(template_string: str) -> Set[str]:
 
 
 def render_strict_template(template_str: str, context: dict) -> str:
-    """Render Jinja2 template with StrictUndefined (fails on missing variables)."""
-    env = Environment(undefined=StrictUndefined)
+    """Render Jinja2 template with StrictUndefined and auto-escaping for struckdown syntax.
+
+    Uses struckdown's finalize function to automatically escape special syntax in
+    context variables. This prevents prompt injection attacks where user-provided
+    content could contain struckdown commands.
+    """
+    from struckdown import struckdown_finalize
+
+    env = Environment(
+        undefined=StrictUndefined,
+        finalize=struckdown_finalize,  # Auto-escape struckdown syntax
+    )
     template = env.from_string(template_str)
     return template.render(**context)
 

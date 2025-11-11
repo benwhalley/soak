@@ -10,23 +10,9 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 ELLIPSIS_RE = re.compile(r"\.{2,4}|…")
 
 
-def escape_struckdown_chars(text: str) -> str:
-    """Escape special characters that conflict with struckdown syntax.
-
-    Struckdown uses @ for special directives, so we need to escape @ symbols
-    in user input to prevent parsing errors.
-
-    Args:
-        text: Input text that may contain @ symbols
-
-    Returns:
-        Text with @ escaped to \@
-    """
-    if not isinstance(text, str):
-        return text
-
-    # escape @ symbols (struckdown directive marker)
-    return text.replace("@", r"\@")
+# Note: Manual escaping of struckdown syntax has been removed.
+# Escaping is now handled automatically by Jinja2's finalize function in struckdown package.
+# See struckdown.struckdown_finalize() and soak.models.dag.render_strict_template()
 
 
 def make_windows(
