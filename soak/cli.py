@@ -360,7 +360,7 @@ def run(
             raise typer.Exit(1)
         else:
             logger.warning(
-                f"Overwriting existing output files/folders: {', '.join(existing)}"
+                f"Overwriting existing output folder: {', '.join(existing)}"
             )
 
     try:
@@ -541,13 +541,14 @@ def run(
     # Write output files
     typer.echo(f"Writing output files")
     
-    with open(output + ".json", "w", encoding="utf-8") as f:
+    json_path = dump_path / f"{output}.json"
+    with open(json_path, "w", encoding="utf-8") as f:
         f.write(jsoncontent)
-        logger.info(f"Wrote json output to {output}.json")
+        logger.info(f"Wrote json output to {json_path}")
 
     for tmpl in template:
         template_stem = Path(resolve_template(tmpl)).stem
-        html_filename = f"{output}_{template_stem}.html"
+        html_filename = dump_path / f"{output}_{template_stem}.html"
         logger.info(
             f"Wrote HTML output with template '{template_stem}' to {html_filename}"
         )
