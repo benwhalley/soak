@@ -12,10 +12,13 @@ from soak.models.nodes import (
     Batch,
     Classifier,
     Filter,
+    GroupBy,
     Map,
     Reduce,
+    Scrub,
     Split,
     Transform,
+    Ungroup,
     VerifyQuotes,
 )
 
@@ -30,10 +33,13 @@ for node_class in [
     Batch,
     Classifier,
     Filter,
+    GroupBy,
     Map,
     Reduce,
+    Scrub,
     Split,
     Transform,
+    Ungroup,
     VerifyQuotes,
 ]:
     node_class.model_rebuild(force=True)
@@ -83,6 +89,20 @@ def load_template_bundle(template: Union[Path, str]) -> QualitativeAnalysisPipel
     for i in pipeline.nodes:
         i.validate_template()
         i.dag = pipeline
+
+    # check if pipeline includes a Scrub node and warn if not
+    has_scrub_node = any(node.type == "Scrub" for node in pipeline.nodes)
+    if not has_scrub_node:
+        logger.warning(
+            "\n⚠️  Pipeline does not include a Scrub node for PII detection/redaction.\n"
+            "   Consider adding a Scrub node to protect sensitive information:\n"
+            "   \n"
+            "   nodes:\n"
+            "     - name: scrubbed_docs\n"
+            "       type: Scrub\n"
+            "       inputs: [documents]\n"
+            "       redact: true\n"
+        )
 
     return pipeline
 

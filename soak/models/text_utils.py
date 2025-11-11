@@ -10,6 +10,25 @@ from typing import Any, Dict, List, Literal, Optional, Tuple
 ELLIPSIS_RE = re.compile(r"\.{2,4}|…")
 
 
+def escape_struckdown_chars(text: str) -> str:
+    """Escape special characters that conflict with struckdown syntax.
+
+    Struckdown uses @ for special directives, so we need to escape @ symbols
+    in user input to prevent parsing errors.
+
+    Args:
+        text: Input text that may contain @ symbols
+
+    Returns:
+        Text with @ escaped to \@
+    """
+    if not isinstance(text, str):
+        return text
+
+    # escape @ symbols (struckdown directive marker)
+    return text.replace("@", r"\@")
+
+
 def make_windows(
     text: str,
     window_size: Optional[int] = None,

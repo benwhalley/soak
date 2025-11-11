@@ -188,12 +188,18 @@ uv run soak show template default > my_template.html
 
 - `zs` - Zero-shot thematic analysis
 - `zspe` - Pre-extraction thematic analysis
-- `classifier` - Classification workflow
-- `demo` - Simple demonstration
+- `classifier` - Multi-level classification with agreement analysis
+- `classifier_tabular` - Classification for spreadsheet data (CSV/Excel)
+- `demo` - Simple demonstration pipeline
+- `verify` - Quote verification workflow
+- `test` - Testing pipeline
 
 **Built-in Templates:**
 
-- `default.html` - Standard results view
+- `pipeline.html` - Standard pipeline results view (default)
+- `simple.html` - Simplified results view
+- `narrative.html` - Narrative-focused output
+- `comparison.html` - Multi-run comparison view
 
 ### dump
 

@@ -210,6 +210,10 @@ class CompletionDAGNode(DAGNode):
         self._prompt_tokens += result.prompt_tokens
         self._completion_tokens += result.completion_tokens
 
+        # notify global cost tracker if available
+        if self.dag and self.dag.cost_tracker:
+            self.dag.cost_tracker.add_result(result)
+
     def get_llm_kwargs(self) -> Dict[str, Any]:
         """Build extra_kwargs dict for LLM API calls.
 
@@ -278,12 +282,26 @@ class ItemsNode(DAGNode):
                 total_items = len(input_data)
             else:
                 total_items = 1
-            progress_bar = tqdm(
-                total=total_items,
-                desc=f"{self.type} '{self.name}'",
-                unit="item",
-                file=sys.stderr
-            )
+
+            # Use CostProgressBar if this is a CompletionDAGNode with cost tracking
+            if isinstance(self, CompletionDAGNode) and self.dag.cost_tracker:
+                from soak.models.progress import CostProgressBar
+                progress_bar = CostProgressBar(
+                    tracker=self.dag.cost_tracker,
+                    node_name=self.name,
+                    total=total_items,
+                    unit="item",
+                )
+            else:
+                # Pad description to match CostProgressBar alignment
+                desc = f"{self.type} '{self.name}'".ljust(35)
+                progress_bar = tqdm(
+                    total=total_items,
+                    desc=desc,
+                    unit="item",
+                    file=sys.stderr,
+                    ncols=120
+                )
 
         try:
             result = await self._run_recursive(input_data, progress_bar)
@@ -464,11 +482,30 @@ class ItemsNode(DAGNode):
             yield None
             return
 
-        from tqdm import tqdm
-
         node_type = node_type or self.type
-        desc = f"{node_type} '{self.name}'"
-        pbar = tqdm(total=len(items), desc=desc, unit="item")
+        node_name = f"{node_type} '{self.name}'" if node_type != self.type else self.name
+
+        # Use CostProgressBar if this is a CompletionDAGNode with cost tracking
+        if isinstance(self, CompletionDAGNode) and self.dag.cost_tracker:
+            from soak.models.progress import CostProgressBar
+            pbar = CostProgressBar(
+                tracker=self.dag.cost_tracker,
+                node_name=node_name,
+                total=len(items),
+                unit="item",
+            )
+        else:
+            from tqdm import tqdm
+            # Pad description to match CostProgressBar alignment
+            padded_name = node_name.ljust(35)
+            pbar = tqdm(
+                total=len(items),
+                desc=padded_name,
+                unit="item",
+                file=sys.stderr,
+                ncols=120
+            )
+
         try:
             yield pbar
         finally:

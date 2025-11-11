@@ -1,11 +1,13 @@
 """Transform node for single-item LLM transformations."""
 
 import logging
+import sys
 from pathlib import Path
-from typing import Any, Dict, List, Literal
+from typing import Any, Dict, List, Literal, Union
 
 from pydantic import Field
 from struckdown import StruckdownLLMError, chatter_async
+from tqdm import tqdm
 
 from soak.error_handlers import managed_llm_call
 from soak.models.base import (
@@ -27,6 +29,46 @@ class Transform(ItemsNode, CompletionDAGNode):
     type: Literal["Transform"] = "Transform"
     template: str = Field(default="{{input}} <prompt>: [[output]]")
 
+    async def run(self) -> Union[List[Any], Any]:
+        """Override run() to set progress bar total to 1 (Transform makes 1 LLM call).
+
+        Transform processes all input items as a single batch with one LLM call,
+        so the progress bar should show 1/1 regardless of input count.
+        """
+        await super(ItemsNode, self).run()  # Call DAGNode.run(), skip ItemsNode.run()
+        input_data = self.get_input_data()
+
+        # Create progress bar with total=1 (Transform always makes exactly 1 LLM call)
+        progress_bar = None
+        if self.dag.config.show_progress:
+            # Use CostProgressBar if this is a CompletionDAGNode with cost tracking
+            if isinstance(self, CompletionDAGNode) and self.dag.cost_tracker:
+                from soak.models.progress import CostProgressBar
+                progress_bar = CostProgressBar(
+                    tracker=self.dag.cost_tracker,
+                    node_name=self.name,
+                    total=1,  # Always 1 for Transform
+                    unit="item",
+                )
+            else:
+                # Pad description to match CostProgressBar alignment
+                desc = f"{self.type} '{self.name}'".ljust(35)
+                progress_bar = tqdm(
+                    total=1,  # Always 1 for Transform
+                    desc=desc,
+                    unit="item",
+                    file=sys.stderr,
+                    ncols=120
+                )
+
+        try:
+            result = await self._run_recursive(input_data, progress_bar)
+            self.output = result
+            return result
+        finally:
+            if progress_bar:
+                progress_bar.close()
+
     async def process_items(self, items: List[Any], progress_bar: Any = None) -> List[Any]:
         """Process exactly one item (Transform requires single-item batches).
 
@@ -37,16 +79,24 @@ class Transform(ItemsNode, CompletionDAGNode):
         Returns:
             List with single ChatterResult
         """
-        assert len(items) == 1, (
-            f"Transform node '{self.name}' requires exactly one input item per batch, "
-            f"got {len(items)}. Use Batch with batch_size=1 or GroupBy before Transform."
-        )
+        
+        # assert len(items) == 1, (
+        #     f"Transform node '{self.name}' requires exactly one input item per batch, "
+        #     f"got {len(items)}. Use Batch with batch_size=1 or GroupBy before Transform."
+        # )
 
         # Get items with proper context
-        items_with_context = await self.get_items()
-        assert len(items_with_context) == 1, "Context mismatch in Transform"
+            
+        
+        input_context = {node: self.dag.nodes_dict[node].output for node in self.inputs}
+        merged_context = {**self.context, **input_context}
 
-        rt = render_strict_template(self.template, {**self.context, **items_with_context[0]})
+        # Add node/DAG reference for quote resolution via DAG traversal
+        # This allows collect_input_codes to find codes in ancestor nodes
+        merged_context['_node'] = self
+        merged_context['_dag'] = self.dag
+
+        rt = render_strict_template(self.template, {**self.context, **merged_context})
 
         # Get LLM kwargs using helper method
         extra_kwargs = self.get_llm_kwargs()
@@ -54,14 +104,6 @@ class Transform(ItemsNode, CompletionDAGNode):
         # Call chatter with semaphore to limit concurrency
         async with semaphore:
             try:
-                # Include ALL node outputs in context for post_process to find previous codes
-                full_dag_context = {
-                    node.name: node.output
-                    for node in self.dag.nodes
-                    if node.output is not None
-                }
-                merged_context = {**self.context, **full_dag_context, **items_with_context[0]}
-
                 result = await managed_llm_call(
                     node_name=self.name,
                     config=self.dag.config,
@@ -83,6 +125,14 @@ class Transform(ItemsNode, CompletionDAGNode):
         if result is not None:
             self._accumulate_costs(result)
             self._llm_results.append(result)
+
+            # update progress bar with per-node cost if using CostProgressBar
+            from soak.models.progress import CostProgressBar
+            if isinstance(progress_bar, CostProgressBar):
+                progress_bar.update_cost(
+                    result.fresh_cost,
+                    result.prompt_tokens + result.completion_tokens
+                )
 
         # update progress bar after processing the item
         if progress_bar is not None:

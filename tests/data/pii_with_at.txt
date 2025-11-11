@@ -1,0 +1,9 @@
+Patient Interview
+
+NAME: John Smith
+EMAIL: john.smith@example.com
+PHONE: 555-123-4567
+
+The patient contacted us via email @ john.smith@example.com and said they had been experiencing symptoms since January 2020. They work @ Devon County Council in the Adult Social Care Division.
+
+Additional contact: sarah.jones@nhs.uk

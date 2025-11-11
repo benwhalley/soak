@@ -469,6 +469,7 @@ def run(
 
     try:
         analysis, errors = asyncio.run(pipeline.run())
+
         if errors:
             raise typer.BadParameter(f"Pipeline execution failed:\n{errors}")
 

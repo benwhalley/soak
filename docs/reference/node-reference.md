@@ -499,6 +499,122 @@ Summarize these {{input|length}} chunks together:
 {% endfor %}
 ```
 
+### GroupBy
+
+Group items by one or more field values, creating nested batch structures.
+
+**Type:** `GroupBy`
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `name` | str | Required | Node name |
+| `inputs` | List[str] | Required | Input nodes |
+| `group_by` | List[str] | Required | Field names to group by |
+
+**Input:** List of items (TrackedItem or dict with metadata/outputs)
+**Output:** BatchList (nested if multiple group_by fields)
+
+**How It Works:**
+
+- Groups items by values in specified fields
+- Fields can be from metadata, outputs, or ChatterResult attributes
+- Multiple fields create nested BatchLists
+- Each batch contains items sharing same field values
+
+**Single Field Example:**
+
+```yaml
+- name: by_category
+  type: GroupBy
+  group_by:
+    - category
+  inputs:
+    - classified_items
+```
+
+If items have categories ["health", "tech", "health"], creates 2 batches:
+- Batch 1: Items with category="health"
+- Batch 2: Items with category="tech"
+
+**Multi-Field Example:**
+
+```yaml
+- name: by_category_and_sentiment
+  type: GroupBy
+  group_by:
+    - category
+    - sentiment
+  inputs:
+    - classified_items
+```
+
+Creates nested structure:
+- health → positive → [items]
+- health → negative → [items]
+- tech → positive → [items]
+- tech → neutral → [items]
+
+**Use Cases:**
+
+- Process items differently based on classification
+- Analyze patterns within categories
+- Create hierarchical groupings
+- Prepare for category-specific transformations
+
+### Ungroup
+
+Flatten all BatchList nesting levels, returning a flat list.
+
+**Type:** `Ungroup`
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `name` | str | Required | Node name |
+| `inputs` | List[str] | Required | Input nodes (must be BatchList) |
+
+**Input:** BatchList (any nesting level)
+**Output:** Flat list of items
+
+**How It Works:**
+
+- Recursively flattens all batch nesting
+- Preserves original item order
+- Removes all grouping structure
+
+**Example:**
+
+```yaml
+- name: flattened
+  type: Ungroup
+  inputs:
+    - grouped_items
+```
+
+Converts nested structure:
+```
+[
+  [item1, item2],      # Batch 1
+  [item3],             # Batch 2
+  [[item4], [item5]]   # Nested batches
+]
+```
+
+To flat list:
+```
+[item1, item2, item3, item4, item5]
+```
+
+**Use Cases:**
+
+- Remove grouping after category-specific processing
+- Prepare batched results for non-batch-aware nodes
+- Flatten before final output
+- Combine results from multiple batch levels
+
 ### Filter
 
 Filter items based on a boolean expression (no LLM call).
@@ -516,28 +632,30 @@ Filter items based on a boolean expression (no LLM call).
 **Input:** List of items (TrackedItem or ChatterResult)
 **Output:** Filtered list (items where expression is truthy)
 
-**Expression Context:**
+**Filter Modes:**
 
-- Use `item` as a dictionary where keys are input node names
-- Access attributes with `.response`, `.outputs`, etc.
-- Safe builtins: `len`, `str`, `int`, `float`, `bool`, `True`, `False`, `None`
+1. **LLM Mode** - Run template through LLM, filter on extracted fields
+2. **Simple Mode** - Filter directly on item data
 
-**Example:**
+Mode auto-detected: if `template` provided, uses LLM mode.
+
+**LLM Mode Example:**
 
 ```yaml
-# Step 1: LLM creates boolean decision
-- name: relevance_check
-  type: Map
-  inputs: [chunks]
----#relevance_check
-Is this text relevant?
-[[bool:is_relevant]]
-
-# Step 2: Filter using item dictionary
 - name: filtered
   type: Filter
-  expression: "item['relevance_check'].response is True"
-  inputs: [relevance_check]
+  template: "Is this relevant? [[bool:is_relevant]]"
+  expression: "is_relevant == True"
+  inputs: [chunks]
+```
+
+**Simple Mode Example:**
+
+```yaml
+- name: long_chunks
+  type: Filter
+  expression: "len(input) > 100"
+  inputs: [chunks]
 ```
 
 **Common Expressions:**

@@ -30,6 +30,7 @@ from soak.document_utils import (
     unpack_zip_to_temp_paths_if_needed,
 )
 from soak.models.base import SOAK_MAX_RUNTIME, TrackedItem, get_default_llm_credentials
+from soak.models.cost_tracker import GlobalCostTracker
 from soak.export_utils import export_to_csv
 
 if TYPE_CHECKING:
@@ -318,6 +319,7 @@ DAGNodeUnion = Annotated[
         "Filter",
         "GroupBy",
         "Ungroup",
+        "Scrub",
     ],
     Field(discriminator="type"),
 ]
@@ -349,6 +351,7 @@ class DAG(BaseModel):
 
     nodes: List["DAGNodeUnion"] = Field(default_factory=list)
     config: Optional[DAGConfig] = Field(default_factory=DAGConfig, exclude=False)
+    cost_tracker: Optional[GlobalCostTracker] = Field(default=None, exclude=True)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -356,6 +359,9 @@ class DAG(BaseModel):
         for k, v in self.default_config.items():
             if hasattr(self.config, k) and k not in self.config.model_fields_set:
                 setattr(self.config, k, v)
+        # initialize cost tracker
+        if self.cost_tracker is None:
+            self.cost_tracker = GlobalCostTracker()
 
     @model_validator(mode="after")
     def validate_node_templates(self) -> "DAG":

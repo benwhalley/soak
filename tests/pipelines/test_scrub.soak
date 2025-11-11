@@ -1,0 +1,37 @@
+name: test_scrub
+
+nodes:
+  # test basic scrubbing with default detectors (excludes unsupported ones by default)
+  - name: scrub_default
+    type: Scrub
+    detectors:
+      - scrubadub.detectors.*
+    locale: en_GB
+    redact: true
+    log_filth: true
+
+  # test scrubbing with specific detectors
+  - name: scrub_phone_email
+    type: Scrub
+    detectors:
+      - scrubadub.detectors.PhoneDetector
+      - scrubadub.detectors.EmailDetector
+    redact: true
+    log_filth: true
+
+  # test detection without redaction
+  - name: scrub_detect_only
+    type: Scrub
+    detectors:
+      - scrubadub.detectors.*
+    redact: false
+    log_filth: true
+
+---#scrub_default
+{{input}}
+
+---#scrub_phone_email
+{{input}}
+
+---#scrub_detect_only
+{{input}}

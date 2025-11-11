@@ -71,6 +71,11 @@ class Map(ItemsNode, CompletionDAGNode):
             k: v for k, v in self.context.items() if not isinstance(v, BatchList)
         }
 
+        # Add node/DAG reference for quote resolution via DAG traversal
+        # This allows collect_input_codes to find codes in ancestor nodes
+        filtered_context['_node'] = self
+        filtered_context['_dag'] = self.dag
+
         results = [None] * len(boxed_items)
 
         # Use passed-in progress bar if available, otherwise create local one
@@ -80,11 +85,13 @@ class Map(ItemsNode, CompletionDAGNode):
             if self.dag.config.show_progress:
                 from tqdm import tqdm
                 import sys
+                desc = f"{self.type} '{self.name}'".ljust(35)
                 pbar = tqdm(
                     total=len(boxed_items),
-                    desc=f"{self.type} '{self.name}'",
+                    desc=desc,
                     unit="item",
-                    file=sys.stderr
+                    file=sys.stderr,
+                    ncols=120
                 )
 
         try:
@@ -137,6 +144,14 @@ class Map(ItemsNode, CompletionDAGNode):
                 if result is not None:
                     self._accumulate_costs(result)
                     self._llm_results.append(result)
+
+                    # update progress bar with per-node cost if using CostProgressBar
+                    from soak.models.progress import CostProgressBar
+                    if isinstance(pbar, CostProgressBar):
+                        pbar.update_cost(
+                            result.fresh_cost,
+                            result.prompt_tokens + result.completion_tokens
+                        )
 
         return results
 

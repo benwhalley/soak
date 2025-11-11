@@ -31,4 +31,4 @@ Respond `False` if the quote is
 
 Briefly, make notes on whether the quote is contained within the source text: [[explanation]]
 
-Now pick True/False. Is the quote found in the source? [[bool:is_contained]]
+Now pick True/False. Is the quote found in the source? [[!bool:is_contained]]

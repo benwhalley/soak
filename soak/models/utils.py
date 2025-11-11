@@ -439,22 +439,134 @@ def fuzzy_match_code_slug(
 
 
 def collect_input_codes(context: Dict[str, Any]) -> List[Code]:
-    """Collect all Code objects from context."""
+    """Collect all Code objects from context, including DAG ancestors if needed.
+
+    This function searches the context for Code objects in two ways:
+
+    1. Direct context search: Looks for CodeList objects or ChatterResults with CodeList outputs
+       in the provided context dictionary (template variables).
+
+    2. DAG traversal fallback: If no codes are found in direct context, and the context contains
+       a TrackedItem with DAG node information, traverses ancestor nodes in the DAG to find
+       Code objects. This is necessary because some nodes (like Transform after Reduce) may have
+       indirect inputs - e.g., a Reduce node that stringifies CodeList objects, but we need
+       the original Code objects from upstream Map nodes for quote resolution.
+
+    Args:
+        context: Template context dictionary, may include TrackedItem with node reference
+
+    Returns:
+        List of Code objects found in context or ancestor nodes
+    """
+    from soak.models.base import TrackedItem
+
     codes = []
 
-    logger.debug(f"collect_input_codes: Searching context with {len(context)} keys")
+    logger.debug(f"collect_input_codes: Searching context with {len(context)} keys: {list(context.keys())}")
 
     for key, value in context.items():
-        if isinstance(value, CodeList):
-            codes.extend(value.codes)
-        elif isinstance(value, list):
-            # Handle list of ChatterResults (from Map nodes)
-            for item in value:
-                if hasattr(item, "outputs"):
-                    # Find CodeList in outputs
-                    for output_val in item.outputs.values():
-                        if isinstance(output_val, CodeList):
-                            codes.extend(output_val.codes)
+        # normalize value to list for uniform processing
+        items = value if isinstance(value, list) else [value]
+
+        for item in items:
+            if isinstance(item, CodeList):
+                # direct CodeList
+                logger.debug(f"collect_input_codes: Found direct CodeList in key '{key}' with {len(item.codes)} codes")
+                codes.extend(item.codes)
+            elif hasattr(item, "outputs"):
+                # ChatterResult -- extract CodeList from outputs
+                logger.debug(f"collect_input_codes: Found ChatterResult in key '{key}', checking outputs")
+                for output_key, output_val in item.outputs.items():
+                    if isinstance(output_val, CodeList):
+                        logger.debug(f"collect_input_codes: Found CodeList in ChatterResult output '{output_key}' with {len(output_val.codes)} codes")
+                        codes.extend(output_val.codes)
+
+    # If no codes found in direct context, try traversing DAG ancestors
+    # This handles cases where intermediate Reduce nodes stringify the codes
+    if not codes:
+        logger.debug("collect_input_codes: No codes in direct context, attempting DAG traversal")
+        codes = _collect_codes_from_dag_ancestors(context)
+        if codes:
+            logger.debug(f"collect_input_codes: Found {len(codes)} codes via DAG traversal")
 
     logger.debug(f"collect_input_codes: Found total of {len(codes)} codes")
+    return codes
+
+
+def _collect_codes_from_dag_ancestors(context: Dict[str, Any]) -> List[Code]:
+    """Traverse DAG ancestors to find Code objects.
+
+    Used when direct context doesn't contain Code objects (e.g., when working
+    with Reduce node outputs that are strings). Looks through ancestor nodes
+    in the DAG to find the original Code objects.
+
+    Args:
+        context: Template context that may contain node information
+
+    Returns:
+        List of Code objects found in ancestor nodes
+    """
+    codes = []
+
+    # Check for explicit node/DAG keys added by Map/Transform nodes
+    node = context.get('_node')
+    dag = context.get('_dag')
+
+    # If we found a node, traverse its ancestors
+    if node and dag:
+        logger.debug(f"_collect_codes_from_dag_ancestors: Traversing from node '{node.name}'")
+        ancestor_codes = _get_codes_from_ancestors(node, dag, visited=set())
+        codes.extend(ancestor_codes)
+    else:
+        logger.debug("_collect_codes_from_dag_ancestors: No _node/_dag reference found in context")
+
+    return codes
+
+
+def _get_codes_from_ancestors(node, dag, visited: set) -> List[Code]:
+    """Recursively collect codes from ancestor nodes in DAG.
+
+    Args:
+        node: Current node to check
+        dag: DAG object containing all nodes
+        visited: Set of visited node names to prevent cycles
+
+    Returns:
+        List of Code objects from this node and its ancestors
+    """
+    codes = []
+
+    # Prevent infinite loops
+    if node.name in visited:
+        return codes
+    visited.add(node.name)
+
+    # Check this node's output
+    if hasattr(node, 'output') and node.output:
+        output = node.output
+
+        # Handle list of outputs (from Map nodes)
+        items = output if isinstance(output, list) else [output]
+
+        for item in items:
+            if isinstance(item, CodeList):
+                logger.debug(f"_get_codes_from_ancestors: Found CodeList in node '{node.name}' output")
+                codes.extend(item.codes)
+            elif hasattr(item, "outputs"):
+                # ChatterResult
+                for output_val in item.outputs.values():
+                    if isinstance(output_val, CodeList):
+                        logger.debug(f"_get_codes_from_ancestors: Found CodeList in node '{node.name}' ChatterResult")
+                        codes.extend(output_val.codes)
+
+    # Recursively check ancestors (input nodes)
+    if hasattr(node, 'inputs') and node.inputs:
+        for input_name in node.inputs:
+            if input_name == 'documents':
+                continue
+            ancestor_node = dag.nodes_dict.get(input_name)
+            if ancestor_node:
+                ancestor_codes = _get_codes_from_ancestors(ancestor_node, dag, visited)
+                codes.extend(ancestor_codes)
+
     return codes

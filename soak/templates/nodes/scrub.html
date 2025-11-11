@@ -1,0 +1,33 @@
+<div class="node-result">
+  <h5>{{ result.metadata.name }}</h5>
+  <p class="text-muted">Type: <code>Scrub</code></p>
+
+  <p><strong>Detectors:</strong> <code>{{ result.metadata.detectors|join(", ") }}</code></p>
+  <p><strong>Locale:</strong> <code>{{ result.metadata.locale }}</code></p>
+  {% if result.metadata.exclude_detectors %}
+  <p><strong>Excluded:</strong> <code>{{ result.metadata.exclude_detectors|join(", ") }}</code></p>
+  {% endif %}
+  <p><strong>SpaCy Model:</strong> <code>{{ result.metadata.spacy_model }}</code></p>
+  <p><strong>Redaction:</strong> {{ "✓ Enabled (using [REDACTED-TYPE] format)" if result.metadata.redact else "✗ Disabled" }}</p>
+
+  {% if result.metadata.total_filth_detected > 0 %}
+  <div class="alert alert-warning" role="alert">
+    <strong>⚠️ PII Detected:</strong> {{ result.metadata.total_filth_detected }} instances found in {{ result.metadata.items_with_filth }} of {{ result.metadata.total_items }} items ({{ result.summary.percentage_with_pii }}%)
+  </div>
+  {% else %}
+  <div class="alert alert-success" role="alert">
+    <strong>✓ No PII Detected</strong> in {{ result.metadata.total_items }} items
+  </div>
+  {% endif %}
+
+  {% if result.stats_df is defined and not result.stats_df.empty %}
+  <div class="card card-body mb-3">
+    <h6>PII Detection Statistics</h6>
+    {{ result.stats_df|df_to_html|safe }}
+  </div>
+  {% endif %}
+
+  {% if result.metadata.log_filth and result.metadata.total_filth_detected > 0 %}
+  <p class="text-muted"><em>📄 Detailed PII log with context written to FILTH.md in export folder</em></p>
+  {% endif %}
+</div>

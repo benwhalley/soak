@@ -2,6 +2,8 @@ __pycache__
 .DS_Store
 .env
 .cache
+.embeddings/
+.scrubadub_cache/
 data-private/
 *.egg-info
 *.pyc
@@ -11,3 +13,4 @@ uv.lock
 dist/*
 site/
 todos-notes
+FILTH.md

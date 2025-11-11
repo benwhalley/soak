@@ -10,6 +10,7 @@ from .filter import Filter
 from .groupby import GroupBy
 from .map import Map
 from .reduce import Reduce
+from .scrub import Scrub
 from .transform import Transform
 from .ungroup import Ungroup
 from .verify import VerifyQuotes
@@ -28,6 +29,7 @@ __all__ = [
     "GroupBy",
     "Map",
     "Reduce",
+    "Scrub",
     "Split",
     "Transform",
     "Ungroup",

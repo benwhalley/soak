@@ -159,7 +159,8 @@ class QuoteVerificationResult:
 
         # add LLM verdicts
         if self.llm_existence:
-            result["llm_is_contained"] = self.llm_existence.is_contained
+            # fill missing values with True because we don't check all of them if we definitly found the quote using bM25
+            result["llm_is_contained"] = self.llm_existence.is_contained.fillna(True)
             result["llm_explanation"] = self.llm_existence.explanation
         if self.llm_fairness:
             result["llm_is_fair"] = self.llm_fairness.is_fair
@@ -520,6 +521,36 @@ class VerifyQuotes(CompletionDAGNode):
                 return False
         return True
 
+    def _normalize_to_outputs_list(self, input_data) -> List[Union["Themes", "CodeList"]]:
+        """Normalize any input format to list of Themes/CodeList objects.
+
+        Handles:
+        - List of ChatterResults (from Map nodes)
+        - Single ChatterResult (from Transform/Reduce nodes)
+        - Direct Themes or CodeList objects
+
+        Returns:
+            List of Themes or CodeList objects ready for quote extraction
+        """
+        from soak.models.base import CodeList, Themes
+
+        outputs = []
+
+        # convert to list if single item
+        items = input_data if isinstance(input_data, list) else [input_data]
+
+        for item in items:
+            if isinstance(item, (Themes, CodeList)):
+                # direct model -- add to outputs
+                outputs.append(item)
+            elif hasattr(item, "outputs"):
+                # ChatterResult -- extract outputs dict
+                for output_val in item.outputs.values():
+                    if isinstance(output_val, (Themes, CodeList)):
+                        outputs.append(output_val)
+
+        return outputs
+
     def extract_quotes_and_context(self, input_data) -> List[Dict[str, Any]]:
         """Extract quotes with theme/code context if available.
 
@@ -533,78 +564,37 @@ class VerifyQuotes(CompletionDAGNode):
 
         quotes_with_context = []
 
-        # Handle list of ChatterResults (from Map nodes)
-        if isinstance(input_data, list):
-            for result in input_data:
-                if hasattr(result, "outputs"):
-                    for output_val in result.outputs.values():
-                        if isinstance(output_val, Themes):
-                            # Extract from themes
-                            for theme in output_val.themes:
-                                for code in theme.resolved_codes:
-                                    for quote in code.all_quotes:
-                                        quotes_with_context.append({
-                                            "quote": quote,
-                                            "type": "theme",
-                                            "theme": theme,
-                                            "code": code,
-                                        })
-                        elif isinstance(output_val, CodeList):
-                            # Extract from codes
-                            for code in output_val.codes:
-                                for quote in code.all_quotes:
-                                    quotes_with_context.append({
-                                        "quote": quote,
-                                        "type": "code",
-                                        "code": code,
-                                    })
-        # Handle single ChatterResult
-        elif hasattr(input_data, "outputs"):
-            for output_val in input_data.outputs.values():
-                if isinstance(output_val, Themes):
-                    for theme in output_val.themes:
-                        for code in theme.resolved_codes:
-                            for quote in code.all_quotes:
-                                quotes_with_context.append({
-                                    "quote": quote,
-                                    "type": "theme",
-                                    "theme": theme,
-                                    "code": code,
-                                })
-                elif isinstance(output_val, CodeList):
-                    for code in output_val.codes:
+        # normalize all input formats to list of Themes/CodeList
+        outputs = self._normalize_to_outputs_list(input_data)
+
+        # extract quotes from normalized outputs
+        for output_val in outputs:
+            if isinstance(output_val, Themes):
+                # extract from themes
+                for theme in output_val.themes:
+                    for code in theme.resolved_codes:
                         for quote in code.all_quotes:
                             quotes_with_context.append({
                                 "quote": quote,
-                                "type": "code",
+                                "type": "theme",
+                                "theme": theme,
                                 "code": code,
                             })
-        # Handle direct Themes or CodeList
-        elif isinstance(input_data, Themes):
-            for theme in input_data.themes:
-                for code in theme.resolved_codes:
+            elif isinstance(output_val, CodeList):
+                # extract from codes
+                for code in output_val.codes:
                     for quote in code.all_quotes:
                         quotes_with_context.append({
                             "quote": quote,
-                            "type": "theme",
-                            "theme": theme,
+                            "type": "code",
                             "code": code,
                         })
-        elif isinstance(input_data, CodeList):
-            for code in input_data.codes:
-                for quote in code.all_quotes:
-                    quotes_with_context.append({
-                        "quote": quote,
-                        "type": "code",
-                        "code": code,
-                    })
 
         if not quotes_with_context:
             raise ValueError("No quotes found in input. Check that input contains Code or Theme objects with quotes.")
 
-        # Set verification type based on first item
+        # set verification type based on first item
         self.verification_type = quotes_with_context[0]["type"]
-
         return quotes_with_context
 
     def get_search_corpus(self) -> str:
@@ -891,7 +881,7 @@ class VerifyQuotes(CompletionDAGNode):
         df = pd.DataFrame(matches)
 
         # Stage 1.5: LLM-based existence verification for poor matches
-        # ratio < 2 means second match is >50% as good (ambiguous)
+        # ratio < 2 means second match is >50% as 'good' (ambiguous)
         poor_match_mask = ((df["bm25_score"] < 30) & (df["bm25_ratio"] < 2)) | (
             (df["bm25_score"] < 20) & (df["cosine_similarity"] < 0.7)
         )
@@ -905,11 +895,13 @@ class VerifyQuotes(CompletionDAGNode):
             df["llm_is_contained"] = None
 
             # Run LLM judge on poor matches in parallel
+            desc = "LLM quote existence checks".ljust(35)
             pbar = tqdm(
                 total=len(poor_matches),
-                desc="LLM quote existence checks",
+                desc=desc,
                 file=sys.stderr,
-                unit="quote"
+                unit="item",
+                ncols=120
             )
 
             async with anyio.create_task_group() as tg:
@@ -948,11 +940,13 @@ class VerifyQuotes(CompletionDAGNode):
             logger.debug(f"Initialized fairness columns. DataFrame has {len(df.columns)} columns: {list(df.columns)}")
 
             # Run fairness checks in parallel
+            desc_fairness = "LLM quote 'fairness' checks".ljust(35)
             pbar_fairness = tqdm(
                 total=len(df),
-                desc="LLM quote 'fairness' checks",
+                desc=desc_fairness,
                 file=sys.stderr,
-                unit="quote"
+                unit="item",
+                ncols=120
             )
 
             async with anyio.create_task_group() as tg:
@@ -996,15 +990,13 @@ class VerifyQuotes(CompletionDAGNode):
                     finally:
                         pbar_fairness.update(1)
 
-                # Match quotes_with_context to df rows by quote hash
+                # build lookup dict once (O(m))
+                quote_hash_to_context = {item["quote"].hash(): item for item in quotes_with_context}
+
+                # match quotes_with_context to df rows by quote hash (O(n))
                 for idx, row in df.iterrows():
                     quote_hash = row["quote_hash"]
-                    # Find matching context item
-                    context_item = None
-                    for item in quotes_with_context:
-                        if item["quote"].hash() == quote_hash:
-                            context_item = item
-                            break
+                    context_item = quote_hash_to_context.get(quote_hash)
 
                     if context_item:
                         match_result = quote_hash_to_match[quote_hash]
@@ -1058,16 +1050,22 @@ class VerifyQuotes(CompletionDAGNode):
                 }
             )
 
-        # Add fairness stats if applicable
+        # add fairness stats if applicable
         if "llm_is_fair" in df.columns and df["llm_is_fair"].notna().any():
+            # use unique quote hashes to avoid double counting
+            n_quotes = df["quote_hash"].nunique()
+
             valid_fair = df["llm_is_fair"].dropna()
             n_fair = int(valid_fair.sum()) if len(valid_fair) > 0 else 0
             self.stats.update({
                 "n_fair": n_fair,
                 "n_unfair": len(valid_fair) - n_fair,
-                "pct_fair": float(valid_fair.mean() * 100) if len(valid_fair) > 0 else None,
+                "n_not_checked": n_quotes - len(valid_fair),
+                "pct_fair": float(n_fair / n_quotes * 100) if n_quotes > 0 else None,
             })
 
+        # Store output for downstream nodes to access via context
+        self.output = self.sentence_matches
         return matches
 
     def result(self) -> Dict[str, Any]:
@@ -1171,9 +1169,12 @@ class VerifyQuotes(CompletionDAGNode):
             # Apply text wrapping and set column widths
             from openpyxl.styles import Alignment, Font
 
-            # Default font size increased by 20% (11pt -> 13pt)
-            default_font = Font(size=13)
-
+            # Default font size is 11 in excel
+            default_font = Font(size=11)
+            
+            for i in range(1, worksheet.max_row + 1):
+                worksheet.row_dimensions[i].height = 20
+    
             for column in worksheet.columns:
                 column_letter = column[0].column_letter
                 header_value = column[0].value
@@ -1183,39 +1184,27 @@ class VerifyQuotes(CompletionDAGNode):
                     "extracted_quote",
                     "found_in_original",
                     "full_original_text",
+                    "llm_explanation",
+                    "llm_fairness_explanation",
+                    "theme_description", "code_description"
                 ]:
-                    worksheet.column_dimensions[column_letter].width = 80
-                    for cell in column:
-                        cell.alignment = Alignment(wrap_text=True, vertical="top")
-                        cell.font = default_font
-                elif header_value == "llm_explanation":
-                    # LLM explanation - wide with wrapping
                     worksheet.column_dimensions[column_letter].width = 60
                     for cell in column:
                         cell.alignment = Alignment(wrap_text=True, vertical="top")
                         cell.font = default_font
+            
                 elif header_value in ["llm_is_contained", "llm_is_fair"]:
                     # Boolean columns - narrow
                     worksheet.column_dimensions[column_letter].width = 18
                     for cell in column:
                         cell.font = default_font
-                elif header_value == "llm_fairness_explanation":
-                    # Fairness explanation - wide with wrapping
-                    worksheet.column_dimensions[column_letter].width = 60
-                    for cell in column:
-                        cell.alignment = Alignment(wrap_text=True, vertical="top")
-                        cell.font = default_font
-                elif header_value in ["theme", "code_name"]:
+                        
+                elif header_value in ["theme", "code_name", 'source_doc']:
                     # Theme/code names - medium width
                     worksheet.column_dimensions[column_letter].width = 25
                     for cell in column:
                         cell.font = default_font
-                elif header_value in ["theme_description", "code_description"]:
-                    # Descriptions - wide with wrapping
-                    worksheet.column_dimensions[column_letter].width = 60
-                    for cell in column:
-                        cell.alignment = Alignment(wrap_text=True, vertical="top")
-                        cell.font = default_font
+                
                 elif header_value in [
                     "bm25_score",
                     "bm25_ratio",
@@ -1228,11 +1217,6 @@ class VerifyQuotes(CompletionDAGNode):
                     worksheet.column_dimensions[column_letter].width = 15
                     for cell in column:
                         cell.font = default_font
-                elif header_value == "source_doc":
-                    # Source document column - medium width
-                    worksheet.column_dimensions[column_letter].width = 25
-                    for cell in column:
-                        cell.font = default_font
                 else:
                     # Auto-width for other columns
                     max_length = 0
@@ -1241,7 +1225,7 @@ class VerifyQuotes(CompletionDAGNode):
                             max_length = max(max_length, len(str(cell.value)))
                         cell.font = default_font
                     worksheet.column_dimensions[column_letter].width = min(
-                        max_length + 2, 30
+                        max_length + 2, 20
                     )
 
         # Export LLM prompts and responses

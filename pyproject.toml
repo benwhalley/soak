@@ -49,10 +49,21 @@ dependencies = [
     "mkdocs>=1.6.0",
     "mkdocs-material>=9.5.0",
     "pymdown-extensions>=10.11.0",
+    "scrubadub>=2.0.1",
+    "spacy>=3.8.8",
+    "scrubadub-spacy>=2.0.0",
+]
+
+[project.optional-dependencies]
+scrub = [
+    "scrubadub>=2.0.0",
+    "scrubadub-spacy>=2.0.0",
+    "scrubadub-address>=1.0.0",
+    "spacy>=3.7.0",
 ]
 
 [tool.setuptools.package-data]
-soak = ["templates/*.html", "templates/*.md", "pipelines/*.soak", "data/**/*"]
+soak = ["templates/*.html", "templates/*.md", "templates/**/*.html", "templates/**/*.md", "templates/**/*.sd", "pipelines/*.soak", "data/**/*"]
 
 [tool.setuptools.packages.find]
 where = ["."]

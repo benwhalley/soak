@@ -147,6 +147,14 @@ class Classifier(ItemsNode, CompletionDAGNode):
                     self._accumulate_costs(result)
                     self._llm_results.append(result)
 
+                    # update progress bar with per-node cost if using CostProgressBar
+                    from soak.models.progress import CostProgressBar
+                    if isinstance(pbar, CostProgressBar):
+                        pbar.update_cost(
+                            result.fresh_cost,
+                            result.prompt_tokens + result.completion_tokens
+                        )
+
             self._model_results[model_name] = results
 
         # Auto-detect agreement fields if multiple models (before result() is called)

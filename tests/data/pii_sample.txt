@@ -1,0 +1,13 @@
+Patient Interview Transcript
+
+Interviewer: Can you tell me about your experience?
+
+Patient: Sure. My name is John Smith and I was diagnosed last year. The doctor called me at 555-123-4567 to discuss the results. You can reach me at john.smith@example.com if you need more information.
+
+Interviewer: And where were you living at the time?
+
+Patient: I was at 123 Main Street, Springfield, but I've since moved. My social security number on file is 123-45-6789 and my date of birth is January 15, 1980.
+
+Interviewer: Thank you for sharing that information. How did you feel when you received the diagnosis?
+
+Patient: It was difficult. I contacted my family right away. My wife's number is 555-987-6543. We had to make a lot of adjustments.
