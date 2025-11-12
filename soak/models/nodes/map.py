@@ -85,7 +85,7 @@ class Map(ItemsNode, CompletionDAGNode):
             if self.dag.config.show_progress:
                 from tqdm import tqdm
                 import sys
-                desc = f"{self.type} '{self.name}'".ljust(35)
+                desc = f"{self.type}: {self.name}".ljust(35)
                 pbar = tqdm(
                     total=len(boxed_items),
                     desc=desc,

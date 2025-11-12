@@ -1,0 +1,50 @@
+<!-- 
+
+    This template requires that a VerifyQuotes node called "check_quotes" is present in the DAG.
+
+-->
+
+
+---#summarise_quote_use
+
+
+We want to check that the quotes we used are relevant to the 
+research question and to the theme they purport to support.
+
+For each quote in our analysis, we asked an LLM  to
+- read the original text
+- read the quote
+- read the theme which it purports to support
+
+Then we asked it to judge whether the quote was used appropriately 
+(in context, meaning the same etc).
+
+Results are below:
+
+{% set fair = check_quotes | selectattr('llm_is_fair') | list %}
+{% set unfair = check_quotes | rejectattr('llm_is_fair') | list %}
+
+
+### Quotes judged to be fairly used:
+
+{% for match in fair %}
+Quote: {{ match.quote }}
+Reasoning: {{ match.llm_fairness_explanation }}
+{% endfor %}
+
+### Quotes where possible issues were identified:
+
+{% for match in unfair %}
+Quote: {{ match.quote }}
+Reasoning: {{ match.llm_fairness_explanation }}
+{% endfor %}
+
+
+# Task now
+  
+Summarise the use of quotes in this analysis? Was the usage fair? Focus on elements which were ambiguous or potentially problematic so that we can inform the next stage of the analysis. Don't make recommendations or conclusions: just describe how the quotes were used.
+
+Only highlight misinterpretations or problems with how the quotes were used. We _hope_ that all quotes were used approproately, and this should be the case. This is just to check that we're not making any errors as we write our final report.
+
+[[summary_of_quote_use]]
+

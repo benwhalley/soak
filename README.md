@@ -166,4 +166,4 @@ See [CLAUDE.md](CLAUDE.md) for architecture details.
 
 AGPL v3 or later
 
-Please cite: Ben Whalley. (2025). benwhalley/soak: Initial release (v0.3.0). Zenodo. https://doi.org/10.5281/zenodo.17293023
+Please cite: Ben Whalley. (2025). benwhalley/soak: Initial public release (v0.3.0). Zenodo. https://doi.org/10.5281/zenodo.17293023

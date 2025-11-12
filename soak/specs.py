@@ -58,10 +58,24 @@ def extract_templates_(text):
 
 
 def load_template_bundle(template: Union[Path, str]) -> QualitativeAnalysisPipeline:
+    """Load pipeline from .soak file with hybrid inline/external template support.
+
+    Template resolution priority:
+    1. Inline templates (---#node_name sections)
+    2. External .sd files in search paths:
+       - CWD where .soak file is
+       - templates/ subdirectory in CWD
+       - Directories specified in template_dirs YAML field
+       - soak/templates/ (package defaults)
+    """
+    from soak.template_resolution import TemplateResolver
+
     if isinstance(template, str):
         text = template
+        template_path = Path.cwd()  # fallback for string input
     else:
         text = template.read_text()
+        template_path = Path(template)
 
     # try to parse YAML first
     BLOCK_DELIM_RE = re.compile(r"^---#(\w+)", re.MULTILINE)
@@ -78,12 +92,36 @@ def load_template_bundle(template: Union[Path, str]) -> QualitativeAnalysisPipel
 
     loaded = yaml.safe_load(yaml_text)
 
+    # Create template resolver
+    extra_dirs = loaded.get("template_dirs", [])
+    resolver = TemplateResolver(template_path, extra_dirs=extra_dirs)
+
     # Inject templates into node dicts before validation
-    if templates and "nodes" in loaded:
+    if "nodes" in loaded:
         for node in loaded["nodes"]:
             node_name = node.get("name")
+
+            # Priority 1: Inline template (---#node_name)
             if node_name and node_name in templates:
                 node["template"] = templates[node_name]
+                continue
+
+            # Priority 2: Explicit template field (template: filename.sd)
+            if "template" in node and node["template"]:
+                template_file = node["template"]
+                try:
+                    node["template"] = resolver.load(template_file)
+                    logger.debug(f"Loaded explicit template '{template_file}' for node '{node_name}'")
+                    continue
+                except Exception as e:
+                    logger.error(f"Failed to load template '{template_file}' for node '{node_name}': {e}")
+                    raise
+
+            # Priority 3: Convention -- look for {node_name}.sd
+            external_template = resolver.try_load(f"{node_name}.sd")
+            if external_template:
+                node["template"] = external_template
+                logger.debug(f"Loaded external template '{node_name}.sd' for node '{node_name}'")
 
     pipeline = QualitativeAnalysisPipeline.model_validate(loaded)
     for i in pipeline.nodes:

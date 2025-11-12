@@ -129,6 +129,30 @@ def compare_result_similarity(
         else 0
     )
 
+    # For each theme in A, find the best matching theme in B
+    best_matches_a_to_b = []
+    if len(emb_A) > 0 and len(emb_B) > 0:
+        for i in range(len(emb_A)):
+            best_b_idx = sim_matrix[i, :].argmax()
+            best_similarity = sim_matrix[i, best_b_idx]
+            best_matches_a_to_b.append({
+                "theme_a_index": i,
+                "theme_b_index": int(best_b_idx),
+                "similarity": float(np.round(best_similarity, 3)),
+            })
+
+    # For each theme in B, find the best matching theme in A
+    best_matches_b_to_a = []
+    if len(emb_A) > 0 and len(emb_B) > 0:
+        for j in range(len(emb_B)):
+            best_a_idx = sim_matrix[:, j].argmax()
+            best_similarity = sim_matrix[best_a_idx, j]
+            best_matches_b_to_a.append({
+                "theme_b_index": j,
+                "theme_a_index": int(best_a_idx),
+                "similarity": float(np.round(best_similarity, 3)),
+            })
+
     return {
         "precision": precision,
         "recall": recall,
@@ -139,6 +163,8 @@ def compare_result_similarity(
         "a_b_most_similar": a_b_most_similar,
         "b_a_most_similar": b_a_most_similar,
         "similarity_f1": similarity_f1,
+        "best_matches_a_to_b": best_matches_a_to_b,
+        "best_matches_b_to_a": best_matches_b_to_a,
     }
 
 

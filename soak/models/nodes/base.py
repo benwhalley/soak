@@ -288,13 +288,13 @@ class ItemsNode(DAGNode):
                 from soak.models.progress import CostProgressBar
                 progress_bar = CostProgressBar(
                     tracker=self.dag.cost_tracker,
-                    node_name=self.name,
+                    node_name=f"{self.type}: {self.name}",
                     total=total_items,
                     unit="item",
                 )
             else:
                 # Pad description to match CostProgressBar alignment
-                desc = f"{self.type} '{self.name}'".ljust(35)
+                desc = f"{self.type}: {self.name}".ljust(35)
                 progress_bar = tqdm(
                     total=total_items,
                     desc=desc,
@@ -483,7 +483,7 @@ class ItemsNode(DAGNode):
             return
 
         node_type = node_type or self.type
-        node_name = f"{node_type} '{self.name}'" if node_type != self.type else self.name
+        node_name = f"{node_type}: {self.name}" if node_type != self.type else self.name
 
         # Use CostProgressBar if this is a CompletionDAGNode with cost tracking
         if isinstance(self, CompletionDAGNode) and self.dag.cost_tracker:

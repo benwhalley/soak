@@ -141,6 +141,85 @@
 
                 <hr>
 
+                <h4>Best Matching Themes</h4>
+                <div class="row mb-4">
+                    <div class="col-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <strong>{{ comp.a.name }} → {{ comp.b.name }}</strong>
+                            </div>
+                            <div class="card-body">
+                                <p class="small text-muted">For each theme in {{ comp.a.name }}, the most similar theme in {{ comp.b.name }}</p>
+                                <table class="table table-sm table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th width=40%>Theme in {{ comp.a.name }}</th>
+                                            <th width=40%>Best Match in {{ comp.b.name }}</th>
+                                            <th>Similarity</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for match in comp.stats.best_matches_a_to_b %}
+                                        {% set theme_a = comp.embedded_a[match.theme_a_index] %}
+                                        {% set theme_b = comp.embedded_b[match.theme_b_index] %}
+                                        <tr>
+                                            <td class="small">
+                                                <em><strong>{{ theme_a.theme_name }}</strong></em><br>
+                                                {{ theme_a.embedded_string }}
+                                            </td>
+                                            <td class="small">
+                                                <em><strong>{{ theme_b.theme_name }}</strong></em><br>
+                                                {{ theme_b.embedded_string }}
+                                            </td>
+                                            <td class="small">{{ "%.3f"|format(match.similarity) }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-6">
+                        <div class="card">
+                            <div class="card-header">
+                                <strong>{{ comp.b.name }} → {{ comp.a.name }}</strong>
+                            </div>
+                            <div class="card-body">
+                                <p class="small text-muted">For each theme in {{ comp.b.name }}, the most similar theme in {{ comp.a.name }}</p>
+                                <table class="table table-sm table-striped">
+                                    <thead>
+                                        <tr>
+                                            <th>Theme in {{ comp.b.name }}</th>
+                                            <th>Best Match in {{ comp.a.name }}</th>
+                                            <th>Similarity</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for match in comp.stats.best_matches_b_to_a %}
+                                        {% set theme_b = comp.embedded_b[match.theme_b_index] %}
+                                        {% set theme_a = comp.embedded_a[match.theme_a_index] %}
+                                        <tr>
+                                            <td class="small">
+                                                <em>{{ theme_b.theme_name }}</em><br>
+                                                {{ theme_b.embedded_string }}
+                                            </td>
+                                            <td class="small">
+                                                <em>{{ theme_a.theme_name }}</em><br>
+                                                {{ theme_a.embedded_string }}
+                                            </td>
+                                            <td class="small">{{ "%.3f"|format(match.similarity) }}</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <hr>
+
                 <h4>Similarity Heatmaps</h4>
                 <div class="row">
                     <div class="col-md-6">
@@ -191,6 +270,17 @@
                                 <pre class="small" style="max-height: 200px; overflow-y: auto; font-size: 0.7rem;">{{ comp.stats.similarity_matrix }}</pre>
                             </div>
                         </div>
+                    </div>
+                    
+                    
+                    <div class="col-md-4">
+                        
+                        <li>Precision: proportion of B themes with ≥1 match in A</li>
+                        <li>Recall: proportion of A themes with ≥1 match in B</li>
+                        <li>F1: harmonic mean of precision and recall</li>
+                        <li>
+                           Jaccard: density of semantic overlap. Answers the question: "What fraction of all possible thematic relationships are similar?" 
+                        </li>    
                     </div>
                 </div>
 

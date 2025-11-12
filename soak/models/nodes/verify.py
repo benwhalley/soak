@@ -654,8 +654,7 @@ class VerifyQuotes(CompletionDAGNode):
             template_path = (
                 Path(__file__).parent.parent.parent
                 / "templates"
-                / "nodes"
-                / "llm_judge_quote_exists.sd"
+                / "does_quote_exist.sd"
             )
             prompt = template_path.read_text()
 
@@ -716,7 +715,6 @@ class VerifyQuotes(CompletionDAGNode):
             template_path = (
                 Path(__file__).parent.parent.parent
                 / "templates"
-                / "nodes"
                 / "verify_theme_quotes.sd"
             )
             prompt = template_path.read_text()
@@ -895,7 +893,7 @@ class VerifyQuotes(CompletionDAGNode):
             df["llm_is_contained"] = None
 
             # Run LLM judge on poor matches in parallel
-            desc = "LLM quote existence checks".ljust(35)
+            desc = f"{self.type}: {self.name} (LLM existence)".ljust(35)
             pbar = tqdm(
                 total=len(poor_matches),
                 desc=desc,
@@ -940,7 +938,7 @@ class VerifyQuotes(CompletionDAGNode):
             logger.debug(f"Initialized fairness columns. DataFrame has {len(df.columns)} columns: {list(df.columns)}")
 
             # Run fairness checks in parallel
-            desc_fairness = "LLM quote 'fairness' checks".ljust(35)
+            desc_fairness = f"{self.type}: {self.name} (LLM fairness)".ljust(35)
             pbar_fairness = tqdm(
                 total=len(df),
                 desc=desc_fairness,
@@ -1012,6 +1010,7 @@ class VerifyQuotes(CompletionDAGNode):
         n_quotes = len(df)
         n_with_ellipses = df["quote"].apply(lambda q: bool(ELLIPSIS_RE.search(q))).sum()
 
+        
         self.stats = {
             "n_quotes": int(n_quotes),
             "n_with_ellipses": int(n_with_ellipses),
@@ -1118,32 +1117,22 @@ class VerifyQuotes(CompletionDAGNode):
         # Reorder columns: text columns first, then theme info (if themes), then LLM verifications, then metrics
         priority_cols = [
             "extracted_quote",
-            "found_in_original",
             "source_doc",
-            "full_original_text",
         ]
 
-        # Add theme columns if present (for theme verification)
-        theme_cols = []
-        if "theme" in df.columns:
-            theme_cols.extend(["theme", "theme_description", "code_name", "code_description"])
-        priority_cols.extend(theme_cols)
-
-        # Add LLM columns
-        llm_cols = []
-        if "llm_is_contained" in df.columns:
-            llm_cols.extend(["llm_is_contained", "llm_explanation"])
         if "llm_is_fair" in df.columns:
-            llm_cols.extend(["llm_is_fair", "llm_fairness_explanation"])
+            priority_cols.extend(["llm_is_fair", "llm_fairness_explanation"])
 
-        priority_cols.extend(llm_cols)
+        # Add theme columns if present (for theme verification)
+        if "theme" in df.columns:
+            priority_cols.extend(["theme", "theme_description", "code_name", "code_description"])
 
         # All other columns at the end
         other_cols = [col for col in df.columns if col not in priority_cols]
         df = df[priority_cols + other_cols]
 
         # Sort by fairness (False first), then LLM existence verification (False first), then BM25 metrics
-        # This puts most problematic quotes at top
+        # This puts the most 'problematic' quotes at top
         sort_cols = []
         sort_ascending = []
 
@@ -1161,15 +1150,11 @@ class VerifyQuotes(CompletionDAGNode):
         df = df.sort_values(sort_cols, ascending=sort_ascending)
 
         with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
+            from openpyxl.styles import Alignment, Font
+            
             df.to_excel(writer, sheet_name="Quote Verification", index=False)
-
             # Access the worksheet to apply formatting
             worksheet = writer.sheets["Quote Verification"]
-
-            # Apply text wrapping and set column widths
-            from openpyxl.styles import Alignment, Font
-
-            # Default font size is 11 in excel
             default_font = Font(size=11)
             
             for i in range(1, worksheet.max_row + 1):

@@ -52,6 +52,7 @@ dependencies = [
     "scrubadub>=2.0.1",
     "spacy>=3.8.8",
     "scrubadub-spacy>=2.0.0",
+    "graphviz>=0.20.0",
 ]
 
 [project.optional-dependencies]

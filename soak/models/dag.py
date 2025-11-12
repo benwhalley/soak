@@ -358,6 +358,7 @@ class DAG(BaseModel):
     name: str
     default_context: Dict[str, Any] = {}
     default_config: Dict[str, Union[str, int, float]] = {}
+    template_dirs: List[str] = []  # additional template search directories
 
     nodes: List["DAGNodeUnion"] = Field(default_factory=list)
     config: Optional[DAGConfig] = Field(default_factory=DAGConfig, exclude=False)
@@ -746,6 +747,27 @@ Export Time: {datetime.now().isoformat()}
         export_to_csv(df, csv_path)
         logger.info(f"✓ Exported cost breakdown to costs.csv")
 
+    def _export_diagram(self, output_dir: Path) -> None:
+        """Export pipeline diagram as DOT and PDF files.
+
+        Args:
+            output_dir: Directory to write diagram files to
+        """
+        try:
+            from soak.visualization import dag_to_graphviz, render_graphviz_to_pdf
+            dot_definition = dag_to_graphviz(self)
+
+            # save .dot file
+            dot_path = output_dir / "pipeline_diagram.dot"
+            dot_path.write_text(dot_definition)
+            logger.info(f"✓ Saved DOT definition to {dot_path.name}")
+
+            # render to PDF
+            pdf_path = output_dir / "pipeline_diagram.pdf"
+            render_graphviz_to_pdf(dot_definition, pdf_path)
+        except Exception as e:
+            logger.warning(f"Could not export Graphviz diagram: {e}")
+
     def _finalize_incremental_export(self) -> None:
         """Finalize incremental export with cost data after all nodes complete.
 
@@ -769,6 +791,9 @@ Export Time: {datetime.now().isoformat()}
 
         # export costs.csv
         self._export_costs_csv(output_dir)
+
+        # export diagram
+        self._export_diagram(output_dir)
 
     def get_dependencies_for_node(self, node_name: str) -> Set[str]:
         """Get nodes that must complete before this node can run."""
@@ -879,6 +904,9 @@ Export Time: {datetime.now().isoformat()}
 
         # export cost breakdown
         self._export_costs_csv(output_dir)
+
+        # export diagram
+        self._export_diagram(output_dir)
 
         logger.debug(f"Export complete: {output_dir}")
 

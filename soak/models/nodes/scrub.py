@@ -230,7 +230,7 @@ class Scrub(ItemsNode):
 
     log_filth: bool = Field(
         default=True,
-        description="If True, write FILTH.md with detailed PII detection log to export folder",
+        description="If True, write REDACTED_INFO.md with detailed PII detection log to export folder",
     )
 
     locale: str = Field(
@@ -241,7 +241,8 @@ class Scrub(ItemsNode):
     exclude_detectors: List[str] = Field(
         default_factory=lambda: [
             "unknown",
-            "tagged_evaluation"  # requires known_filth_items arg
+            "tagged_evaluation",  # requires known_filth_items arg
+            "user_supplied"  # requires known_filth_items arg
         ],
         description="List of detector names to exclude (by detector.name, not class name)",
     )
@@ -512,7 +513,7 @@ class Scrub(ItemsNode):
                 filth_type = filth_entry["type"]
                 self._filth_by_type[filth_type] = self._filth_by_type.get(filth_type, 0) + 1
 
-                # log for FILTH.md
+                # log for REDACTED_INFO.md
                 if self.log_filth:
                     self._filth_log.append(filth_entry)
 
@@ -663,12 +664,26 @@ class Scrub(ItemsNode):
         return result
 
     def export(self, folder: Path, unique_id: str = ""):
-        """Export Scrub node details including FILTH.md log."""
+        """Export Scrub node details including REDACTED_INFO.md log."""
         super().export(folder, unique_id=unique_id)
 
         # write detectors configuration
-        detectors_text = "Detectors Used:\n" + "\n".join(f"  - {d}" for d in self.detectors)
-        detectors_text += f"\n\nExcluded Detectors:\n" + "\n".join(f"  - {d}" for d in self.exclude_detectors)
+        detectors_text = "Detector Patterns Used:\n" + "\n".join(f"  - {d}" for d in self.detectors)
+        detectors_text += f"\n\nExcluded Detectors (by name):\n" + "\n".join(f"  - {d}" for d in self.exclude_detectors)
+
+        # add resolved detectors list
+        if self._resolved_detectors:
+            detectors_text += f"\n\nResolved Detectors ({len(self._resolved_detectors)} total):\n"
+            for detector in self._resolved_detectors:
+                # get detector class name and instance name
+                if inspect.isclass(detector):
+                    class_name = detector.__name__
+                    inst_name = "not instantiated"
+                else:
+                    class_name = detector.__class__.__name__
+                    inst_name = getattr(detector, "name", "unknown")
+                detectors_text += f"  - {class_name} (name: {inst_name})\n"
+
         detectors_text += f"\n\nLocale: {self.locale}"
         detectors_text += f"\nSpaCy Model: {self.spacy_model}"
         detectors_text += "\n\nReplacement Format: [REDACTED-TYPE]"
@@ -691,7 +706,7 @@ class Scrub(ItemsNode):
                     reverse=True
                 )
             ])
-            stats_df.to_csv(folder / "filth_stats.csv", index=False)
+            stats_df.to_csv(folder / "redaction_stats.csv", index=False)
 
         # write summary statistics
         summary_text = f"""PII Detection Summary
@@ -708,11 +723,11 @@ PII by Type:
 
         (folder / "summary.txt").write_text(summary_text)
 
-        # write FILTH.md log if enabled
+        # write REDACTED_INFO.md log if enabled
         if self.log_filth and self._filth_log:
             filth_md = self._generate_filth_markdown()
-            (folder / "FILTH.md").write_text(filth_md)
-            logger.info(f"✓ PII log written to {folder / 'FILTH.md'}")
+            (folder / "REDACTED_INFO.md").write_text(filth_md)
+            logger.info(f"✓ PII log written to {folder / 'REDACTED_INFO.md'}")
 
         # export scrubbed outputs
         if self.output:

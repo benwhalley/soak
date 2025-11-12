@@ -604,10 +604,18 @@ class QualitativeAnalysisComparison(BaseModel):
             - 'a', 'b' (the QualitativeAnalysis objects)
             - 'stats'
             - 'plots': { plot_type: plot_object, ... }
+            - 'embedded_a', 'embedded_b': lists of embedded string details for easier template access
         """
         out = {}
         for key, (a, b) in self.combinations.items():
-            out[key] = {"a": a, "b": b, "stats": self.statistics.get(key), "plots": {}}
+            out[key] = {
+                "a": a,
+                "b": b,
+                "stats": self.statistics.get(key),
+                "plots": {},
+                "embedded_a": self.embedded_strings.get(a.name, []),
+                "embedded_b": self.embedded_strings.get(b.name, []),
+            }
 
         for plot_type in self.comparison_plots.keys():
             for k in out.keys():

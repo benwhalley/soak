@@ -184,7 +184,8 @@ Returns:
 
 #### Classification Types
 
-**[[pick:field_name|options]]** - Single choice from options
+See the struckdown package docs for more information on how to use struckdown syntax for classificaiton, but know that you can extract structured information using pick, bool and other types:
+
 
 ```jinja2
 What is the sentiment?
@@ -196,7 +197,6 @@ Returns:
 {"sentiment": "negative"}
 ```
 
-**[[pick*:field_name|options]]** - Multiple choice (zero or more)
 
 ```jinja2
 Which symptoms are mentioned?
@@ -208,93 +208,16 @@ Returns:
 {"symptoms": ["fatigue", "pain"]}
 ```
 
-**[[int:field_name]]** - Integer value
 
-```jinja2
-How many years ill?
-[[int:years]]
-```
+Etc...
 
-Returns:
-```python
-{"years": 5}
-```
 
-**[[boolean:field_name]]** - True/false
-
-```jinja2
-Is the patient employed?
-[[boolean:employed]]
-```
-
-Returns:
-```python
-{"employed": False}
-```
-
-**[[text:field_name]]** - Short free text
-
-```jinja2
-Summarize the main complaint:
-[[text:complaint]]
-```
-
-Returns:
-```python
-{"complaint": "Chronic fatigue and unrefreshing sleep"}
-```
-
-#### Extraction Types
-
-**[[extract:field_name]]** - Free-form text extraction
-
-```jinja2
-Extract only participant speech:
-
-[[extract:participant_text]]
-```
-
-Returns raw text, no structure.
-
-**[[report]]** - Free-form narrative (no field name)
-
-```jinja2
-Write a narrative report:
-
-[[report]]
-```
-
-Returns raw text in `report` field.
-
-### Multiple Return Types in One Template
-
-Templates can extract multiple structured outputs:
-
-```jinja2
----#analyze
-
-{{input}}
-
-First, identify codes:
-[[codes:codes]]
-
-Next, rate the sentiment:
-[[pick:sentiment|positive,negative,neutral]]
-
-Finally, write a summary:
-[[text:summary]]
-```
-
-Returns:
-```python
-{
-  "codes": [...],
-  "sentiment": "negative",
-  "summary": "..."
-}
-```
 
 ## Template Sections
+
+### Inline vs External Templates
+
+Templates can be defined inline (within .soak files) or in separate .sd files. External templates enable reuse across pipelines. See [Hybrid Template System](template_resolution.md) for details.
 
 ### Section Separators
 
@@ -383,157 +306,8 @@ Consolidate into final themes...
 
 **{{metadata}}** - TrackedItem metadata (available in item context)
 
-## struckdown Processing
 
-### How struckdown Works
 
-1. Template sent to LLM
-2. LLM responds with structured text
-3. struckdown parser extracts data using [[syntax]] markers
-4. Structured objects returned
-
-Example:
-
-**Template:**
-```jinja2
-Identify the topic:
-[[pick:topic|health,tech,business]]
-```
-
-**LLM Response:**
-```
-Based on the text, the topic is:
-
-health
-
-The text discusses chronic illness...
-```
-
-**struckdown Extraction:**
-```python
-{"topic": "health"}
-```
-
-### struckdown Features
-
-**¡BEGIN** marker - Ignore everything before this:
-
-```jinja2
-Here is background context...
-
-¡BEGIN
-
-What is the sentiment?
-[[pick:sentiment|positive,negative]]
-```
-
-LLM sees all context, but struckdown only parses after `¡BEGIN`.
-
-**¡OBLIVIATE** marker - Reset context between fields:
-
-```jinja2
-¡BEGIN
-
-What is the topic?
-[[pick:topic|health,tech]]
-
-¡OBLIVIATE
-
-What is the sentiment?
-[[pick:sentiment|positive,negative]]
-```
-
-Each `¡OBLIVIATE` tells struckdown to not let prior extractions influence next extraction.
-
-## Template Best Practices
-
-### 1. Be Explicit
-
-**Bad:**
-```jinja2
-Code this:
-{{input}}
-[[codes:codes]]
-```
-
-**Good:**
-```jinja2
-You are a qualitative researcher conducting thematic analysis.
-
-Read the following interview transcript:
-
-<text>
-{{input}}
-</text>
-
-Identify all codes. A 'code' should capture specific participant experiences.
-
-Provide:
-- A slug (short identifier, e.g., medical_dismissal)
-- A name (8-15 words, e.g., "Frustration with doctors who dismiss symptoms")
-- A description (50 words explaining what this code represents)
-- Direct verbatim quotes from the text
-
-[[codes:codes]]
-```
-
-### 2. Structure Input Clearly
-
-Use XML-style tags for clarity:
-
-```jinja2
-<research_question>
-{{research_question}}
-</research_question>
-
-<text_to_analyze>
-{{input}}
-</text_to_analyze>
-```
-
-### 3. Provide Examples
-
-```jinja2
-Classify the sentiment as:
-- positive: Expresses satisfaction, hope, or positive outcomes
-- negative: Expresses frustration, disappointment, or negative outcomes
-- neutral: Factual statements without emotional content
-
-Example:
-Text: "The treatment helped me return to work"
-Sentiment: positive
-
-Now classify this text:
-{{input}}
-
-[[pick:sentiment|positive,negative,neutral]]
-```
-
-### 4. Specify Format Requirements
-
-```jinja2
-Provide VERBATIM quotes (do not paraphrase or summarize).
-Use "..." to indicate omitted sections.
-Keep quotes under 150 words each.
-
-[[codes:codes]]
-```
-
-### 5. Use Context Variables for Flexibility
-
-```yaml
-default_context:
-  code_criteria: "related to participant experiences"
-  quote_requirements: "3-5 short direct quotes per code"
-```
-
-```jinja2
-Identify codes that are {{code_criteria}}.
-
-For each code, provide {{quote_requirements}}.
-
-[[codes:codes]]
-```
 
 ## Debugging Templates
 
@@ -548,42 +322,8 @@ uv run soak my_pipeline.soak data/test.txt -o test
 cat test_dump/02_Map_code_chunks/0000_*_prompt.md
 ```
 
-### Common Template Errors
 
-**Undefined variable:**
-```
-jinja2.exceptions.UndefinedError: 'reserach_question' is undefined
-```
 
-Fix: Check spelling, ensure variable in context.
-
-**Invalid struckdown syntax:**
-```
-struckdown error: Could not parse [[pick]] - missing options
-```
-
-Fix: Ensure `[[pick:name|opt1,opt2]]` format.
-
-**No template found:**
-```
-Template for node 'my_node' not found
-```
-
-Fix: Add `---#my_node` section.
-
-## Advanced Techniques
-
-### Nested Extractions
-
-Extract codes, then themes from those codes in one template:
-
-```jinja2
-First, identify codes:
-[[codes:codes]]
-
-Now group these codes into themes:
-[[themes:themes]]
-```
 
 ### Conditional Templates
 
@@ -599,19 +339,6 @@ Provide concise descriptions (30-50 words per code).
 [[codes:codes]]
 ```
 
-### Multi-Stage Prompts
-
-Guide LLM through stages:
-
-```jinja2
-STAGE 1: Review the text and make notes on key themes.
-
-[[text:notes]]
-
-STAGE 2: Using your notes, identify formal codes.
-
-[[codes:codes]]
-```
 
 ## Next Steps
 

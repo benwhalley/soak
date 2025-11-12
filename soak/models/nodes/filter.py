@@ -169,11 +169,13 @@ class Filter(ItemsNode, CompletionDAGNode):
             if self.dag.config.show_progress:
                 from tqdm import tqdm
                 import sys
+                desc = f"{self.type}: {self.name}".ljust(35)
                 pbar = tqdm(
                     total=len(boxed_items),
-                    desc=f"{self.type} '{self.name}'",
+                    desc=desc,
                     unit="item",
-                    file=sys.stderr
+                    file=sys.stderr,
+                    ncols=120
                 )
 
         try:

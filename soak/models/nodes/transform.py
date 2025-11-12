@@ -52,7 +52,7 @@ class Transform(ItemsNode, CompletionDAGNode):
                 )
             else:
                 # Pad description to match CostProgressBar alignment
-                desc = f"{self.type} '{self.name}'".ljust(35)
+                desc = f"{self.type}: {self.name}".ljust(35)
                 progress_bar = tqdm(
                     total=1,  # Always 1 for Transform
                     desc=desc,
