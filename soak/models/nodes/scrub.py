@@ -20,7 +20,9 @@ from .base import ItemsNode
 logger = logging.getLogger(__name__)
 
 # suppress scrubadub locale warnings globally for this module
-warnings.filterwarnings("ignore", message=".*does not support the locale.*", category=UserWarning)
+warnings.filterwarnings(
+    "ignore", message=".*does not support the locale.*", category=UserWarning
+)
 
 # cache for scrubadub detector results
 scrubadub_memory = Memory(Path(".scrubadub_cache"), verbose=0)
@@ -28,6 +30,7 @@ scrubadub_memory = Memory(Path(".scrubadub_cache"), verbose=0)
 
 import spacy
 from spacy.cli import download as spacy_download
+
 
 def download_model(model_name):
     try:
@@ -37,7 +40,9 @@ def download_model(model_name):
         try:
             spacy_download(model_name, False)  # False = don't force reinstall if cached
             nlp = spacy.load(model_name)
-            logger.info(f"✓ SpaCy model '{model_name}' downloaded and loaded successfully.")
+            logger.info(
+                f"✓ SpaCy model '{model_name}' downloaded and loaded successfully."
+            )
         except Exception as e:
             logger.error(f"Failed to download SpaCy model '{model_name}': {e}")
 
@@ -49,7 +54,7 @@ def _cached_detect_filth(
     detectors_tuple: Tuple[str, ...],
     spacy_model: str,
     locale: str,
-    exclude_detectors_tuple: Tuple[str, ...]
+    exclude_detectors_tuple: Tuple[str, ...],
 ) -> List[Dict[str, Any]]:
     """Cached filth detection function.
 
@@ -69,7 +74,9 @@ def _cached_detect_filth(
     """
     import scrubadub
 
-    logger.debug(f"Cache miss for text hash {hashlib.md5(text.encode()).hexdigest()[:8]}... running detector")
+    logger.debug(
+        f"Cache miss for text hash {hashlib.md5(text.encode()).hexdigest()[:8]}... running detector"
+    )
 
     # resolve detectors (this will be cached indirectly via the function cache)
     detectors_list = list(detectors_tuple)
@@ -100,7 +107,9 @@ def _cached_detect_filth(
                         nlp = spacy.load(spacy_model)
                         inst = detector(nlp=nlp, locale=locale)
                     except Exception as e:
-                        logger.debug(f"Failed to load SpaCy model for {detector.__name__}: {e}")
+                        logger.debug(
+                            f"Failed to load SpaCy model for {detector.__name__}: {e}"
+                        )
                         continue
                 else:
                     try:
@@ -110,12 +119,17 @@ def _cached_detect_filth(
                             inst = detector()
                         except Exception as e:
                             # some detectors need special args we can't provide - skip them
-                            logger.debug(f"Failed to instantiate {detector.__name__}: {e}")
+                            logger.debug(
+                                f"Failed to instantiate {detector.__name__}: {e}"
+                            )
                             continue
             else:
                 # already an instance, create fresh copy
                 try:
-                    if "Spacy" in detector.__class__.__name__ or "spacy" in detector.__class__.__name__:
+                    if (
+                        "Spacy" in detector.__class__.__name__
+                        or "spacy" in detector.__class__.__name__
+                    ):
                         nlp = spacy.load(spacy_model)
                         inst = detector.__class__(nlp=nlp, locale=locale)
                     else:
@@ -124,10 +138,16 @@ def _cached_detect_filth(
                         except TypeError:
                             inst = detector.__class__()
                 except Exception as e:
-                    logger.debug(f"Failed to create fresh detector from {detector}: {e}")
+                    logger.debug(
+                        f"Failed to create fresh detector from {detector}: {e}"
+                    )
                     continue
 
-            if inst and inst.name not in seen_detector_names and inst.name not in exclude_list:
+            if (
+                inst
+                and inst.name not in seen_detector_names
+                and inst.name not in exclude_list
+            ):
                 fresh_detectors.append(inst)
                 seen_detector_names.add(inst.name)
         except Exception as e:
@@ -144,17 +164,21 @@ def _cached_detect_filth(
     # convert to serializable dicts (without source_id, which will be added later)
     filth_dicts = []
     for filth in filth_items:
-        filth_dicts.append({
-            "type": filth.type,
-            "text": filth.text,
-            "beg": filth.beg,
-            "end": filth.end,
-        })
+        filth_dicts.append(
+            {
+                "type": filth.type,
+                "text": filth.text,
+                "beg": filth.beg,
+                "end": filth.end,
+            }
+        )
 
     return filth_dicts
 
 
-def _resolve_glob_pattern_static(pattern: str, locale: str, spacy_model: str) -> List[Any]:
+def _resolve_glob_pattern_static(
+    pattern: str, locale: str, spacy_model: str
+) -> List[Any]:
     """Static version of glob pattern resolution for caching."""
     import scrubadub
 
@@ -175,16 +199,20 @@ def _resolve_glob_pattern_static(pattern: str, locale: str, spacy_model: str) ->
             base_detector = scrubadub.detectors.Detector
             base_class_names = {"Detector", "RegexDetector", "KnownFilthDetector"}
 
-            if (issubclass(obj, base_detector) and
-                obj is not base_detector and
-                obj.__name__ not in base_class_names):
+            if (
+                issubclass(obj, base_detector)
+                and obj is not base_detector
+                and obj.__name__ not in base_class_names
+            ):
                 if fnmatch.fnmatch(name, class_pattern):
                     matched.append(obj)
 
     return matched
 
 
-def _import_detector_class_static(class_path: str, locale: str, spacy_model: str) -> Optional[Any]:
+def _import_detector_class_static(
+    class_path: str, locale: str, spacy_model: str
+) -> Optional[Any]:
     """Static version of detector class import for caching."""
     parts = class_path.rsplit(".", 1)
     if len(parts) != 2:
@@ -214,7 +242,10 @@ class Scrub(ItemsNode):
     type: Literal["Scrub"] = "Scrub"
 
     detectors: List[str] = Field(
-        default_factory=lambda: ["scrubadub.detectors.*", "scrubadub_spacy.detectors.SpacyNameDetector"],
+        default_factory=lambda: [
+            "scrubadub.detectors.*",
+            "scrubadub_spacy.detectors.SpacyNameDetector",
+        ],
         description="List of detector patterns (supports glob). Examples: 'scrubadub.detectors.*', 'scrubadub_spacy.detectors.SpacyNameDetector'",
     )
 
@@ -242,7 +273,7 @@ class Scrub(ItemsNode):
         default_factory=lambda: [
             "unknown",
             "tagged_evaluation",  # requires known_filth_items arg
-            "user_supplied"  # requires known_filth_items arg
+            "user_supplied",  # requires known_filth_items arg
         ],
         description="List of detector names to exclude (by detector.name, not class name)",
     )
@@ -261,10 +292,13 @@ class Scrub(ItemsNode):
         # resolve detectors during initialization
         # suppress locale warnings from scrubadub and capture them
         import warnings
+
         with warnings.catch_warnings(record=True) as w:
             # suppress warnings to user but record them for logging
             warnings.simplefilter("always")  # capture all warnings
-            warnings.filterwarnings("ignore", category=UserWarning)  # don't print to stderr
+            warnings.filterwarnings(
+                "ignore", category=UserWarning
+            )  # don't print to stderr
             try:
                 self._resolved_detectors = self._resolve_detectors()
                 # capture locale warnings for export (but skip excluded detectors)
@@ -272,7 +306,9 @@ class Scrub(ItemsNode):
                     msg = str(warning.message)
                     if "does not support the locale" in msg:
                         # don't log warnings for detectors we're excluding anyway
-                        is_excluded = any(det_name in msg for det_name in self.exclude_detectors)
+                        is_excluded = any(
+                            det_name in msg for det_name in self.exclude_detectors
+                        )
                         if not is_excluded:
                             self._detector_warnings.append(msg)
                             logger.debug(msg)
@@ -318,12 +354,16 @@ class Scrub(ItemsNode):
         seen = set()
         unique_detectors = []
         for det in resolved:
-            cls_name = det.__class__.__name__ if not inspect.isclass(det) else det.__name__
+            cls_name = (
+                det.__class__.__name__ if not inspect.isclass(det) else det.__name__
+            )
             if cls_name not in seen:
                 seen.add(cls_name)
                 unique_detectors.append(det)
 
-        logger.debug(f"Resolved {len(unique_detectors)} detectors: {[d.__class__.__name__ if not inspect.isclass(d) else d.__name__ for d in unique_detectors]}")
+        logger.debug(
+            f"Resolved {len(unique_detectors)} detectors: {[d.__class__.__name__ if not inspect.isclass(d) else d.__name__ for d in unique_detectors]}"
+        )
 
         return unique_detectors
 
@@ -365,9 +405,11 @@ class Scrub(ItemsNode):
                 # exclude base classes that shouldn't be instantiated directly
                 base_class_names = {"Detector", "RegexDetector", "KnownFilthDetector"}
 
-                if (issubclass(obj, base_detector) and
-                    obj is not base_detector and
-                    obj.__name__ not in base_class_names):
+                if (
+                    issubclass(obj, base_detector)
+                    and obj is not base_detector
+                    and obj.__name__ not in base_class_names
+                ):
                     # check if name matches glob pattern
                     if fnmatch.fnmatch(name, class_pattern):
                         try:
@@ -409,7 +451,9 @@ class Scrub(ItemsNode):
             logger.warning("For third-party detectors, ensure the package is installed")
             return None
         except AttributeError as e:
-            logger.warning(f"Class '{class_name}' not found in module '{module_path}': {e}")
+            logger.warning(
+                f"Class '{class_name}' not found in module '{module_path}': {e}"
+            )
             return None
         except Exception as e:
             logger.warning(f"Failed to instantiate '{class_path}': {e}")
@@ -479,7 +523,7 @@ class Scrub(ItemsNode):
                             content=str(item),
                             id="unknown",
                             sources=["unknown"],
-                            metadata={}
+                            metadata={},
                         )
                     )
             return results
@@ -511,7 +555,9 @@ class Scrub(ItemsNode):
 
             for filth_entry in filth_items:
                 filth_type = filth_entry["type"]
-                self._filth_by_type[filth_type] = self._filth_by_type.get(filth_type, 0) + 1
+                self._filth_by_type[filth_type] = (
+                    self._filth_by_type.get(filth_type, 0) + 1
+                )
 
                 # log for REDACTED_INFO.md
                 if self.log_filth:
@@ -530,7 +576,7 @@ class Scrub(ItemsNode):
                     "scrubbed": self.redact,
                     "filth_detected": len(filth_items),
                     "filth_types": list(set(f["type"] for f in filth_items)),
-                }
+                },
             )
 
             results.append(new_item)
@@ -541,7 +587,9 @@ class Scrub(ItemsNode):
 
         return results
 
-    def _scrub_text(self, text: str, source_id: str) -> Tuple[str, List[Dict[str, Any]]]:
+    def _scrub_text(
+        self, text: str, source_id: str
+    ) -> Tuple[str, List[Dict[str, Any]]]:
         """Process text with scrubadub and return scrubbed text + detected filth.
 
         Uses cached detection results when processing the same text with the same
@@ -581,9 +629,9 @@ class Scrub(ItemsNode):
             for filth in sorted(filth_basic, key=lambda x: x["beg"], reverse=True):
                 replacement = f"[REDACTED-{filth['type'].upper()}]"
                 scrubbed_text = (
-                    scrubbed_text[:filth["beg"]] +
-                    replacement +
-                    scrubbed_text[filth["end"]:]
+                    scrubbed_text[: filth["beg"]]
+                    + replacement
+                    + scrubbed_text[filth["end"] :]
                 )
         else:
             scrubbed_text = text
@@ -606,15 +654,17 @@ class Scrub(ItemsNode):
             if context_end < len(text):
                 after = after + "..."
 
-            filth_dicts.append({
-                "source_id": source_id,
-                "type": filth["type"],
-                "text": filth["text"],
-                "position": start_pos,
-                "end": end_pos,
-                "context_before": before,
-                "context_after": after,
-            })
+            filth_dicts.append(
+                {
+                    "source_id": source_id,
+                    "type": filth["type"],
+                    "text": filth["text"],
+                    "position": start_pos,
+                    "end": end_pos,
+                    "context_before": before,
+                    "context_after": after,
+                }
+            )
 
         return scrubbed_text, filth_dicts
 
@@ -639,9 +689,7 @@ class Scrub(ItemsNode):
             stats_rows = [
                 {"filth_type": ftype, "count": count}
                 for ftype, count in sorted(
-                    self._filth_by_type.items(),
-                    key=lambda x: x[1],
-                    reverse=True
+                    self._filth_by_type.items(), key=lambda x: x[1], reverse=True
                 )
             ]
             result["stats_df"] = pd.DataFrame(stats_rows)
@@ -668,12 +716,18 @@ class Scrub(ItemsNode):
         super().export(folder, unique_id=unique_id)
 
         # write detectors configuration
-        detectors_text = "Detector Patterns Used:\n" + "\n".join(f"  - {d}" for d in self.detectors)
-        detectors_text += f"\n\nExcluded Detectors (by name):\n" + "\n".join(f"  - {d}" for d in self.exclude_detectors)
+        detectors_text = "Detector Patterns Used:\n" + "\n".join(
+            f"  - {d}" for d in self.detectors
+        )
+        detectors_text += f"\n\nExcluded Detectors (by name):\n" + "\n".join(
+            f"  - {d}" for d in self.exclude_detectors
+        )
 
         # add resolved detectors list
         if self._resolved_detectors:
-            detectors_text += f"\n\nResolved Detectors ({len(self._resolved_detectors)} total):\n"
+            detectors_text += (
+                f"\n\nResolved Detectors ({len(self._resolved_detectors)} total):\n"
+            )
             for detector in self._resolved_detectors:
                 # get detector class name and instance name
                 if inspect.isclass(detector):
@@ -698,14 +752,14 @@ class Scrub(ItemsNode):
 
         # write statistics CSV
         if self._filth_by_type:
-            stats_df = pd.DataFrame([
-                {"filth_type": ftype, "count": count}
-                for ftype, count in sorted(
-                    self._filth_by_type.items(),
-                    key=lambda x: x[1],
-                    reverse=True
-                )
-            ])
+            stats_df = pd.DataFrame(
+                [
+                    {"filth_type": ftype, "count": count}
+                    for ftype, count in sorted(
+                        self._filth_by_type.items(), key=lambda x: x[1], reverse=True
+                    )
+                ]
+            )
             stats_df.to_csv(folder / "redaction_stats.csv", index=False)
 
         # write summary statistics
@@ -718,7 +772,9 @@ Percentage with PII: {round(100 * self._items_with_filth / self._total_items, 1)
 
 PII by Type:
 """
-        for ftype, count in sorted(self._filth_by_type.items(), key=lambda x: x[1], reverse=True):
+        for ftype, count in sorted(
+            self._filth_by_type.items(), key=lambda x: x[1], reverse=True
+        ):
             summary_text += f"  {ftype}: {count}\n"
 
         (folder / "summary.txt").write_text(summary_text)
@@ -749,18 +805,26 @@ PII by Type:
 
                     # export metadata
                     if item.metadata:
-                        metadata_file = outputs_folder / f"{idx:04d}_{item.safe_id}_metadata.json"
+                        metadata_file = (
+                            outputs_folder / f"{idx:04d}_{item.safe_id}_metadata.json"
+                        )
                         metadata_file.write_text(item.to_json())
 
     def _generate_filth_markdown(self) -> str:
         """Generate markdown report of detected filth with context."""
         lines = ["# PII Detection Report\n\n"]
         lines.append(f"**Total items processed:** {self._total_items}\n\n")
-        lines.append(f"**Total PII instances detected:** {self._total_filth_detected}\n\n")
-        lines.append(f"**Items with PII:** {self._items_with_filth} ({round(100 * self._items_with_filth / self._total_items, 1) if self._total_items > 0 else 0}%)\n\n")
+        lines.append(
+            f"**Total PII instances detected:** {self._total_filth_detected}\n\n"
+        )
+        lines.append(
+            f"**Items with PII:** {self._items_with_filth} ({round(100 * self._items_with_filth / self._total_items, 1) if self._total_items > 0 else 0}%)\n\n"
+        )
 
         lines.append("## PII by Type\n\n")
-        for ftype, count in sorted(self._filth_by_type.items(), key=lambda x: x[1], reverse=True):
+        for ftype, count in sorted(
+            self._filth_by_type.items(), key=lambda x: x[1], reverse=True
+        ):
             lines.append(f"- **{ftype}**: {count} instances\n")
         lines.append("\n")
 
@@ -782,7 +846,9 @@ PII by Type:
             for entry in entries:
                 # format with context
                 context_str = f"{entry['context_before']}**{{{{{entry['type']}}}}}**{entry['context_after']}"
-                lines.append(f"- **{entry['type']}** at position {entry['position']}: `{entry['text']}`\n")
+                lines.append(
+                    f"- **{entry['type']}** at position {entry['position']}: `{entry['text']}`\n"
+                )
                 lines.append(f"  - Context: {context_str}\n")
 
             lines.append("\n")

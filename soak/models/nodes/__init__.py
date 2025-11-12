@@ -3,7 +3,8 @@ Node types for DAG execution.
 """
 
 # Import all node types from their respective modules
-from .base import CompletionDAGNode, DAGNode, ItemsNode, Split, default_map_task
+from .base import (CompletionDAGNode, DAGNode, ItemsNode, Split,
+                   default_map_task)
 from .batch import Batch, BatchList
 from .classifier import Classifier
 from .filter import Filter

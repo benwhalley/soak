@@ -12,9 +12,11 @@ from struckdown import StruckdownLLMError
 from struckdown.parsing import parse_syntax
 
 from soak.error_handlers import managed_llm_call
-from soak.models.base import TrackedItem, extract_prompt, safe_json_dump, semaphore
+from soak.models.base import (TrackedItem, extract_prompt, safe_json_dump,
+                              semaphore)
 
-from .base import CompletionDAGNode, ItemsNode, default_map_task, template_map_task
+from .base import (CompletionDAGNode, ItemsNode, default_map_task,
+                   template_map_task)
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +28,7 @@ class Map(ItemsNode, CompletionDAGNode):
 
     type: Literal["Map"] = "Map"
 
-    mode: Literal["llm", "template"] = (
-        "llm"  # llm = LLM call, template = Jinja2 only
-    )
+    mode: Literal["llm", "template"] = "llm"  # llm = LLM call, template = Jinja2 only
     task: Callable = Field(default=default_map_task, exclude=True)
     template: str = None
 
@@ -41,9 +41,7 @@ class Map(ItemsNode, CompletionDAGNode):
             return False
 
     async def process_items(
-        self,
-        items: List[Any],
-        progress_bar: Optional[Any] = None
+        self, items: List[Any], progress_bar: Optional[Any] = None
     ) -> List[Any]:
         """Process items in parallel at this batch level.
 
@@ -73,8 +71,8 @@ class Map(ItemsNode, CompletionDAGNode):
 
         # Add node/DAG reference for quote resolution via DAG traversal
         # This allows collect_input_codes to find codes in ancestor nodes
-        filtered_context['_node'] = self
-        filtered_context['_dag'] = self.dag
+        filtered_context["_node"] = self
+        filtered_context["_dag"] = self.dag
 
         results = [None] * len(boxed_items)
 
@@ -83,15 +81,17 @@ class Map(ItemsNode, CompletionDAGNode):
         if pbar is None:
             # Create local progress bar for backward compatibility (non-batched case)
             if self.dag.config.show_progress:
-                from tqdm import tqdm
                 import sys
+
+                from tqdm import tqdm
+
                 desc = f"{self.type}: {self.name}".ljust(35)
                 pbar = tqdm(
                     total=len(boxed_items),
                     desc=desc,
                     unit="item",
                     file=sys.stderr,
-                    ncols=120
+                    ncols=120,
                 )
 
         try:
@@ -147,10 +147,11 @@ class Map(ItemsNode, CompletionDAGNode):
 
                     # update progress bar with per-node cost if using CostProgressBar
                     from soak.models.progress import CostProgressBar
+
                     if isinstance(pbar, CostProgressBar):
                         pbar.update_cost(
                             result.fresh_cost,
-                            result.prompt_tokens + result.completion_tokens
+                            result.prompt_tokens + result.completion_tokens,
                         )
 
         return results
@@ -223,9 +224,7 @@ class Map(ItemsNode, CompletionDAGNode):
         # Write template
         if self.template:
             template_filename = (
-                "template.md"
-                if self.mode == "template"
-                else "prompt_template.sd"
+                "template.md" if self.mode == "template" else "prompt_template.sd"
             )
             (folder / template_filename).write_text(self.template)
 

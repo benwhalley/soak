@@ -27,6 +27,7 @@ class AlignmentResult:
         matched_text: The aligned text from the span
         method: Which alignment method was used
     """
+
     start_char: int
     end_char: int
     match_ratio: float
@@ -91,7 +92,7 @@ class FuzzyAlignment(AlignmentStrategy):
                 end_char=0,
                 match_ratio=0.0,
                 matched_text="",
-                method="fuzzy"
+                method="fuzzy",
             )
 
         # fast path: exact substring
@@ -108,7 +109,7 @@ class FuzzyAlignment(AlignmentStrategy):
                 end_char=end,
                 match_ratio=1.0,
                 matched_text=span[start:end],
-                method="fuzzy"
+                method="fuzzy",
             )
 
         # use SequenceMatcher to find matching blocks
@@ -124,7 +125,7 @@ class FuzzyAlignment(AlignmentStrategy):
                 end_char=len(span),
                 match_ratio=0.0,
                 matched_text=span,
-                method="fuzzy"
+                method="fuzzy",
             )
 
         # find the best block (longest contiguous match)
@@ -144,7 +145,7 @@ class FuzzyAlignment(AlignmentStrategy):
             end_char=end,
             match_ratio=float(match_ratio),
             matched_text=span[start:end],
-            method="fuzzy"
+            method="fuzzy",
         )
 
 
@@ -166,7 +167,7 @@ class BM25SlidingAlignment(AlignmentStrategy):
                 end_char=0,
                 match_ratio=0.0,
                 matched_text="",
-                method="bm25"
+                method="bm25",
             )
 
         # build windows
@@ -184,18 +185,22 @@ class BM25SlidingAlignment(AlignmentStrategy):
                 end_char=0,
                 match_ratio=0.0,
                 matched_text="",
-                method="bm25"
+                method="bm25",
             )
 
         # score with BM25
         bm25 = BM25Okapi(windows)
         scores = bm25.get_scores(quote_tokens)
         best_idx = int(np.argmax(scores))
-        best_token_offset = window_starts[best_idx] if best_idx < len(window_starts) else 0
+        best_token_offset = (
+            window_starts[best_idx] if best_idx < len(window_starts) else 0
+        )
 
         # convert token offset to character offset (approximate)
         if best_token_offset > 0:
-            char_offset = len(" ".join(span_tokens[:best_token_offset])) + 1  # +1 for space
+            char_offset = (
+                len(" ".join(span_tokens[:best_token_offset])) + 1
+            )  # +1 for space
         else:
             char_offset = 0
 
@@ -208,7 +213,7 @@ class BM25SlidingAlignment(AlignmentStrategy):
             end_char=end,
             match_ratio=float(scores[best_idx]),
             matched_text=span[start:end],
-            method="bm25"
+            method="bm25",
         )
 
 

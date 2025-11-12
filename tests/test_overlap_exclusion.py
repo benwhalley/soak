@@ -16,7 +16,7 @@ def test_overlap_exclusion():
         content=test_text,
         id="test_doc",
         sources=["test_doc"],
-        metadata={"filename": "test.txt"}
+        metadata={"filename": "test.txt"},
     )
 
     # Create Split node
@@ -24,7 +24,7 @@ def test_overlap_exclusion():
         name="chunks",
         split_unit="words",
         chunk_size=5,  # 5 words per chunk
-        overlap=2      # 2 words overlap
+        overlap=2,  # 2 words overlap
     )
 
     # Split the document
@@ -54,7 +54,7 @@ def test_overlap_exclusion():
     print(f"  '{rejoined_full}'")
 
     # Verify results
-    print("\n" + "="*60)
+    print("\n" + "=" * 60)
     if len(rejoined_core) <= len(test_text):
         print("✓ SUCCESS: Rejoined core content is not longer than original")
     else:

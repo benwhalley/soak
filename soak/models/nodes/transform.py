@@ -10,12 +10,8 @@ from struckdown import StruckdownLLMError, chatter_async
 from tqdm import tqdm
 
 from soak.error_handlers import managed_llm_call
-from soak.models.base import (
-    extract_prompt,
-    get_action_lookup,
-    safe_json_dump,
-    semaphore,
-)
+from soak.models.base import (extract_prompt, get_action_lookup,
+                              safe_json_dump, semaphore)
 from soak.models.dag import render_strict_template
 
 from .base import CompletionDAGNode, ItemsNode
@@ -44,6 +40,7 @@ class Transform(ItemsNode, CompletionDAGNode):
             # Use CostProgressBar if this is a CompletionDAGNode with cost tracking
             if isinstance(self, CompletionDAGNode) and self.dag.cost_tracker:
                 from soak.models.progress import CostProgressBar
+
                 progress_bar = CostProgressBar(
                     tracker=self.dag.cost_tracker,
                     node_name=self.name,
@@ -58,7 +55,7 @@ class Transform(ItemsNode, CompletionDAGNode):
                     desc=desc,
                     unit="item",
                     file=sys.stderr,
-                    ncols=120
+                    ncols=120,
                 )
 
         try:
@@ -69,7 +66,9 @@ class Transform(ItemsNode, CompletionDAGNode):
             if progress_bar:
                 progress_bar.close()
 
-    async def process_items(self, items: List[Any], progress_bar: Any = None) -> List[Any]:
+    async def process_items(
+        self, items: List[Any], progress_bar: Any = None
+    ) -> List[Any]:
         """Process exactly one item (Transform requires single-item batches).
 
         Args:
@@ -79,22 +78,21 @@ class Transform(ItemsNode, CompletionDAGNode):
         Returns:
             List with single ChatterResult
         """
-        
+
         # assert len(items) == 1, (
         #     f"Transform node '{self.name}' requires exactly one input item per batch, "
         #     f"got {len(items)}. Use Batch with batch_size=1 or GroupBy before Transform."
         # )
 
         # Get items with proper context
-            
-        
+
         input_context = {node: self.dag.nodes_dict[node].output for node in self.inputs}
         merged_context = {**self.context, **input_context}
 
         # Add node/DAG reference for quote resolution via DAG traversal
         # This allows collect_input_codes to find codes in ancestor nodes
-        merged_context['_node'] = self
-        merged_context['_dag'] = self.dag
+        merged_context["_node"] = self
+        merged_context["_dag"] = self.dag
 
         rt = render_strict_template(self.template, {**self.context, **merged_context})
 
@@ -128,10 +126,10 @@ class Transform(ItemsNode, CompletionDAGNode):
 
             # update progress bar with per-node cost if using CostProgressBar
             from soak.models.progress import CostProgressBar
+
             if isinstance(progress_bar, CostProgressBar):
                 progress_bar.update_cost(
-                    result.fresh_cost,
-                    result.prompt_tokens + result.completion_tokens
+                    result.fresh_cost, result.prompt_tokens + result.completion_tokens
                 )
 
         # update progress bar after processing the item
@@ -146,7 +144,11 @@ class Transform(ItemsNode, CompletionDAGNode):
         result = super().result()
 
         # Handle list output (Transform wraps ChatterResult in a list)
-        chatter = self.output[0] if isinstance(self.output, list) and len(self.output) > 0 else self.output
+        chatter = (
+            self.output[0]
+            if isinstance(self.output, list) and len(self.output) > 0
+            else self.output
+        )
 
         # Add Transform-specific data
         result["prompt"] = extract_prompt(chatter)
@@ -166,15 +168,15 @@ class Transform(ItemsNode, CompletionDAGNode):
         For unbatched: exports slots as individual text files in the main folder
         For batched: creates batch_N subfolders with slots as text files
         """
-        from .batch import BatchList
         from ..utils import export_slots_as_text_files
+        from .batch import BatchList
 
         super().export(folder, unique_id=unique_id)
 
         # Write template
         if self.template:
             (folder / "prompt_template.sd").write_text(self.template)
-        
+
         if not self.output:
             return
 
@@ -187,7 +189,9 @@ class Transform(ItemsNode, CompletionDAGNode):
                 batch_folder.mkdir(parents=True, exist_ok=True)
 
                 # Each batch contains a single ChatterResult (may be wrapped in list)
-                result = batch[0] if isinstance(batch, list) and len(batch) > 0 else batch
+                result = (
+                    batch[0] if isinstance(batch, list) and len(batch) > 0 else batch
+                )
                 export_slots_as_text_files(result, batch_folder)
 
                 # Also export full JSON for reference

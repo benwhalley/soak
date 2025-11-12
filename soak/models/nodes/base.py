@@ -14,11 +14,11 @@ import numpy as np
 import pandas as pd
 import tiktoken
 from box import Box
-from tqdm import tqdm
 from jinja2 import Environment, TemplateSyntaxError
 from pydantic import BaseModel, Field, PrivateAttr
 from struckdown import LLM, ChatterResult, StruckdownLLMError, chatter_async
 from struckdown.parsing import parse_syntax
+from tqdm import tqdm
 
 from soak.error_handlers import log_error_to_stderr, should_continue_pipeline
 from soak.models.base import TrackedItem, extract_content, get_action_lookup
@@ -278,6 +278,7 @@ class ItemsNode(DAGNode):
             # Calculate total items (BatchList.__len__ uses flatten_all())
             # Avoid counting string length - single string inputs are 1 item
             from .batch import BatchList
+
             if isinstance(input_data, (list, BatchList)):
                 total_items = len(input_data)
             else:
@@ -286,6 +287,7 @@ class ItemsNode(DAGNode):
             # Use CostProgressBar if this is a CompletionDAGNode with cost tracking
             if isinstance(self, CompletionDAGNode) and self.dag.cost_tracker:
                 from soak.models.progress import CostProgressBar
+
                 progress_bar = CostProgressBar(
                     tracker=self.dag.cost_tracker,
                     node_name=f"{self.type}: {self.name}",
@@ -300,7 +302,7 @@ class ItemsNode(DAGNode):
                     desc=desc,
                     unit="item",
                     file=sys.stderr,
-                    ncols=120
+                    ncols=120,
                 )
 
         try:
@@ -312,9 +314,7 @@ class ItemsNode(DAGNode):
                 progress_bar.close()
 
     async def _run_recursive(
-        self,
-        data: Union[List[Any], Any],
-        progress_bar: Optional[Any] = None
+        self, data: Union[List[Any], Any], progress_bar: Optional[Any] = None
     ) -> Union[List[Any], Any]:
         """Recursively process nested BatchLists with concurrent batch processing.
 
@@ -340,8 +340,11 @@ class ItemsNode(DAGNode):
 
             async with anyio.create_task_group() as tg:
                 for idx, inner_batch in enumerate(data.batches):
+
                     async def process_inner(index=idx, batch=inner_batch):
-                        inner_results[index] = await self._run_recursive(batch, progress_bar)
+                        inner_results[index] = await self._run_recursive(
+                            batch, progress_bar
+                        )
 
                     tg.start_soon(process_inner)
 
@@ -356,8 +359,11 @@ class ItemsNode(DAGNode):
 
             async with anyio.create_task_group() as tg:
                 for idx, batch in enumerate(data.batches):
+
                     async def process_batch(index=idx, batch_items=batch):
-                        batch_results[index] = await self.process_items(batch_items, progress_bar)
+                        batch_results[index] = await self.process_items(
+                            batch_items, progress_bar
+                        )
 
                     tg.start_soon(process_batch)
 
@@ -371,9 +377,7 @@ class ItemsNode(DAGNode):
             )
 
     async def process_items(
-        self,
-        items: List[Any],
-        progress_bar: Optional[Any] = None
+        self, items: List[Any], progress_bar: Optional[Any] = None
     ) -> List[Any]:
         """Process a flat list of items.
 
@@ -488,6 +492,7 @@ class ItemsNode(DAGNode):
         # Use CostProgressBar if this is a CompletionDAGNode with cost tracking
         if isinstance(self, CompletionDAGNode) and self.dag.cost_tracker:
             from soak.models.progress import CostProgressBar
+
             pbar = CostProgressBar(
                 tracker=self.dag.cost_tracker,
                 node_name=node_name,
@@ -496,6 +501,7 @@ class ItemsNode(DAGNode):
             )
         else:
             from tqdm import tqdm
+
             # Pad description to match CostProgressBar alignment
             padded_name = node_name.ljust(35)
             pbar = tqdm(
@@ -503,7 +509,7 @@ class ItemsNode(DAGNode):
                 desc=padded_name,
                 unit="item",
                 file=sys.stderr,
-                ncols=120
+                ncols=120,
             )
 
         try:
@@ -718,6 +724,7 @@ class Split(ItemsNode):
         elif self.split_unit == "words":
             # Split by words and find where overlap_units words end
             import nltk
+
             words = nltk.word_tokenize(chunk)
             if len(words) <= overlap_units:
                 return len(chunk)
@@ -731,6 +738,7 @@ class Split(ItemsNode):
         elif self.split_unit == "sentences":
             # Split by sentences and find where overlap_units sentences end
             from pysbd import Segmenter
+
             seg = Segmenter(language="en", clean=True)
             sentences = seg.segment(chunk)
             if len(sentences) <= overlap_units:
@@ -962,6 +970,7 @@ class Split(ItemsNode):
 
         if self.output:
             import numpy as np
+
             from .batch import BatchList
 
             # Flatten BatchList if needed
@@ -1029,5 +1038,3 @@ Chunk size: {self.chunk_size}
                 else:
                     # Backward compatibility: plain strings
                     (outputs_folder / f"{idx:04d}_chunk.txt").write_text(str(chunk))
-
-

@@ -20,30 +20,16 @@ from struckdown import ChatterResult, StruckdownLLMError, chatter_async
 from struckdown.parsing import parse_syntax
 from tqdm import tqdm
 
-from soak.error_handlers import (
-    ErrorBehavior,
-    get_error_behavior,
-    log_error_to_stderr,
-    managed_llm_call,
-    should_continue_pipeline,
-)
+from soak.error_handlers import (ErrorBehavior, get_error_behavior,
+                                 log_error_to_stderr, managed_llm_call,
+                                 should_continue_pipeline)
 from soak.models.alignment import trim_span_to_quote
-from soak.models.base import (
-    TrackedItem,
-    get_action_lookup,
-    get_embedding,
-    safe_json_dump,
-    semaphore,
-)
-from soak.models.text_utils import (
-    ELLIPSIS_RE,
-    create_document_boundaries,
-    extract_context_window,
-    find_source_document,
-    is_match_truncated,
-    make_windows,
-    snap_to_boundaries,
-)
+from soak.models.base import (TrackedItem, get_action_lookup, get_embedding,
+                              safe_json_dump, semaphore)
+from soak.models.text_utils import (ELLIPSIS_RE, create_document_boundaries,
+                                    extract_context_window,
+                                    find_source_document, is_match_truncated,
+                                    make_windows, snap_to_boundaries)
 
 from .base import CompletionDAGNode
 
@@ -56,6 +42,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class LLMVerdict:
     """Result from LLM-based existence check."""
+
     is_contained: Optional[bool]
     explanation: str
     chatter_result: Optional[Any] = None
@@ -64,6 +51,7 @@ class LLMVerdict:
 @dataclass
 class LLMFairnessVerdict:
     """Result from LLM-based fairness check."""
+
     is_fair: Optional[bool]
     explanation: str
     chatter_result: Optional[Any] = None
@@ -76,6 +64,7 @@ class QuoteVerificationResult:
     Includes BM25 matching, embedding similarity, optional LLM checks,
     and source attribution.
     """
+
     # original quote
     quote: str
     quote_hash: str
@@ -172,6 +161,7 @@ class QuoteVerificationResult:
 @dataclass
 class VerificationSummary:
     """Aggregate verification statistics for a Code or Theme."""
+
     total_quotes: int
     mean_bm25_score: float
     mean_cosine_similarity: float
@@ -220,7 +210,7 @@ def _expand_window(
     best_idx: int,
     original_windows: List[Tuple[str, int, int]],
     original_text: str,
-    expand_neighbors: int
+    expand_neighbors: int,
 ) -> Tuple[str, int]:
     """Expand window to include neighbors and return expanded span.
 
@@ -250,7 +240,7 @@ def _trim_and_position(
     window_start_pos: int,
     trim_spans: bool,
     trim_method: str,
-    min_fuzzy_ratio: float
+    min_fuzzy_ratio: float,
 ) -> Tuple[str, int, int, Optional[float]]:
     """Apply span trimming if enabled and return positioning info.
 
@@ -266,12 +256,14 @@ def _trim_and_position(
         Tuple of (span_text, global_start, global_end, match_ratio)
     """
     if trim_spans:
-        match_result = trim_span_to_quote(quote, span_text, trim_method, min_fuzzy_ratio)
+        match_result = trim_span_to_quote(
+            quote, span_text, trim_method, min_fuzzy_ratio
+        )
         return (
             match_result["matched_text"],
             window_start_pos + match_result["start_char"],
             window_start_pos + match_result["end_char"],
-            match_result["match_ratio"]
+            match_result["match_ratio"],
         )
     else:
         return (span_text, window_start_pos, window_start_pos + len(span_text), None)
@@ -419,8 +411,12 @@ def verify_quotes_bm25_first(
 
         # Trim span (unified for all cases)
         span_text, global_start, global_end, match_ratio = _trim_and_position(
-            trim_target, span_text, window_start_pos,
-            trim_spans, trim_method, min_fuzzy_ratio
+            trim_target,
+            span_text,
+            window_start_pos,
+            trim_spans,
+            trim_method,
+            min_fuzzy_ratio,
         )
 
         # Find source document
@@ -480,7 +476,9 @@ class VerifyQuotes(CompletionDAGNode):
     type: Literal["VerifyQuotes"] = "VerifyQuotes"
 
     # Input configuration
-    quotes_from: Optional[str] = None  # Node to extract quotes from (replaces inputs[0])
+    quotes_from: Optional[str] = (
+        None  # Node to extract quotes from (replaces inputs[0])
+    )
     search_in: Optional[str] = None  # Node to search in (None = documents)
     check_fairness: bool = False  # Enable fairness checking for themes
     context_window_size: int = 1000  # Context window for fairness check
@@ -508,7 +506,9 @@ class VerifyQuotes(CompletionDAGNode):
     verification_type: Optional[str] = None  # "code" or "theme"
 
     # Private attribute for organizing LLM results by type (for export)
-    _llm_results_by_type: Dict[str, Dict[str, ChatterResult]] = PrivateAttr(default_factory=dict)
+    _llm_results_by_type: Dict[str, Dict[str, ChatterResult]] = PrivateAttr(
+        default_factory=dict
+    )
 
     def validate_template(self):
         """Validate template if provided."""
@@ -521,7 +521,9 @@ class VerifyQuotes(CompletionDAGNode):
                 return False
         return True
 
-    def _normalize_to_outputs_list(self, input_data) -> List[Union["Themes", "CodeList"]]:
+    def _normalize_to_outputs_list(
+        self, input_data
+    ) -> List[Union["Themes", "CodeList"]]:
         """Normalize any input format to list of Themes/CodeList objects.
 
         Handles:
@@ -574,24 +576,30 @@ class VerifyQuotes(CompletionDAGNode):
                 for theme in output_val.themes:
                     for code in theme.resolved_codes:
                         for quote in code.all_quotes:
-                            quotes_with_context.append({
-                                "quote": quote,
-                                "type": "theme",
-                                "theme": theme,
-                                "code": code,
-                            })
+                            quotes_with_context.append(
+                                {
+                                    "quote": quote,
+                                    "type": "theme",
+                                    "theme": theme,
+                                    "code": code,
+                                }
+                            )
             elif isinstance(output_val, CodeList):
                 # extract from codes
                 for code in output_val.codes:
                     for quote in code.all_quotes:
-                        quotes_with_context.append({
-                            "quote": quote,
-                            "type": "code",
-                            "code": code,
-                        })
+                        quotes_with_context.append(
+                            {
+                                "quote": quote,
+                                "type": "code",
+                                "code": code,
+                            }
+                        )
 
         if not quotes_with_context:
-            raise ValueError("No quotes found in input. Check that input contains Code or Theme objects with quotes.")
+            raise ValueError(
+                "No quotes found in input. Check that input contains Code or Theme objects with quotes."
+            )
 
         # set verification type based on first item
         self.verification_type = quotes_with_context[0]["type"]
@@ -632,7 +640,9 @@ class VerifyQuotes(CompletionDAGNode):
                 # Single ChatterResult
                 return str(node_output.response)
             else:
-                raise ValueError(f"Cannot extract text from node '{self.search_in}' output type: {type(node_output)}")
+                raise ValueError(
+                    f"Cannot extract text from node '{self.search_in}' output type: {type(node_output)}"
+                )
 
     async def llm_as_judge(self, quote: str, source: str) -> Dict[str, Any]:
         """Use LLM to verify if a quote is truly contained in the source text.
@@ -684,7 +694,11 @@ class VerifyQuotes(CompletionDAGNode):
         explanation = _extract_llm_field(result, "explanation", "")
         is_contained = _extract_llm_field(result, "is_contained", None)
 
-        return {"explanation": explanation, "is_contained": is_contained, "chatter_result": result}
+        return {
+            "explanation": explanation,
+            "is_contained": is_contained,
+            "chatter_result": result,
+        }
 
     async def check_quote_fairness(
         self,
@@ -693,7 +707,7 @@ class VerifyQuotes(CompletionDAGNode):
         code_name: str,
         code_description: str,
         quote: str,
-        original_text: str
+        original_text: str,
     ) -> Dict[str, Any]:
         """Use LLM to verify if a quote is used fairly to support a theme.
 
@@ -749,7 +763,7 @@ class VerifyQuotes(CompletionDAGNode):
             return {
                 "explanation": "LLM Error occurred (skipped)",
                 "is_fair": None,
-                "chatter_result": None
+                "chatter_result": None,
             }
 
         # Accumulate cost from LLM call
@@ -762,7 +776,7 @@ class VerifyQuotes(CompletionDAGNode):
         return {
             "explanation": explanation,
             "is_fair": is_fair,
-            "chatter_result": result
+            "chatter_result": result,
         }
 
     def extract_context_window(
@@ -770,7 +784,7 @@ class VerifyQuotes(CompletionDAGNode):
         quote_text: str,
         source_doc_content: str,
         global_start: int,
-        global_end: int
+        global_end: int,
     ) -> str:
         """Extract context window around a quote from the source document.
 
@@ -826,14 +840,20 @@ class VerifyQuotes(CompletionDAGNode):
         # Extract quotes with context (handles Code and Themes)
         quotes_with_context = self.extract_quotes_and_context(input_data)
 
-        logger.info(f"Verifying {len(quotes_with_context)} quotes (type: {self.verification_type})")
-        logger.info(f"Fairness checking: {'enabled' if self.check_fairness else 'disabled'}")
+        logger.info(
+            f"Verifying {len(quotes_with_context)} quotes (type: {self.verification_type})"
+        )
+        logger.info(
+            f"Fairness checking: {'enabled' if self.check_fairness else 'disabled'}"
+        )
 
         # Extract Quote objects for verification
         quotes_to_verify = [item["quote"] for item in quotes_with_context]
 
         # Stage 1: Verify quote existence using BM25 + embeddings
-        logger.info(f"Running BM25 + embedding verification on {len(quotes_to_verify)} quotes")
+        logger.info(
+            f"Running BM25 + embedding verification on {len(quotes_to_verify)} quotes"
+        )
 
         quote_texts = [q.text for q in quotes_to_verify]
         windows = make_windows(
@@ -872,7 +892,7 @@ class VerifyQuotes(CompletionDAGNode):
         # Initialize storage for LLM ChatterResults (for export organization)
         self._llm_results_by_type = {
             "existence": {},  # quote_hash -> ChatterResult
-            "fairness": {}    # quote_hash -> ChatterResult  (for themes only)
+            "fairness": {},  # quote_hash -> ChatterResult  (for themes only)
         }
 
         # --- Convert to dataframe and compute stats ---
@@ -886,7 +906,9 @@ class VerifyQuotes(CompletionDAGNode):
         poor_matches = df[poor_match_mask]
 
         if len(poor_matches) > 0:
-            logger.info(f"Running LLM existence verification on {len(poor_matches)} poor matches")
+            logger.info(
+                f"Running LLM existence verification on {len(poor_matches)} poor matches"
+            )
 
             # Initialize columns for all rows
             df["llm_explanation"] = None
@@ -899,10 +921,11 @@ class VerifyQuotes(CompletionDAGNode):
                 desc=desc,
                 file=sys.stderr,
                 unit="item",
-                ncols=120
+                ncols=120,
             )
 
             async with anyio.create_task_group() as tg:
+
                 async def check_match(idx, quote_hash, quote, span_text):
                     try:
                         async with semaphore:
@@ -911,21 +934,29 @@ class VerifyQuotes(CompletionDAGNode):
                             df.at[idx, "llm_is_contained"] = result["is_contained"]
                             # Store ChatterResult for export and cache statistics
                             if result["chatter_result"]:
-                                self._llm_results_by_type["existence"][quote_hash] = result["chatter_result"]
+                                self._llm_results_by_type["existence"][quote_hash] = (
+                                    result["chatter_result"]
+                                )
                                 self._llm_results.append(result["chatter_result"])
                     finally:
                         pbar.update(1)
 
                 for idx, row in poor_matches.iterrows():
                     tg.start_soon(
-                        check_match, idx, row["quote_hash"], row["quote"], row["source_doc_content"]
+                        check_match,
+                        idx,
+                        row["quote_hash"],
+                        row["quote"],
+                        row["source_doc_content"],
                     )
 
             pbar.close()
 
         # Stage 2: Fairness verification for themes (optional)
         if self.check_fairness and self.verification_type == "theme":
-            logger.info(f"Running fairness verification on {len(quotes_with_context)} theme-quote usages")
+            logger.info(
+                f"Running fairness verification on {len(quotes_with_context)} theme-quote usages"
+            )
 
             # Initialize fairness columns
             df["theme"] = None
@@ -935,7 +966,9 @@ class VerifyQuotes(CompletionDAGNode):
             df["llm_fairness_explanation"] = None
             df["llm_is_fair"] = None
 
-            logger.debug(f"Initialized fairness columns. DataFrame has {len(df.columns)} columns: {list(df.columns)}")
+            logger.debug(
+                f"Initialized fairness columns. DataFrame has {len(df.columns)} columns: {list(df.columns)}"
+            )
 
             # Run fairness checks in parallel
             desc_fairness = f"{self.type}: {self.name} (LLM fairness)".ljust(35)
@@ -944,15 +977,18 @@ class VerifyQuotes(CompletionDAGNode):
                 desc=desc_fairness,
                 file=sys.stderr,
                 unit="item",
-                ncols=120
+                ncols=120,
             )
 
             async with anyio.create_task_group() as tg:
+
                 async def check_fairness(idx, item, match_result):
                     try:
                         async with semaphore:
                             # Use full source document for consistency with is_contained check
-                            source_doc_content = match_result.get("source_doc_content", "")
+                            source_doc_content = match_result.get(
+                                "source_doc_content", ""
+                            )
 
                             # If no source document found, log warning and skip fairness check
                             if not source_doc_content:
@@ -977,19 +1013,27 @@ class VerifyQuotes(CompletionDAGNode):
                             df.at[idx, "theme_description"] = item["theme"].description
                             df.at[idx, "code_name"] = item["code"].name
                             df.at[idx, "code_description"] = item["code"].description
-                            df.at[idx, "llm_fairness_explanation"] = fairness_result["explanation"]
+                            df.at[idx, "llm_fairness_explanation"] = fairness_result[
+                                "explanation"
+                            ]
                             df.at[idx, "llm_is_fair"] = fairness_result["is_fair"]
 
                             # Store ChatterResult for export and cache statistics
                             if fairness_result["chatter_result"]:
                                 quote_hash = item["quote"].hash()
-                                self._llm_results_by_type["fairness"][quote_hash] = fairness_result["chatter_result"]
-                                self._llm_results.append(fairness_result["chatter_result"])
+                                self._llm_results_by_type["fairness"][quote_hash] = (
+                                    fairness_result["chatter_result"]
+                                )
+                                self._llm_results.append(
+                                    fairness_result["chatter_result"]
+                                )
                     finally:
                         pbar_fairness.update(1)
 
                 # build lookup dict once (O(m))
-                quote_hash_to_context = {item["quote"].hash(): item for item in quotes_with_context}
+                quote_hash_to_context = {
+                    item["quote"].hash(): item for item in quotes_with_context
+                }
 
                 # match quotes_with_context to df rows by quote hash (O(n))
                 for idx, row in df.iterrows():
@@ -1002,7 +1046,9 @@ class VerifyQuotes(CompletionDAGNode):
 
             pbar_fairness.close()
         else:
-            logger.info(f"Skipping fairness verification (check_fairness={self.check_fairness}, verification_type={self.verification_type})")
+            logger.info(
+                f"Skipping fairness verification (check_fairness={self.check_fairness}, verification_type={self.verification_type})"
+            )
 
         self.sentence_matches = df.to_dict(orient="records")
 
@@ -1010,7 +1056,6 @@ class VerifyQuotes(CompletionDAGNode):
         n_quotes = len(df)
         n_with_ellipses = df["quote"].apply(lambda q: bool(ELLIPSIS_RE.search(q))).sum()
 
-        
         self.stats = {
             "n_quotes": int(n_quotes),
             "n_with_ellipses": int(n_with_ellipses),
@@ -1056,12 +1101,16 @@ class VerifyQuotes(CompletionDAGNode):
 
             valid_fair = df["llm_is_fair"].dropna()
             n_fair = int(valid_fair.sum()) if len(valid_fair) > 0 else 0
-            self.stats.update({
-                "n_fair": n_fair,
-                "n_unfair": len(valid_fair) - n_fair,
-                "n_not_checked": n_quotes - len(valid_fair),
-                "pct_fair": float(n_fair / n_quotes * 100) if n_quotes > 0 else None,
-            })
+            self.stats.update(
+                {
+                    "n_fair": n_fair,
+                    "n_unfair": len(valid_fair) - n_fair,
+                    "n_not_checked": n_quotes - len(valid_fair),
+                    "pct_fair": (
+                        float(n_fair / n_quotes * 100) if n_quotes > 0 else None
+                    ),
+                }
+            )
 
         # Store output for downstream nodes to access via context
         self.output = self.sentence_matches
@@ -1125,7 +1174,9 @@ class VerifyQuotes(CompletionDAGNode):
 
         # Add theme columns if present (for theme verification)
         if "theme" in df.columns:
-            priority_cols.extend(["theme", "theme_description", "code_name", "code_description"])
+            priority_cols.extend(
+                ["theme", "theme_description", "code_name", "code_description"]
+            )
 
         # All other columns at the end
         other_cols = [col for col in df.columns if col not in priority_cols]
@@ -1151,15 +1202,15 @@ class VerifyQuotes(CompletionDAGNode):
 
         with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
             from openpyxl.styles import Alignment, Font
-            
+
             df.to_excel(writer, sheet_name="Quote Verification", index=False)
             # Access the worksheet to apply formatting
             worksheet = writer.sheets["Quote Verification"]
             default_font = Font(size=11)
-            
+
             for i in range(1, worksheet.max_row + 1):
                 worksheet.row_dimensions[i].height = 20
-    
+
             for column in worksheet.columns:
                 column_letter = column[0].column_letter
                 header_value = column[0].value
@@ -1171,25 +1222,26 @@ class VerifyQuotes(CompletionDAGNode):
                     "full_original_text",
                     "llm_explanation",
                     "llm_fairness_explanation",
-                    "theme_description", "code_description"
+                    "theme_description",
+                    "code_description",
                 ]:
                     worksheet.column_dimensions[column_letter].width = 60
                     for cell in column:
                         cell.alignment = Alignment(wrap_text=True, vertical="top")
                         cell.font = default_font
-            
+
                 elif header_value in ["llm_is_contained", "llm_is_fair"]:
                     # Boolean columns - narrow
                     worksheet.column_dimensions[column_letter].width = 18
                     for cell in column:
                         cell.font = default_font
-                        
-                elif header_value in ["theme", "code_name", 'source_doc']:
+
+                elif header_value in ["theme", "code_name", "source_doc"]:
                     # Theme/code names - medium width
                     worksheet.column_dimensions[column_letter].width = 25
                     for cell in column:
                         cell.font = default_font
-                
+
                 elif header_value in [
                     "bm25_score",
                     "bm25_ratio",
@@ -1222,7 +1274,9 @@ class VerifyQuotes(CompletionDAGNode):
                 existence_folder = folder / "llm_existence_checks"
                 existence_folder.mkdir(exist_ok=True)
 
-                for idx, (quote_hash, result) in enumerate(sorted(self._llm_results_by_type["existence"].items())):
+                for idx, (quote_hash, result) in enumerate(
+                    sorted(self._llm_results_by_type["existence"].items())
+                ):
                     file_prefix = f"{idx:04d}_{quote_hash}"
                     export_chatter_result(result, existence_folder, file_prefix)
 
@@ -1231,6 +1285,8 @@ class VerifyQuotes(CompletionDAGNode):
                 fairness_folder = folder / "llm_fairness_checks"
                 fairness_folder.mkdir(exist_ok=True)
 
-                for idx, (quote_hash, result) in enumerate(sorted(self._llm_results_by_type["fairness"].items())):
+                for idx, (quote_hash, result) in enumerate(
+                    sorted(self._llm_results_by_type["fairness"].items())
+                ):
                     file_prefix = f"{idx:04d}_{quote_hash}"
                     export_chatter_result(result, fairness_folder, file_prefix)

@@ -149,10 +149,11 @@ class Classifier(ItemsNode, CompletionDAGNode):
 
                     # update progress bar with per-node cost if using CostProgressBar
                     from soak.models.progress import CostProgressBar
+
                     if isinstance(pbar, CostProgressBar):
                         pbar.update_cost(
                             result.fresh_cost,
-                            result.prompt_tokens + result.completion_tokens
+                            result.prompt_tokens + result.completion_tokens,
                         )
 
             self._model_results[model_name] = results
@@ -337,7 +338,8 @@ class Classifier(ItemsNode, CompletionDAGNode):
         ground_truth_stats_df = None
         if self.ground_truths and model_dfs and self._processed_items:
             try:
-                from ...ground_truth_metrics import calculate_ground_truth_metrics
+                from ...ground_truth_metrics import \
+                    calculate_ground_truth_metrics
 
                 ground_truth_stats = calculate_ground_truth_metrics(
                     model_dfs=model_dfs,
@@ -389,12 +391,11 @@ class Classifier(ItemsNode, CompletionDAGNode):
     def export(self, folder: Path, unique_id: str = ""):
         """Export Classifier node with CSV output and individual responses."""
         from ...agreement import export_agreement_stats
-        from ...agreement_scripts import (
-            collect_field_categories,
-            generate_human_rater_template,
-            write_agreement_scripts,
-        )
-        from ...export_utils import export_to_csv, export_to_html, export_to_json
+        from ...agreement_scripts import (collect_field_categories,
+                                          generate_human_rater_template,
+                                          write_agreement_scripts)
+        from ...export_utils import (export_to_csv, export_to_html,
+                                     export_to_json)
         from ...helpers import build_combined_long_form_dataset
 
         super().export(folder, unique_id=unique_id)
@@ -560,10 +561,8 @@ class Classifier(ItemsNode, CompletionDAGNode):
         # Calculate and export ground truth metrics if configured
         if self.ground_truths and self._processed_items and model_dfs:
             from ...ground_truth_metrics import (
-                calculate_ground_truth_metrics,
-                export_confusion_matrices,
-                export_ground_truth_metrics,
-            )
+                calculate_ground_truth_metrics, export_confusion_matrices,
+                export_ground_truth_metrics)
 
             try:
                 ground_truth_stats = calculate_ground_truth_metrics(
@@ -601,11 +600,9 @@ class Classifier(ItemsNode, CompletionDAGNode):
             folder: Output folder for scripts
             model_dfs: Pre-built DataFrames for each model from _build_dataframes_from_results()
         """
-        from ...agreement_scripts import (
-            collect_field_categories,
-            generate_human_rater_template,
-            write_agreement_scripts,
-        )
+        from ...agreement_scripts import (collect_field_categories,
+                                          generate_human_rater_template,
+                                          write_agreement_scripts)
 
         if not self._model_results or not self.agreement_fields or not model_dfs:
             return

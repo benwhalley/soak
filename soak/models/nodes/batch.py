@@ -116,5 +116,7 @@ class Batch(DAGNode):
         )
 
         self.output = result
-        logger.info(f"Batch '{self.name}': Created {len(batches)} batches of size {self.batch_size}")
+        logger.info(
+            f"Batch '{self.name}': Created {len(batches)} batches of size {self.batch_size}"
+        )
         return result

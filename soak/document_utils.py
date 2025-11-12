@@ -126,7 +126,9 @@ def safer_extract(zip_ref, dest_dir, max_files: int = 1000):
 
 
 @contextmanager
-def unpack_zip_to_temp_paths_if_needed(paths: list[str | Path]) -> list[tuple[str, dict]]:
+def unpack_zip_to_temp_paths_if_needed(
+    paths: list[str | Path],
+) -> list[tuple[str, dict]]:
     """Unpack zip files to temp dir and yield file paths with metadata.
 
     Returns:

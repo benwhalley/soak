@@ -3,9 +3,10 @@
 import logging
 from typing import Any, List, Literal, Union
 
+from soak.models.base import TrackedItem
+
 from .base import DAGNode
 from .batch import BatchList
-from soak.models.base import TrackedItem
 
 logger = logging.getLogger(__name__)
 
@@ -47,7 +48,9 @@ class GroupBy(DAGNode):
             result = self._group_sequential(items, self.group_by)
         else:
             # Single field grouping
-            field = self.group_by if isinstance(self.group_by, str) else self.group_by[0]
+            field = (
+                self.group_by if isinstance(self.group_by, str) else self.group_by[0]
+            )
             result = self._group_by_field(items, field)
 
         self.output = result
@@ -152,10 +155,14 @@ class GroupBy(DAGNode):
             else:
                 return "Available keys: (empty dict)"
         elif isinstance(obj, (list, tuple)):
-            return f"Available indices: 0-{len(obj)-1}" if obj else "Available indices: (empty list)"
+            return (
+                f"Available indices: 0-{len(obj)-1}"
+                if obj
+                else "Available indices: (empty list)"
+            )
         else:
             # For other objects, list attributes (excluding private/magic methods)
-            attrs = [a for a in dir(obj) if not a.startswith('_')]
+            attrs = [a for a in dir(obj) if not a.startswith("_")]
             if attrs:
                 return f"Available attributes: {', '.join(attrs[:20])}"
             else:
@@ -183,7 +190,12 @@ class GroupBy(DAGNode):
 
         # Parse field_path: "sources[0]" → ["sources", 0], "metadata.category" → ["metadata", "category"]
         # Handle both bracket and dot notation
-        parts = field_path.replace("][", "].[").replace("[", ".").replace("]", "").split(".")
+        parts = (
+            field_path.replace("][", "].[")
+            .replace("[", ".")
+            .replace("]", "")
+            .split(".")
+        )
 
         for part in parts:
             if not part:  # Skip empty parts from split
@@ -211,7 +223,11 @@ class GroupBy(DAGNode):
                 obj = obj[part]
             else:
                 available = self._get_available_fields(obj)
-                obj_type = "TrackedItem" if isinstance(obj, TrackedItem) else type(obj).__name__
+                obj_type = (
+                    "TrackedItem"
+                    if isinstance(obj, TrackedItem)
+                    else type(obj).__name__
+                )
                 raise ValueError(
                     f"Field '{part}' not found in {obj_type} (path: '{field_path}')\n{available}"
                 )

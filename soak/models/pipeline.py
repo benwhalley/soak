@@ -174,7 +174,7 @@ class QualitativeAnalysisPipeline(DAG):
                     chatter = node.output[0]
 
                     # Use .outputs property for cleaner access (maps to SegmentResult.output values)
-                    if hasattr(chatter, 'outputs'):
+                    if hasattr(chatter, "outputs"):
                         outputs = chatter.outputs
                         if key in outputs:
                             segment_output = outputs[key]
@@ -188,7 +188,10 @@ class QualitativeAnalysisPipeline(DAG):
                                 return segment_output.themes
 
                             # For legacy dict format: {'codes': [...]}
-                            if isinstance(segment_output, dict) and key in segment_output:
+                            if (
+                                isinstance(segment_output, dict)
+                                and key in segment_output
+                            ):
                                 return segment_output[key]
 
                             # For narrative or other direct values

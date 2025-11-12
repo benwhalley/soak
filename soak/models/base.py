@@ -36,7 +36,9 @@ def get_embedding(*args, **kwargs):
 
     Cache hits/misses are logged at DEBUG level.
     """
-    logger.debug(f"get_embedding called with args={args[:1]}... kwargs keys={list(kwargs.keys())}")
+    logger.debug(
+        f"get_embedding called with args={args[:1]}... kwargs keys={list(kwargs.keys())}"
+    )
     result = get_embedding_(*args, **kwargs)
     logger.debug(f"get_embedding completed")
     return result
@@ -312,7 +314,9 @@ class TrackedItem:
     id: str  # THIS item's unique ID
     sources: List[str]  # IDs that contributed to this item
     metadata: Dict[str, Any] = field(default_factory=dict)
-    content_excluding_overlap: Optional[Tuple[int, int]] = None  # (start, end) indices for core content without overlap
+    content_excluding_overlap: Optional[Tuple[int, int]] = (
+        None  # (start, end) indices for core content without overlap
+    )
 
     def __str__(self) -> str:
         """Return content for template rendering (includes overlap for LLM context)."""
@@ -596,7 +600,9 @@ class QualitativeAnalysisComparison(BaseModel):
     comparison_plots: Dict[str, Dict[str, Any]]  # eg. heatmaps.xxxyyy = List
     additional_plots: Dict[str, Any]
     config: dict
-    embedded_strings: Dict[str, List[Dict[str, str]]] = {}  # analysis_name -> list of theme embedding details
+    embedded_strings: Dict[str, List[Dict[str, str]]] = (
+        {}
+    )  # analysis_name -> list of theme embedding details
 
     def by_comparisons(self) -> Dict[str, Dict[str, Any]]:
         """

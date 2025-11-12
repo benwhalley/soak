@@ -6,32 +6,20 @@ import random
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import (
-    TYPE_CHECKING,
-    Annotated,
-    Any,
-    Dict,
-    List,
-    Optional,
-    Set,
-    Tuple,
-    Union,
-)
+from typing import (TYPE_CHECKING, Annotated, Any, Dict, List, Optional, Set,
+                    Tuple, Union)
 
 import anyio
 from jinja2 import Environment, StrictUndefined, meta
 from pydantic import BaseModel, Field, model_validator
 from struckdown import LLM, ChatterResult, LLMCredentials
 
-from soak.document_utils import (
-    extract_text,
-    get_scrubber,
-    is_spreadsheet,
-    unpack_zip_to_temp_paths_if_needed,
-)
-from soak.models.base import SOAK_MAX_RUNTIME, TrackedItem, get_default_llm_credentials
-from soak.models.cost_tracker import GlobalCostTracker
+from soak.document_utils import (extract_text, get_scrubber, is_spreadsheet,
+                                 unpack_zip_to_temp_paths_if_needed)
 from soak.export_utils import export_to_csv
+from soak.models.base import (SOAK_MAX_RUNTIME, TrackedItem,
+                              get_default_llm_credentials)
+from soak.models.cost_tracker import GlobalCostTracker
 
 if TYPE_CHECKING:
     from .nodes.base import DAGNode
@@ -534,7 +522,9 @@ Export Time: {datetime.now().isoformat()}
                 folder_name = f"{order:02d}_{node.type}_{node.name}"
                 self._node_export_folders[node_name] = output_dir / folder_name
 
-        logger.debug(f"Prepared export folders for {len(self._node_export_folders)} nodes")
+        logger.debug(
+            f"Prepared export folders for {len(self._node_export_folders)} nodes"
+        )
 
     def _aggregate_costs(self) -> None:
         """Aggregate costs from all completion nodes and store summary."""
@@ -648,14 +638,16 @@ Export Time: {datetime.now().isoformat()}
         outputs = []
 
         # Primary: Check _llm_results attribute (CompletionDAGNode standard)
-        if hasattr(node, '_llm_results') and node._llm_results:
+        if hasattr(node, "_llm_results") and node._llm_results:
             outputs.extend(node._llm_results)
         # Fallback: Check node.output ONLY if _llm_results is empty/missing (backward compatibility)
         elif hasattr(node, "output") and node.output is not None:
             if isinstance(node.output, list):
                 outputs.extend([o for o in node.output if isinstance(o, ChatterResult)])
             elif isinstance(node.output, dict):
-                outputs.extend([o for o in node.output.values() if isinstance(o, ChatterResult)])
+                outputs.extend(
+                    [o for o in node.output.values() if isinstance(o, ChatterResult)]
+                )
             elif isinstance(node.output, ChatterResult):
                 outputs.append(node.output)
 
@@ -700,7 +692,7 @@ Export Time: {datetime.now().isoformat()}
             f"Calls: {cost_summary.get('fresh_count', 0)} fresh, {cost_summary.get('cached_count', 0)} cached",
         ]
 
-        if cost_summary.get('has_unknown_costs', False):
+        if cost_summary.get("has_unknown_costs", False):
             lines.append("Note: Some costs are unknown (check costs.csv for details)")
 
         return "\n".join(lines)
@@ -730,17 +722,19 @@ Export Time: {datetime.now().isoformat()}
             node = self.nodes_dict.get(node_name)
             node_type = node.type if node else "Unknown"
 
-            rows.append({
-                "node_name": node_name,
-                "node_type": node_type,
-                "cost": node_data["cost"],
-                "fresh_cost": node_data.get("fresh_cost", 0.0),
-                "prompt_tokens": node_data["prompt_tokens"],
-                "completion_tokens": node_data["completion_tokens"],
-                "fresh_count": node_data.get("fresh_count", 0),
-                "cached_count": node_data.get("cached_count", 0),
-                "has_unknown": node_data.get("has_unknown", False),
-            })
+            rows.append(
+                {
+                    "node_name": node_name,
+                    "node_type": node_type,
+                    "cost": node_data["cost"],
+                    "fresh_cost": node_data.get("fresh_cost", 0.0),
+                    "prompt_tokens": node_data["prompt_tokens"],
+                    "completion_tokens": node_data["completion_tokens"],
+                    "fresh_count": node_data.get("fresh_count", 0),
+                    "cached_count": node_data.get("cached_count", 0),
+                    "has_unknown": node_data.get("has_unknown", False),
+                }
+            )
 
         df = pd.DataFrame(rows)
         csv_path = output_dir / "costs.csv"
@@ -754,7 +748,9 @@ Export Time: {datetime.now().isoformat()}
             output_dir: Directory to write diagram files to
         """
         try:
-            from soak.visualization import dag_to_graphviz, render_graphviz_to_pdf
+            from soak.visualization import (dag_to_graphviz,
+                                            render_graphviz_to_pdf)
+
             dot_definition = dag_to_graphviz(self)
 
             # save .dot file

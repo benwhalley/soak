@@ -6,22 +6,9 @@ from typing import Union
 import yaml
 
 from soak.models import DAGNode, QualitativeAnalysisPipeline
-
 # Import all node types to rebuild their schemas with BatchList
-from soak.models.nodes import (
-    Batch,
-    Classifier,
-    Filter,
-    GroupBy,
-    Map,
-    Reduce,
-    Scrub,
-    Split,
-    Transform,
-    Ungroup,
-    VerifyQuotes,
-)
-
+from soak.models.nodes import (Batch, Classifier, Filter, GroupBy, Map, Reduce,
+                               Scrub, Split, Transform, Ungroup, VerifyQuotes)
 # Ensure BatchList is imported before model_rebuild to resolve forward references
 from soak.models.nodes.batch import BatchList  # noqa: F401
 
@@ -111,17 +98,23 @@ def load_template_bundle(template: Union[Path, str]) -> QualitativeAnalysisPipel
                 template_file = node["template"]
                 try:
                     node["template"] = resolver.load(template_file)
-                    logger.debug(f"Loaded explicit template '{template_file}' for node '{node_name}'")
+                    logger.debug(
+                        f"Loaded explicit template '{template_file}' for node '{node_name}'"
+                    )
                     continue
                 except Exception as e:
-                    logger.error(f"Failed to load template '{template_file}' for node '{node_name}': {e}")
+                    logger.error(
+                        f"Failed to load template '{template_file}' for node '{node_name}': {e}"
+                    )
                     raise
 
             # Priority 3: Convention -- look for {node_name}.sd
             external_template = resolver.try_load(f"{node_name}.sd")
             if external_template:
                 node["template"] = external_template
-                logger.debug(f"Loaded external template '{node_name}.sd' for node '{node_name}'")
+                logger.debug(
+                    f"Loaded external template '{node_name}.sd' for node '{node_name}'"
+                )
 
     pipeline = QualitativeAnalysisPipeline.model_validate(loaded)
     for i in pipeline.nodes:

@@ -22,11 +22,8 @@ from soak.specs import load_template_bundle
 async def test_error_handling_implementation_exists():
     """Test that error handling is implemented and accessible."""
     # Simple smoke test to verify error handling infrastructure
-    from soak.error_handlers import (
-        ErrorBehavior,
-        get_error_behavior,
-        handle_llm_error_in_node,
-    )
+    from soak.error_handlers import (ErrorBehavior, get_error_behavior,
+                                     handle_llm_error_in_node)
     from soak.models.dag import DAGConfig
 
     # Verify functions exist and are callable
@@ -45,10 +42,8 @@ async def test_error_handling_implementation_exists():
 @pytest.mark.anyio
 async def test_error_behavior_config():
     """Test error behavior configuration options."""
-    from litellm.exceptions import (
-        ContentPolicyViolationError,
-        ContextWindowExceededError,
-    )
+    from litellm.exceptions import (ContentPolicyViolationError,
+                                    ContextWindowExceededError)
 
     from soak.error_handlers import ErrorBehavior, get_error_behavior
     from soak.models.dag import DAGConfig
@@ -80,7 +75,8 @@ async def test_error_behavior_config():
 async def test_nodes_have_error_handling():
     """Test that all major nodes import and use error handling."""
     # Verify error handling is imported in node modules
-    from soak.models.nodes import classifier, filter, map, transform, transform_reduce
+    from soak.models.nodes import (classifier, filter, map, transform,
+                                   transform_reduce)
 
     # Check that managed_llm_call is available (centralized error handling)
     assert hasattr(map, "managed_llm_call")

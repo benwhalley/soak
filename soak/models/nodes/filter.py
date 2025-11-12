@@ -8,12 +8,15 @@ import anyio
 import pandas as pd
 from box import Box
 from pydantic import Field, PrivateAttr
-from simpleeval import AttributeDoesNotExist, EvalWithCompoundTypes, NameNotDefined
+from simpleeval import (AttributeDoesNotExist, EvalWithCompoundTypes,
+                        NameNotDefined)
 
 from soak.error_handlers import managed_llm_call
-from soak.models.base import TrackedItem, extract_content, safe_json_dump, semaphore
+from soak.models.base import (TrackedItem, extract_content, safe_json_dump,
+                              semaphore)
 
-from .base import CompletionDAGNode, ItemsNode, default_map_task, render_strict_template
+from .base import (CompletionDAGNode, ItemsNode, default_map_task,
+                   render_strict_template)
 
 logger = logging.getLogger(__name__)
 
@@ -49,14 +52,15 @@ class Filter(ItemsNode, CompletionDAGNode):
     expression: str = Field(
         ..., description="Boolean expression to filter items (e.g., 'funny == True')"
     )
-    
+
     omitted_text: str = Field(
         default=" ... ",
-        description="Text to insert when items are omitted; defaults to ellipsis (...)."
+        description="Text to insert when items are omitted; defaults to ellipsis (...).",
     )
 
     template: Optional[str] = Field(
-        default=None, description="Optional LLM template for extraction before filtering"
+        default=None,
+        description="Optional LLM template for extraction before filtering",
     )
     mode: Optional[Literal["llm", "simple"]] = Field(
         default=None,
@@ -129,9 +133,7 @@ class Filter(ItemsNode, CompletionDAGNode):
             return False
 
     async def _process_llm_mode(
-        self,
-        items: List[Any],
-        progress_bar: Optional[Any] = None
+        self, items: List[Any], progress_bar: Optional[Any] = None
     ) -> List[Any]:
         """Process items using LLM template extraction + expression filtering.
 
@@ -167,15 +169,17 @@ class Filter(ItemsNode, CompletionDAGNode):
         if pbar is None:
             # Create local progress bar for backward compatibility (non-batched case)
             if self.dag.config.show_progress:
-                from tqdm import tqdm
                 import sys
+
+                from tqdm import tqdm
+
                 desc = f"{self.type}: {self.name}".ljust(35)
                 pbar = tqdm(
                     total=len(boxed_items),
                     desc=desc,
                     unit="item",
                     file=sys.stderr,
-                    ncols=120
+                    ncols=120,
                 )
 
         try:
@@ -222,7 +226,9 @@ class Filter(ItemsNode, CompletionDAGNode):
         included = []
         for idx, (item, llm_result) in enumerate(zip(items, llm_results)):
             if llm_result is None:
-                logger.debug(f"Filter '{self.name}': Item {idx} has no LLM result, excluding")
+                logger.debug(
+                    f"Filter '{self.name}': Item {idx} has no LLM result, excluding"
+                )
                 self._excluded_count += 1
                 continue
 
@@ -261,7 +267,7 @@ class Filter(ItemsNode, CompletionDAGNode):
                         content=self.omitted_text,
                         id=item.id,
                         sources=item.sources,
-                        metadata={**(item.metadata or {}), 'filtered': True}
+                        metadata={**(item.metadata or {}), "filtered": True},
                     )
                     included.append(filtered_item)
                 else:
@@ -280,9 +286,7 @@ class Filter(ItemsNode, CompletionDAGNode):
         return included
 
     async def _process_simple_mode(
-        self,
-        items: List[Any],
-        progress_bar: Optional[Any] = None
+        self, items: List[Any], progress_bar: Optional[Any] = None
     ) -> List[Any]:
         """Process items using direct expression evaluation on item data.
 
@@ -333,7 +337,7 @@ class Filter(ItemsNode, CompletionDAGNode):
                         content=self.omitted_text,
                         id=item.id,
                         sources=item.sources,
-                        metadata={**(item.metadata or {}), 'filtered': True}
+                        metadata={**(item.metadata or {}), "filtered": True},
                     )
                     included.append(filtered_item)
                 else:
@@ -356,9 +360,7 @@ class Filter(ItemsNode, CompletionDAGNode):
         return included
 
     async def process_items(
-        self,
-        items: List[Any],
-        progress_bar: Optional[Any] = None
+        self, items: List[Any], progress_bar: Optional[Any] = None
     ) -> List[Any]:
         """Filter items based on mode and expression.
 
@@ -400,9 +402,7 @@ class Filter(ItemsNode, CompletionDAGNode):
                 source_id = "N/A"
 
             # truncate content for display
-            display_content = (
-                content[:100] + "..." if len(content) > 100 else content
-            )
+            display_content = content[:100] + "..." if len(content) > 100 else content
 
             included_rows.append(
                 {
@@ -471,5 +471,7 @@ class Filter(ItemsNode, CompletionDAGNode):
 
                 # export metadata if TrackedItem
                 if isinstance(item, TrackedItem) and item.metadata:
-                    metadata_file = outputs_folder / f"{idx:04d}_{item_id}_metadata.json"
+                    metadata_file = (
+                        outputs_folder / f"{idx:04d}_{item_id}_metadata.json"
+                    )
                     metadata_file.write_text(item.to_json())

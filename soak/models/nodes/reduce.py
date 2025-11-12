@@ -27,7 +27,9 @@ class Reduce(DAGNode):
     template: str = "{{input}} "
     exclude_overlap: bool = True  # Exclude overlap by default when joining chunks
 
-    async def run(self) -> Union[List[Union[str, "TrackedItem"]], Union[str, "TrackedItem"]]:
+    async def run(
+        self,
+    ) -> Union[List[Union[str, "TrackedItem"]], Union[str, "TrackedItem"]]:
         """Reduce items, peeling one layer of BatchList nesting."""
         await super().run()
 
@@ -75,7 +77,9 @@ class Reduce(DAGNode):
             items = input_data if isinstance(input_data, list) else [input_data]
             result = await self._reduce_items(items)
             self.output = result
-            logger.info(f"Reduce '{self.name}': Reduced {len(items)} items to single value")
+            logger.info(
+                f"Reduce '{self.name}': Reduced {len(items)} items to single value"
+            )
             return result
 
     async def _reduce_batchlist(self, batchlist) -> Union[str, "TrackedItem"]:
@@ -161,8 +165,10 @@ class Reduce(DAGNode):
             return TrackedItem(
                 content=combined_content,
                 id=f"{first_id}__{self.name}",
-                sources=list(dict.fromkeys(all_sources)),  # deduplicate while preserving order
-                metadata={}
+                sources=list(
+                    dict.fromkeys(all_sources)
+                ),  # deduplicate while preserving order
+                metadata={},
             )
 
         return combined_content

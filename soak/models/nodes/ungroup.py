@@ -40,7 +40,9 @@ class Ungroup(DAGNode):
         else:
             # Already flat, pass through
             result = input_data if isinstance(input_data, list) else [input_data]
-            logger.debug(f"Ungroup '{self.name}': Input already flat ({len(result)} items)")
+            logger.debug(
+                f"Ungroup '{self.name}': Input already flat ({len(result)} items)"
+            )
 
         self.output = result
         return result

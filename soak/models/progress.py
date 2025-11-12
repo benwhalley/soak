@@ -17,6 +17,7 @@ class GlobalCostDisplay:
     def __enter__(self):
         """Create persistent progress bar for global cost display."""
         import sys
+
         # Initial display
         snapshot = self.tracker.get_snapshot()
         self.bar = tqdm(

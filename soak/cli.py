@@ -18,14 +18,8 @@ from trogon.typer import init_tui
 
 from .comparators.similarity_comparator import SimilarityComparator
 from .document_utils import unpack_zip_to_temp_paths_if_needed
-from .helpers import (
-    format_exception_concise,
-    hash_run_config,
-    load_env_file,
-    resolve_pipeline,
-    sanitize_for_filename,
-    save_env_file,
-)
+from .helpers import (format_exception_concise, hash_run_config, load_env_file,
+                      resolve_pipeline, sanitize_for_filename, save_env_file)
 from .models import QualitativeAnalysis, QualitativeAnalysisPipeline
 from .specs import load_template_bundle
 
@@ -359,9 +353,7 @@ def run(
             print(f"Use --force/-f to overwrite", file=sys.stderr)
             raise typer.Exit(1)
         else:
-            logger.warning(
-                f"Overwriting existing output folder: {', '.join(existing)}"
-            )
+            logger.warning(f"Overwriting existing output folder: {', '.join(existing)}")
 
     try:
         pipeline = load_template_bundle(pipyml)
@@ -492,7 +484,9 @@ def run(
             print(summary.format_summary(include_breakdown=True), file=sys.stderr)
 
             # add total API calls count
-            total_calls = cost_summary.get("fresh_count", 0) + cost_summary.get("cached_count", 0)
+            total_calls = cost_summary.get("fresh_count", 0) + cost_summary.get(
+                "cached_count", 0
+            )
             if total_calls > 0:
                 print(f"  Total API calls: {total_calls}", file=sys.stderr)
 
@@ -530,17 +524,17 @@ def run(
 
     # generate output content
     jsoncontent = analysis.model_dump_json()
-    
+
     # Generate HTML for each template
     # Use the original pipeline directly - don't serialize/deserialize as it corrupts node outputs
     pipeline_for_html = analysis
     html_outputs = generate_all_html_outputs(
         pipeline_for_html, template, on_error="raise"
     )
-    
+
     # Write output files
     typer.echo(f"Writing output files")
-    
+
     json_path = dump_path / f"{output}.json"
     with open(json_path, "w", encoding="utf-8") as f:
         f.write(jsoncontent)
@@ -558,7 +552,6 @@ def run(
     # Note: Execution details already exported incrementally to {dump_path}
     # during pipeline execution (nodes exported as they finished)
     logger.info(f"✓ Execution dump saved to: {dump_path}")
-
 
 
 @app.command()

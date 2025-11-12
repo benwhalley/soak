@@ -7,7 +7,8 @@ import logging
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from soak.models.base import Code, CodeList, Quote, QuoteReference, safe_json_dump
+from soak.models.base import (Code, CodeList, Quote, QuoteReference,
+                              safe_json_dump)
 
 logger = logging.getLogger(__name__)
 
@@ -462,7 +463,9 @@ def collect_input_codes(context: Dict[str, Any]) -> List[Code]:
 
     codes = []
 
-    logger.debug(f"collect_input_codes: Searching context with {len(context)} keys: {list(context.keys())}")
+    logger.debug(
+        f"collect_input_codes: Searching context with {len(context)} keys: {list(context.keys())}"
+    )
 
     for key, value in context.items():
         # normalize value to list for uniform processing
@@ -471,23 +474,33 @@ def collect_input_codes(context: Dict[str, Any]) -> List[Code]:
         for item in items:
             if isinstance(item, CodeList):
                 # direct CodeList
-                logger.debug(f"collect_input_codes: Found direct CodeList in key '{key}' with {len(item.codes)} codes")
+                logger.debug(
+                    f"collect_input_codes: Found direct CodeList in key '{key}' with {len(item.codes)} codes"
+                )
                 codes.extend(item.codes)
             elif hasattr(item, "outputs"):
                 # ChatterResult -- extract CodeList from outputs
-                logger.debug(f"collect_input_codes: Found ChatterResult in key '{key}', checking outputs")
+                logger.debug(
+                    f"collect_input_codes: Found ChatterResult in key '{key}', checking outputs"
+                )
                 for output_key, output_val in item.outputs.items():
                     if isinstance(output_val, CodeList):
-                        logger.debug(f"collect_input_codes: Found CodeList in ChatterResult output '{output_key}' with {len(output_val.codes)} codes")
+                        logger.debug(
+                            f"collect_input_codes: Found CodeList in ChatterResult output '{output_key}' with {len(output_val.codes)} codes"
+                        )
                         codes.extend(output_val.codes)
 
     # If no codes found in direct context, try traversing DAG ancestors
     # This handles cases where intermediate Reduce nodes stringify the codes
     if not codes:
-        logger.debug("collect_input_codes: No codes in direct context, attempting DAG traversal")
+        logger.debug(
+            "collect_input_codes: No codes in direct context, attempting DAG traversal"
+        )
         codes = _collect_codes_from_dag_ancestors(context)
         if codes:
-            logger.debug(f"collect_input_codes: Found {len(codes)} codes via DAG traversal")
+            logger.debug(
+                f"collect_input_codes: Found {len(codes)} codes via DAG traversal"
+            )
 
     logger.debug(f"collect_input_codes: Found total of {len(codes)} codes")
     return codes
@@ -509,16 +522,20 @@ def _collect_codes_from_dag_ancestors(context: Dict[str, Any]) -> List[Code]:
     codes = []
 
     # Check for explicit node/DAG keys added by Map/Transform nodes
-    node = context.get('_node')
-    dag = context.get('_dag')
+    node = context.get("_node")
+    dag = context.get("_dag")
 
     # If we found a node, traverse its ancestors
     if node and dag:
-        logger.debug(f"_collect_codes_from_dag_ancestors: Traversing from node '{node.name}'")
+        logger.debug(
+            f"_collect_codes_from_dag_ancestors: Traversing from node '{node.name}'"
+        )
         ancestor_codes = _get_codes_from_ancestors(node, dag, visited=set())
         codes.extend(ancestor_codes)
     else:
-        logger.debug("_collect_codes_from_dag_ancestors: No _node/_dag reference found in context")
+        logger.debug(
+            "_collect_codes_from_dag_ancestors: No _node/_dag reference found in context"
+        )
 
     return codes
 
@@ -542,7 +559,7 @@ def _get_codes_from_ancestors(node, dag, visited: set) -> List[Code]:
     visited.add(node.name)
 
     # Check this node's output
-    if hasattr(node, 'output') and node.output:
+    if hasattr(node, "output") and node.output:
         output = node.output
 
         # Handle list of outputs (from Map nodes)
@@ -550,19 +567,23 @@ def _get_codes_from_ancestors(node, dag, visited: set) -> List[Code]:
 
         for item in items:
             if isinstance(item, CodeList):
-                logger.debug(f"_get_codes_from_ancestors: Found CodeList in node '{node.name}' output")
+                logger.debug(
+                    f"_get_codes_from_ancestors: Found CodeList in node '{node.name}' output"
+                )
                 codes.extend(item.codes)
             elif hasattr(item, "outputs"):
                 # ChatterResult
                 for output_val in item.outputs.values():
                     if isinstance(output_val, CodeList):
-                        logger.debug(f"_get_codes_from_ancestors: Found CodeList in node '{node.name}' ChatterResult")
+                        logger.debug(
+                            f"_get_codes_from_ancestors: Found CodeList in node '{node.name}' ChatterResult"
+                        )
                         codes.extend(output_val.codes)
 
     # Recursively check ancestors (input nodes)
-    if hasattr(node, 'inputs') and node.inputs:
+    if hasattr(node, "inputs") and node.inputs:
         for input_name in node.inputs:
-            if input_name == 'documents':
+            if input_name == "documents":
                 continue
             ancestor_node = dag.nodes_dict.get(input_name)
             if ancestor_node:

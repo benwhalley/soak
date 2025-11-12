@@ -33,7 +33,7 @@ MERMAID_SHAPE_MAP = {
     "VerifyQuotes": ("[[", "]]"),
     "Batch": ("[[", "]]"),
     "Classifier": ("[[", "]]"),
-    "Filter": ("[[", "]]"),   #
+    "Filter": ("[[", "]]"),  #
 }
 
 GRAPHVIZ_SHAPE_MAP = {
@@ -99,8 +99,6 @@ def dag_to_graphviz(dag: "DAG") -> str:
     return "\n".join(lines)
 
 
-
-
 def render_graphviz_to_pdf(dot_definition: str, output_path: Path) -> Optional[Path]:
     """Render a Graphviz DOT definition to a PDF file.
 
@@ -119,17 +117,17 @@ def render_graphviz_to_pdf(dot_definition: str, output_path: Path) -> Optional[P
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
         # write DOT definition to temporary file
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.dot', delete=False) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".dot", delete=False) as f:
             f.write(dot_definition)
             dot_file = f.name
 
         try:
             # render with dot command
             result = subprocess.run(
-                ['dot', '-Tpdf', '-o', str(output_path), dot_file],
+                ["dot", "-Tpdf", "-o", str(output_path), dot_file],
                 check=True,
                 capture_output=True,
-                text=True
+                text=True,
             )
 
             logger.info(f"✓ Graphviz diagram saved to {output_path}")

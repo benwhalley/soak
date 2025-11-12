@@ -6,7 +6,6 @@ Shared utilities used across nodes (primarily VerifyQuotes, but reusable elsewhe
 import re
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
-
 ELLIPSIS_RE = re.compile(r"\.{2,4}|…")
 
 
