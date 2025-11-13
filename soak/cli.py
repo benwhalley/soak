@@ -665,13 +665,27 @@ def compare(
         "--sort-heatmaps",
         help="Sort heatmap rows and columns by average similarity (highest first)",
     ),
+    embedding_backend: str = typer.Option(
+        "api",
+        "--embedding-backend",
+        help="Embedding backend: 'local' (sentence-transformers) or 'api' (OpenAI-compatible)",
+    ),
+    embedding_model: str = typer.Option(
+        None,
+        "--embedding-model",
+        help="Embedding model name (for local: HuggingFace model, for api: model ID)",
+    ),
 ):
     """Compare multiple analysis results and generate comparison report."""
 
     if len(input_files) < 2:
         logger.error("At least 2 JSON files required for comparison")
         raise typer.Exit(1)
-
+    
+    if embedding_backend == "local" and embedding_model is None:
+        logger.warning("Embedding model required for local backend; using Qwen/Qwen3-Embedding-0.6B")
+        embedding_model = "Qwen/Qwen3-Embedding-0.6B"
+        
     logger.info(f"Loading {len(input_files)} analyses...")
     analyses = []
 
@@ -719,6 +733,8 @@ def compare(
             "label_template": label,
             "embedding_template": embedding_template,
             "sort_by_average": sort_heatmaps,
+            "embedding_backend": embedding_backend,
+            "embedding_model": embedding_model,
         },
     )
 

@@ -171,16 +171,27 @@ class Filter(ItemsNode, CompletionDAGNode):
             if self.dag.config.show_progress:
                 import sys
 
-                from tqdm import tqdm
+                # Use CostProgressBar if cost tracking is enabled
+                if self.dag.cost_tracker:
+                    from soak.models.progress import CostProgressBar
 
-                desc = f"{self.type}: {self.name}".ljust(35)
-                pbar = tqdm(
-                    total=len(boxed_items),
-                    desc=desc,
-                    unit="item",
-                    file=sys.stderr,
-                    ncols=120,
-                )
+                    pbar = CostProgressBar(
+                        tracker=self.dag.cost_tracker,
+                        node_name=f"{self.type}: {self.name}",
+                        total=len(boxed_items),
+                        unit="item",
+                    )
+                else:
+                    from tqdm import tqdm
+
+                    desc = f"{self.type}: {self.name}".ljust(35)
+                    pbar = tqdm(
+                        total=len(boxed_items),
+                        desc=desc,
+                        unit="item",
+                        file=sys.stderr,
+                        ncols=120,
+                    )
 
         try:
             async with anyio.create_task_group() as tg:
@@ -221,6 +232,15 @@ class Filter(ItemsNode, CompletionDAGNode):
             if result is not None:
                 self._accumulate_costs(result)
                 self._llm_results.append(result)
+
+                # update progress bar with per-node cost if using CostProgressBar
+                from soak.models.progress import CostProgressBar
+
+                if isinstance(pbar, CostProgressBar):
+                    pbar.update_cost(
+                        result.fresh_cost,
+                        result.prompt_tokens + result.completion_tokens,
+                    )
 
         # now filter based on expression
         included = []

@@ -15,7 +15,12 @@
 
 <body>
     <div class="container">
-        <h1>Analysis Comparison Report</h1>
+        
+        <div class="row">
+            <div class="col-12">
+            <h1>Analysis Comparison Report</h1>
+            </div>
+        </div>
 
         <hr>
         <div class="analysis-results">
@@ -27,7 +32,6 @@
                     <div class="card mb-3">
                         <div class="card-body">
                             <h5 class="card-title">{{ result.name }}</h5>
-
                             <h6 class="mt-3">Themes ({{ result.themes|length }})</h6>
                             <ul class="small">
                                 {% for t in result.themes %}
@@ -35,12 +39,6 @@
                                 {% endfor %}
                             </ul>
 
-                            <h6 class="mt-3">Codes ({{ result.codes|length }})</h6>
-                            <ul class="small">
-                                {% for c in result.codes %}
-                                <li>{{ c.name }}</li>
-                                {% endfor %}
-                            </ul>
                         </div>
                     </div>
                 </div>

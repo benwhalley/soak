@@ -1,6 +1,5 @@
 """Scrub node for PII detection and redaction using scrubadub."""
 
-import fnmatch
 import hashlib
 import importlib
 import inspect
@@ -54,7 +53,6 @@ def _cached_detect_filth(
     detectors_tuple: Tuple[str, ...],
     spacy_model: str,
     locale: str,
-    exclude_detectors_tuple: Tuple[str, ...],
 ) -> List[Dict[str, Any]]:
     """Cached filth detection function.
 
@@ -64,10 +62,9 @@ def _cached_detect_filth(
     Args:
         text: Text to scan for PII
         detector_config_hash: Hash of detector configuration (for cache key)
-        detectors_tuple: Tuple of detector patterns (immutable for caching)
+        detectors_tuple: Tuple of detector class paths (immutable for caching)
         spacy_model: SpaCy model name
         locale: Locale string
-        exclude_detectors_tuple: Tuple of excluded detector names
 
     Returns:
         List of filth detection dicts with positions and types
@@ -78,80 +75,65 @@ def _cached_detect_filth(
         f"Cache miss for text hash {hashlib.md5(text.encode()).hexdigest()[:8]}... running detector"
     )
 
-    # resolve detectors (this will be cached indirectly via the function cache)
+    # instantiate detectors from class paths
     detectors_list = list(detectors_tuple)
-    exclude_list = list(exclude_detectors_tuple)
-
-    # instantiate detectors
-    resolved_detectors = []
-    for pattern in detectors_list:
-        if "*" in pattern:
-            matched = _resolve_glob_pattern_static(pattern, locale, spacy_model)
-            resolved_detectors.extend(matched)
-        else:
-            detector_cls = _import_detector_class_static(pattern, locale, spacy_model)
-            if detector_cls:
-                resolved_detectors.append(detector_cls)
-
-    # deduplicate and filter excluded
     fresh_detectors = []
     seen_detector_names = set()
 
-    for detector in resolved_detectors:
+    for class_path in detectors_list:
+        detector_cls = _import_detector_class_static(class_path, locale, spacy_model)
+        if not detector_cls:
+            continue
+
         inst = None
         try:
-            if inspect.isclass(detector):
+            if inspect.isclass(detector_cls):
                 # instantiate
-                if "Spacy" in detector.__name__ or "spacy" in detector.__name__:
+                if "Spacy" in detector_cls.__name__ or "spacy" in detector_cls.__name__:
                     try:
                         nlp = spacy.load(spacy_model)
-                        inst = detector(nlp=nlp, locale=locale)
+                        inst = detector_cls(nlp=nlp, locale=locale)
                     except Exception as e:
                         logger.debug(
-                            f"Failed to load SpaCy model for {detector.__name__}: {e}"
+                            f"Failed to load SpaCy model for {detector_cls.__name__}: {e}"
                         )
                         continue
                 else:
                     try:
-                        inst = detector(locale=locale)
+                        inst = detector_cls(locale=locale)
                     except TypeError:
                         try:
-                            inst = detector()
+                            inst = detector_cls()
                         except Exception as e:
-                            # some detectors need special args we can't provide - skip them
                             logger.debug(
-                                f"Failed to instantiate {detector.__name__}: {e}"
+                                f"Failed to instantiate {detector_cls.__name__}: {e}"
                             )
                             continue
             else:
                 # already an instance, create fresh copy
                 try:
                     if (
-                        "Spacy" in detector.__class__.__name__
-                        or "spacy" in detector.__class__.__name__
+                        "Spacy" in detector_cls.__class__.__name__
+                        or "spacy" in detector_cls.__class__.__name__
                     ):
                         nlp = spacy.load(spacy_model)
-                        inst = detector.__class__(nlp=nlp, locale=locale)
+                        inst = detector_cls.__class__(nlp=nlp, locale=locale)
                     else:
                         try:
-                            inst = detector.__class__(locale=locale)
+                            inst = detector_cls.__class__(locale=locale)
                         except TypeError:
-                            inst = detector.__class__()
+                            inst = detector_cls.__class__()
                 except Exception as e:
                     logger.debug(
-                        f"Failed to create fresh detector from {detector}: {e}"
+                        f"Failed to create fresh detector from {detector_cls}: {e}"
                     )
                     continue
 
-            if (
-                inst
-                and inst.name not in seen_detector_names
-                and inst.name not in exclude_list
-            ):
+            if inst and inst.name not in seen_detector_names:
                 fresh_detectors.append(inst)
                 seen_detector_names.add(inst.name)
         except Exception as e:
-            logger.debug(f"Failed to process detector {detector}: {e}")
+            logger.debug(f"Failed to process detector {detector_cls}: {e}")
             continue
 
     # create scrubber and detect filth
@@ -176,44 +158,11 @@ def _cached_detect_filth(
     return filth_dicts
 
 
-def _resolve_glob_pattern_static(
-    pattern: str, locale: str, spacy_model: str
-) -> List[Any]:
-    """Static version of glob pattern resolution for caching."""
-    import scrubadub
-
-    parts = pattern.rsplit(".", 1)
-    if len(parts) != 2:
-        return []
-
-    module_path, class_pattern = parts
-
-    try:
-        module = importlib.import_module(module_path)
-    except ImportError:
-        return []
-
-    matched = []
-    for name, obj in inspect.getmembers(module, inspect.isclass):
-        if hasattr(scrubadub.detectors, "Detector"):
-            base_detector = scrubadub.detectors.Detector
-            base_class_names = {"Detector", "RegexDetector", "KnownFilthDetector"}
-
-            if (
-                issubclass(obj, base_detector)
-                and obj is not base_detector
-                and obj.__name__ not in base_class_names
-            ):
-                if fnmatch.fnmatch(name, class_pattern):
-                    matched.append(obj)
-
-    return matched
-
-
 def _import_detector_class_static(
     class_path: str, locale: str, spacy_model: str
 ) -> Optional[Any]:
     """Static version of detector class import for caching."""
+    
     parts = class_path.rsplit(".", 1)
     if len(parts) != 2:
         return None
@@ -232,21 +181,34 @@ class Scrub(ItemsNode):
     """Node for detecting and redacting PII using scrubadub.
 
     Supports:
-    - Glob patterns for detector selection (e.g., "scrubadub.detectors.*")
+    - Detector selection via full class paths
     - Third-party detectors (scrubadub_spacy, scrubadub_address)
     - Configurable SpaCy model for name detection
-    - Detailed PII logging with context
-    - Statistics tracking for HTML display
+    - PII logging with context
+    - Statistics tracking 
     """
 
     type: Literal["Scrub"] = "Scrub"
 
     detectors: List[str] = Field(
         default_factory=lambda: [
-            "scrubadub.detectors.*",
+            "scrubadub.detectors.CredentialDetector",
+            "scrubadub.detectors.CreditCardDetector",
+            "scrubadub.detectors.DriversLicenceDetector",
+            "scrubadub.detectors.EmailDetector",
+            "scrubadub.detectors.en_GB.NationalInsuranceNumberDetector",
+            "scrubadub.detectors.PhoneDetector",
+            "scrubadub.detectors.PostalCodeDetector",
+            "scrubadub.detectors.en_US.SocialSecurityNumberDetector",
+            "scrubadub.detectors.en_GB.TaxReferenceNumberDetector",
+            "scrubadub.detectors.TwitterDetector",
+            "scrubadub.detectors.UrlDetector",
+            "scrubadub.detectors.VehicleLicencePlateDetector",
+            "scrubadub.detectors.DateOfBirthDetector",
+            "scrubadub.detectors.TextBlobNameDetector",
             "scrubadub_spacy.detectors.SpacyNameDetector",
         ],
-        description="List of detector patterns (supports glob). Examples: 'scrubadub.detectors.*', 'scrubadub_spacy.detectors.SpacyNameDetector'",
+        description="List of detector class paths to use. Specify full paths like 'scrubadub.detectors.EmailDetector'",
     )
 
     spacy_model: str = Field(
@@ -259,23 +221,10 @@ class Scrub(ItemsNode):
         description="If True, replace detected PII with placeholders. If False, just detect and log.",
     )
 
-    log_filth: bool = Field(
-        default=True,
-        description="If True, write REDACTED_INFO.md with detailed PII detection log to export folder",
-    )
 
     locale: str = Field(
         default="en_GB",
         description="Locale for detector configuration (e.g., en_GB, en_US)",
-    )
-
-    exclude_detectors: List[str] = Field(
-        default_factory=lambda: [
-            "unknown",
-            "tagged_evaluation",  # requires known_filth_items arg
-            "user_supplied",  # requires known_filth_items arg
-        ],
-        description="List of detector names to exclude (by detector.name, not class name)",
     )
 
     # private attributes for statistics (not serialized)
@@ -301,29 +250,19 @@ class Scrub(ItemsNode):
             )  # don't print to stderr
             try:
                 self._resolved_detectors = self._resolve_detectors()
-                # capture locale warnings for export (but skip excluded detectors)
+                # capture locale warnings for export
                 for warning in w:
                     msg = str(warning.message)
                     if "does not support the locale" in msg:
-                        # don't log warnings for detectors we're excluding anyway
-                        is_excluded = any(
-                            det_name in msg for det_name in self.exclude_detectors
-                        )
-                        if not is_excluded:
-                            self._detector_warnings.append(msg)
-                            logger.debug(msg)
+                        self._detector_warnings.append(msg)
+                        logger.debug(msg)
             except ImportError as e:
                 logger.error(f"Failed to resolve detectors: {e}")
                 logger.error("Install scrubadub with: pip install 'soak[scrub]'")
                 raise
 
     def _resolve_detectors(self) -> List[Any]:
-        """Resolve detector patterns to actual detector classes.
-
-        Supports:
-        - Glob patterns: "scrubadub.detectors.*" matches all detectors in module
-        - Specific classes: "scrubadub.detectors.PhoneDetector"
-        - Third-party: "scrubadub_spacy.detectors.SpacyNameDetector"
+        """Resolve detector class paths to actual detector instances.
 
         Returns:
             List of detector class instances ready to use
@@ -338,89 +277,17 @@ class Scrub(ItemsNode):
 
         resolved = []
 
-        for pattern in self.detectors:
-            # check if pattern contains glob
-            if "*" in pattern:
-                # glob pattern: introspect module to find matching classes
-                matched = self._resolve_glob_pattern(pattern)
-                resolved.extend(matched)
-            else:
-                # specific class path
-                detector_cls = self._import_detector_class(pattern)
-                if detector_cls:
-                    resolved.append(detector_cls)
+        for class_path in self.detectors:
+            # import and instantiate specific class
+            detector_cls = self._import_detector_class(class_path)
+            if detector_cls:
+                resolved.append(detector_cls)
 
-        # deduplicate by class name
-        seen = set()
-        unique_detectors = []
-        for det in resolved:
-            cls_name = (
-                det.__class__.__name__ if not inspect.isclass(det) else det.__name__
-            )
-            if cls_name not in seen:
-                seen.add(cls_name)
-                unique_detectors.append(det)
-
-        logger.debug(
-            f"Resolved {len(unique_detectors)} detectors: {[d.__class__.__name__ if not inspect.isclass(d) else d.__name__ for d in unique_detectors]}"
+        logger.info(
+            f"Resolved {len(resolved)} detectors: {[d.__class__.__name__ if not inspect.isclass(d) else d.__name__ for d in resolved]}"
         )
 
-        return unique_detectors
-
-    def _resolve_glob_pattern(self, pattern: str) -> List[Any]:
-        """Resolve a glob pattern to matching detector classes.
-
-        Args:
-            pattern: Glob pattern like "scrubadub.detectors.*"
-
-        Returns:
-            List of detector class instances
-        """
-        try:
-            import scrubadub
-        except ImportError:
-            return []
-
-        # parse pattern: "scrubadub.detectors.*" -> module="scrubadub.detectors", pattern="*"
-        parts = pattern.rsplit(".", 1)
-        if len(parts) != 2:
-            logger.warning(f"Invalid glob pattern: {pattern}")
-            return []
-
-        module_path, class_pattern = parts
-
-        try:
-            # import the module
-            module = importlib.import_module(module_path)
-        except ImportError as e:
-            logger.warning(f"Could not import module '{module_path}': {e}")
-            return []
-
-        # find all classes in module that match pattern
-        matched = []
-        for name, obj in inspect.getmembers(module, inspect.isclass):
-            # check if this is a Detector subclass (not the base class itself)
-            if hasattr(scrubadub.detectors, "Detector"):
-                base_detector = scrubadub.detectors.Detector
-                # exclude base classes that shouldn't be instantiated directly
-                base_class_names = {"Detector", "RegexDetector", "KnownFilthDetector"}
-
-                if (
-                    issubclass(obj, base_detector)
-                    and obj is not base_detector
-                    and obj.__name__ not in base_class_names
-                ):
-                    # check if name matches glob pattern
-                    if fnmatch.fnmatch(name, class_pattern):
-                        try:
-                            # instantiate detector
-                            detector = self._instantiate_detector(obj)
-                            if detector:
-                                matched.append(detector)
-                        except Exception as e:
-                            logger.warning(f"Failed to instantiate {name}: {e}")
-
-        return matched
+        return resolved
 
     def _import_detector_class(self, class_path: str) -> Optional[Any]:
         """Import and instantiate a specific detector class.
@@ -431,6 +298,15 @@ class Scrub(ItemsNode):
         Returns:
             Detector instance or None if failed
         """
+        # check for glob patterns (no longer supported)
+        if "*" in class_path:
+            logger.warning(
+                f"Glob patterns like '{class_path}' are no longer supported. "
+                f"Please use explicit detector class paths in your pipeline YAML. "
+                f"See default detector list in Scrub node documentation."
+            )
+            return None
+
         # parse class path
         parts = class_path.rsplit(".", 1)
         if len(parts) != 2:
@@ -494,7 +370,6 @@ class Scrub(ItemsNode):
             f"{sorted(self.detectors)}"
             f"{self.spacy_model}"
             f"{self.locale}"
-            f"{sorted(self.exclude_detectors)}"
         )
         return hashlib.md5(config_str.encode()).hexdigest()
 
@@ -560,8 +435,7 @@ class Scrub(ItemsNode):
                 )
 
                 # log for REDACTED_INFO.md
-                if self.log_filth:
-                    self._filth_log.append(filth_entry)
+                self._filth_log.append(filth_entry)
 
             # create new TrackedItem with scrubbed content
             # note: escaping is now handled automatically by Jinja2 finalize in struckdown
@@ -619,7 +493,6 @@ class Scrub(ItemsNode):
             detectors_tuple=tuple(self.detectors),
             spacy_model=self.spacy_model,
             locale=self.locale,
-            exclude_detectors_tuple=tuple(self.exclude_detectors),
         )
 
         # build scrubbed text if redacting
@@ -677,9 +550,7 @@ class Scrub(ItemsNode):
         result["metadata"]["detectors"] = self.detectors
         result["metadata"]["spacy_model"] = self.spacy_model
         result["metadata"]["locale"] = self.locale
-        result["metadata"]["exclude_detectors"] = self.exclude_detectors
         result["metadata"]["redact"] = self.redact
-        result["metadata"]["log_filth"] = self.log_filth
         result["metadata"]["total_items"] = self._total_items
         result["metadata"]["total_filth_detected"] = self._total_filth_detected
         result["metadata"]["items_with_filth"] = self._items_with_filth
@@ -716,11 +587,8 @@ class Scrub(ItemsNode):
         super().export(folder, unique_id=unique_id)
 
         # write detectors configuration
-        detectors_text = "Detector Patterns Used:\n" + "\n".join(
+        detectors_text = "Detectors Used:\n" + "\n".join(
             f"  - {d}" for d in self.detectors
-        )
-        detectors_text += f"\n\nExcluded Detectors (by name):\n" + "\n".join(
-            f"  - {d}" for d in self.exclude_detectors
         )
 
         # add resolved detectors list
@@ -780,7 +648,7 @@ PII by Type:
         (folder / "summary.txt").write_text(summary_text)
 
         # write REDACTED_INFO.md log if enabled
-        if self.log_filth and self._filth_log:
+        if self._filth_log:
             filth_md = self._generate_filth_markdown()
             (folder / "REDACTED_INFO.md").write_text(filth_md)
             logger.info(f"✓ PII log written to {folder / 'REDACTED_INFO.md'}")

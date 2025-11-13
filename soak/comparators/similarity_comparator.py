@@ -34,6 +34,8 @@ def compare_result_similarity(
     B: QualitativeAnalysis,
     threshold: float = 0.6,
     embedding_template: str = "{name}",
+    embedding_backend: str = "local",
+    embedding_model: str = "all-MiniLM-L6-v2",
 ) -> Dict[str, Any]:
     """
     Compare two sets of theme embeddings.
@@ -70,8 +72,16 @@ def compare_result_similarity(
     from sklearn.metrics.pairwise import cosine_similarity
 
     logger.debug("Getting embeddings for A and B")
-    emb_A = get_embedding(list(map(lambda x: x.strip(), A)))
-    emb_B = get_embedding(list(map(lambda x: x.strip(), B)))
+    emb_A = get_embedding(
+        list(map(lambda x: x.strip(), A)),
+        backend=embedding_backend,
+        model_name=embedding_model,
+    )
+    emb_B = get_embedding(
+        list(map(lambda x: x.strip(), B)),
+        backend=embedding_backend,
+        model_name=embedding_model,
+    )
     logger.debug("Got embeddings for A and B")
     assert len(emb_A) == len(A), f"Mismatch in emb_A: {len(emb_A)} != {len(A)}"
     assert len(emb_B) == len(B), f"Mismatch in emb_B: {len(emb_B)} != {len(B)}"
@@ -179,9 +189,10 @@ def network_similarity_plot(
     n_neighbors=5,
     min_dist=0.01,
     threshold=0.6,
-    exclude_within_set_edges=True,  # New parameter to exclude edges within same set
-    label_template="{name}",
+    exclude_within_set_edges=True,
     embedding_template="{name}",
+    embedding_backend: str = "local",
+    embedding_model: str = "all-MiniLM-L6-v2",
 ) -> str:
     """Create similarity plot using embedding visualization.
 
@@ -192,8 +203,10 @@ def network_similarity_plot(
         min_dist: UMAP parameter for minimum distance
         threshold: Similarity threshold for drawing edges
         exclude_within_set_edges: If True, don't draw edges between themes from the same set
-        label_template: Python format string for node labels. Available: {name}, {description}
         embedding_template: Python format string for embeddings. Available: {name}, {description}
+
+    Note:
+        Theme labels must be set before calling this function (via theme.set_label())
     """
 
     import matplotlib
@@ -218,20 +231,20 @@ def network_similarity_plot(
     ]
     theme_sets_for_embedding = [i for i in theme_sets_for_embedding_ if i]
 
-    # Extract themes using label_template for display
+    # Extract theme labels for display
     theme_sets_for_labels_ = [
-        [
-            label_template.format(name=j.name, description=j.description)
-            for j in i.themes
-        ]
-        for i in pipeline_results
+        [theme.label for theme in result.themes]
+        for result in pipeline_results
     ]
     theme_sets_for_labels = [i for i in theme_sets_for_labels_ if i]
 
     pipeline_names = [i.name for i in pipeline_results]
 
     # Get embeddings for all sets using embedding_template
-    embeddings = [get_embedding(set_str) for set_str in theme_sets_for_embedding]
+    embeddings = [
+        get_embedding(set_str, backend=embedding_backend, model_name=embedding_model)
+        for set_str in theme_sets_for_embedding
+    ]
     all_emb = np.vstack(embeddings)
 
     # Calculate similarity matrix
@@ -240,7 +253,6 @@ def network_similarity_plot(
     # Create graph
     G = nx.Graph()
     start_index = 0
-
     colors = [plt.cm.Set1(i) for i in range(len(embeddings))]
     valid_indices = list(range(len(embeddings)))
 
@@ -367,9 +379,10 @@ def create_pairwise_heatmap(
     b: QualitativeAnalysis,
     threshold=0.6,
     use_threshold=True,
-    label_template="{name}",
     embedding_template="{name}",
     sort_by_average=False,
+    embedding_backend: str = "local",
+    embedding_model: str = "all-MiniLM-L6-v2",
 ) -> str:
     """Create a heatmap visualization for a single pair of pipeline results.
 
@@ -378,9 +391,11 @@ def create_pairwise_heatmap(
         b: Second QualitativeAnalysis
         threshold: Similarity threshold for matching
         use_threshold: Whether to use threshold-based binary heatmap
-        label_template: Python format string for axis labels. Available: {name}, {description}
         embedding_template: Python format string for embeddings. Available: {name}, {description}
         sort_by_average: If True, sort rows and columns by average similarity (highest first)
+
+    Note:
+        Theme labels must be set before calling this function (via theme.set_label())
     """
     import matplotlib
 
@@ -397,12 +412,8 @@ def create_pairwise_heatmap(
             return theme
         return theme[: max_len - 3] + "..."
 
-    themes_a = [
-        label_template.format(name=i.name, description=i.description) for i in a.themes
-    ]
-    themes_b = [
-        label_template.format(name=i.name, description=i.description) for i in b.themes
-    ]
+    themes_a = [theme.label for theme in a.themes]
+    themes_b = [theme.label for theme in b.themes]
     themes_a_display = [truncate_theme(t) for t in themes_a]
     themes_b_display = [truncate_theme(t) for t in themes_b]
 
@@ -421,6 +432,8 @@ def create_pairwise_heatmap(
         b,
         threshold=threshold or 0.5,  # ensure not None
         embedding_template=embedding_template,
+        embedding_backend=embedding_backend,
+        embedding_model=embedding_model,
     )
 
     similarity_matrix = comparison["similarity_matrix"]
@@ -526,6 +539,13 @@ class SimilarityComparator:
         label_template = config.get("label_template", "{name}")
         embedding_template = config.get("embedding_template", "{name}")
         sort_by_average = config.get("sort_by_average", False)
+        embedding_backend = config.get("embedding_backend", "local")
+        embedding_model = config.get("embedding_model", "all-MiniLM-L6-v2")
+
+        # Set labels on all themes once at the beginning
+        for result in pipeline_results:
+            for i, theme in enumerate(result.themes, start=1):
+                theme.set_label(label_template, i)
 
         result_combinations = list(itertools.combinations(pipeline_results, 2))
 
@@ -536,9 +556,7 @@ class SimilarityComparator:
                 {
                     "theme_name": theme.name,
                     "theme_description": theme.description,
-                    "label": label_template.format(
-                        name=theme.name, description=theme.description
-                    ),
+                    "label": theme.label,
                     "embedded_string": embedding_template.format(
                         name=theme.name, description=theme.description
                     ),
@@ -549,7 +567,12 @@ class SimilarityComparator:
         # run synchronously
         similarity_results = [
             compare_result_similarity(
-                i, j, threshold=threshold, embedding_template=embedding_template
+                i,
+                j,
+                threshold=threshold,
+                embedding_template=embedding_template,
+                embedding_backend=embedding_backend,
+                embedding_model=embedding_model,
             )
             for i, j in result_combinations
         ]
@@ -560,9 +583,10 @@ class SimilarityComparator:
                 b,
                 threshold=threshold,
                 use_threshold=False,
-                label_template=label_template,
                 embedding_template=embedding_template,
                 sort_by_average=sort_by_average,
+                embedding_backend=embedding_backend,
+                embedding_model=embedding_model,
             )
             for a, b in result_combinations
         ]
@@ -572,9 +596,10 @@ class SimilarityComparator:
                 a,
                 b,
                 threshold=threshold,
-                label_template=label_template,
                 embedding_template=embedding_template,
                 sort_by_average=sort_by_average,
+                embedding_backend=embedding_backend,
+                embedding_model=embedding_model,
             )
             for a, b in result_combinations
         ]
@@ -585,8 +610,9 @@ class SimilarityComparator:
             n_neighbors=n_neighbors,
             min_dist=min_dist,
             threshold=threshold,
-            label_template=label_template,
             embedding_template=embedding_template,
+            embedding_backend=embedding_backend,
+            embedding_model=embedding_model,
         )
 
         result_combinations_dict = OrderedDict(

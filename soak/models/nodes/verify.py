@@ -915,14 +915,25 @@ class VerifyQuotes(CompletionDAGNode):
             df["llm_is_contained"] = None
 
             # Run LLM judge on poor matches in parallel
-            desc = f"{self.type}: {self.name} (LLM existence)".ljust(35)
-            pbar = tqdm(
-                total=len(poor_matches),
-                desc=desc,
-                file=sys.stderr,
-                unit="item",
-                ncols=120,
-            )
+            # Use CostProgressBar if cost tracking is enabled
+            if self.dag.cost_tracker:
+                from soak.models.progress import CostProgressBar
+
+                pbar = CostProgressBar(
+                    tracker=self.dag.cost_tracker,
+                    node_name=f"{self.type}: {self.name} (LLM existence)",
+                    total=len(poor_matches),
+                    unit="item",
+                )
+            else:
+                desc = f"{self.type}: {self.name} (LLM existence)".ljust(35)
+                pbar = tqdm(
+                    total=len(poor_matches),
+                    desc=desc,
+                    file=sys.stderr,
+                    unit="item",
+                    ncols=120,
+                )
 
             async with anyio.create_task_group() as tg:
 
@@ -938,6 +949,16 @@ class VerifyQuotes(CompletionDAGNode):
                                     result["chatter_result"]
                                 )
                                 self._llm_results.append(result["chatter_result"])
+
+                                # Update progress bar with per-node cost if using CostProgressBar
+                                from soak.models.progress import CostProgressBar
+
+                                if isinstance(pbar, CostProgressBar):
+                                    chatter = result["chatter_result"]
+                                    pbar.update_cost(
+                                        chatter.fresh_cost,
+                                        chatter.prompt_tokens + chatter.completion_tokens,
+                                    )
                     finally:
                         pbar.update(1)
 
@@ -971,14 +992,25 @@ class VerifyQuotes(CompletionDAGNode):
             )
 
             # Run fairness checks in parallel
-            desc_fairness = f"{self.type}: {self.name} (LLM fairness)".ljust(35)
-            pbar_fairness = tqdm(
-                total=len(df),
-                desc=desc_fairness,
-                file=sys.stderr,
-                unit="item",
-                ncols=120,
-            )
+            # Use CostProgressBar if cost tracking is enabled
+            if self.dag.cost_tracker:
+                from soak.models.progress import CostProgressBar
+
+                pbar_fairness = CostProgressBar(
+                    tracker=self.dag.cost_tracker,
+                    node_name=f"{self.type}: {self.name} (LLM fairness)",
+                    total=len(df),
+                    unit="item",
+                )
+            else:
+                desc_fairness = f"{self.type}: {self.name} (LLM fairness)".ljust(35)
+                pbar_fairness = tqdm(
+                    total=len(df),
+                    desc=desc_fairness,
+                    file=sys.stderr,
+                    unit="item",
+                    ncols=120,
+                )
 
             async with anyio.create_task_group() as tg:
 
@@ -1027,6 +1059,16 @@ class VerifyQuotes(CompletionDAGNode):
                                 self._llm_results.append(
                                     fairness_result["chatter_result"]
                                 )
+
+                                # Update progress bar with per-node cost if using CostProgressBar
+                                from soak.models.progress import CostProgressBar
+
+                                if isinstance(pbar_fairness, CostProgressBar):
+                                    chatter = fairness_result["chatter_result"]
+                                    pbar_fairness.update_cost(
+                                        chatter.fresh_cost,
+                                        chatter.prompt_tokens + chatter.completion_tokens,
+                                    )
                     finally:
                         pbar_fairness.update(1)
 

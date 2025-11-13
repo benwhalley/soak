@@ -29,18 +29,77 @@ SOAK_MAX_RUNTIME = 60 * 30  # 30 mins
 # verbose=0 by default, but will show cache info at DEBUG level via our logging
 memory = Memory(Path(".embeddings"), verbose=0)
 
+# Singleton model cache for local embeddings
+_local_embedding_models = {}
+
+
+def get_local_embedding(
+    texts: List[str], model_name: str = "all-MiniLM-L6-v2"
+) -> List[List[float]]:
+    """Generate embeddings locally using sentence-transformers.
+
+    Args:
+        texts: List of strings to embed
+        model_name: HuggingFace model name (default: all-MiniLM-L6-v2)
+
+    Returns:
+        List of embedding vectors (list of floats)
+    """
+    from sentence_transformers import SentenceTransformer
+
+    # Load model once and cache in memory
+    if model_name not in _local_embedding_models:
+        logger.info(f"Loading local embedding model: {model_name}")
+        _local_embedding_models[model_name] = SentenceTransformer(model_name)
+        logger.info(f"Model loaded successfully")
+
+    model = _local_embedding_models[model_name]
+
+    # Encode texts to embeddings
+    logger.debug(f"Generating local embeddings for {len(texts)} texts")
+    embeddings = model.encode(texts, convert_to_numpy=True, show_progress_bar=False)
+
+    # Convert numpy arrays to lists for consistency with API
+    return embeddings.tolist()
+
 
 @memory.cache
-def get_embedding(*args, **kwargs):
-    """Wrapper for struckdown get_embedding with cached embeddings.
+def get_embedding(
+    texts: List[str],
+    backend: str = "local",
+    model_name: str = "all-MiniLM-L6-v2",
+    **kwargs
+):
+    """Wrapper for embedding generation with caching.
+
+    Supports both local (sentence-transformers) and API (via struckdown) backends.
+
+    Args:
+        texts: List of strings to embed
+        backend: "local" or "api" (default: "local")
+        model_name: Model name for local or API embeddings
+        **kwargs: Additional arguments passed to API backend
 
     Cache hits/misses are logged at DEBUG level.
     """
-    logger.debug(
-        f"get_embedding called with args={args[:1]}... kwargs keys={list(kwargs.keys())}"
+    logger.info(
+        f"get_embedding called with backend={backend}, model={model_name}, "
+        f"{len(texts)} texts"
     )
-    result = get_embedding_(*args, **kwargs)
-    logger.debug(f"get_embedding completed")
+    if backend == "local":
+        result = get_local_embedding(texts, model_name=model_name)
+    elif backend == "api":
+        # Use struckdown's API-based embedding
+        # Pass model_name via LLM object if provided
+        if model_name:
+            from struckdown import LLM
+
+            kwargs.setdefault("llm", LLM(model_name=model_name))
+        result = get_embedding_(texts, **kwargs)
+    else:
+        raise ValueError(f"Unknown embedding backend: {backend}. Use 'local' or 'api'")
+
+    logger.debug(f"get_embedding completed: {len(result)} embeddings")
     return result
 
 
@@ -247,6 +306,7 @@ class Theme(ResponseModel):
 
     # Post-processed fields (excluded from LLM schema)
     resolved_code_refs: Optional[List[Dict]] = PostProcessedField(default=None)
+    label: Optional[str] = PostProcessedField(default=None)
 
     @property
     def resolved_codes(self) -> List[Code]:
@@ -254,6 +314,15 @@ class Theme(ResponseModel):
         if self.resolved_code_refs:
             return [Code(**c) for c in self.resolved_code_refs]
         return []
+
+    def set_label(self, template: str, index: int) -> None:
+        """Set label from template string with index, name, and description.
+
+        Args:
+            template: Format string with {i}, {name}, {description} placeholders
+            index: 1-based index for this theme
+        """
+        self.label = template.format(i=index, name=self.name, description=self.description)
 
     def post_process(self, context: Dict[str, Any]):
         """Post-process code_slugs to match actual Codes."""

@@ -47,6 +47,10 @@ class DAGConfig(BaseModel):
     head_n: int | None = None  # take first N documents/rows
     show_progress: bool = False  # show progress bars during execution
 
+    # embedding configuration
+    embedding_backend: str = "local"  # "local" or "api"
+    embedding_model: str = "all-MiniLM-L6-v2"  # model for embeddings (HuggingFace for local, OpenAI-compatible for api)
+
     # error handling configuration
     fail_on_context_exceeded: bool = True  # if False, skip item with warning
     skip_content_policy_violations: bool = True  # if False, fail pipeline
@@ -455,13 +459,31 @@ class DAG(BaseModel):
             if self.config.export_enabled and self.config.export_folder:
                 self._prepare_incremental_export()
 
-            for batch in self.get_execution_order():
-                # use anyio structured concurrency - start all tasks in batch concurrently
-                with anyio.fail_after(SOAK_MAX_RUNTIME):
-                    async with anyio.create_task_group() as tg:
-                        for name in batch:
-                            tg.start_soon(run_node, self.nodes_dict[name])
-                # all tasks in batch complete when task group exits
+            # Create global cost display if progress is enabled
+            cost_display_context = None
+            if self.config.show_progress and self.cost_tracker:
+                from soak.models.progress import GlobalCostDisplay
+
+                cost_display_context = GlobalCostDisplay(self.cost_tracker)
+
+            # Execute nodes with optional global cost display
+            if cost_display_context:
+                with cost_display_context:
+                    for batch in self.get_execution_order():
+                        # use anyio structured concurrency - start all tasks in batch concurrently
+                        with anyio.fail_after(SOAK_MAX_RUNTIME):
+                            async with anyio.create_task_group() as tg:
+                                for name in batch:
+                                    tg.start_soon(run_node, self.nodes_dict[name])
+                        # all tasks in batch complete when task group exits
+            else:
+                for batch in self.get_execution_order():
+                    # use anyio structured concurrency - start all tasks in batch concurrently
+                    with anyio.fail_after(SOAK_MAX_RUNTIME):
+                        async with anyio.create_task_group() as tg:
+                            for name in batch:
+                                tg.start_soon(run_node, self.nodes_dict[name])
+                    # all tasks in batch complete when task group exits
 
             # aggregate costs after all nodes complete
             self._aggregate_costs()
