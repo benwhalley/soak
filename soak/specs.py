@@ -121,9 +121,9 @@ def load_template_bundle(template: Union[Path, str]) -> QualitativeAnalysisPipel
         i.validate_template()
         i.dag = pipeline
 
-    # check if pipeline includes a Scrub node and warn if not
+    # check if pipeline includes a Scrub node and warn if not (unless scrub: false is set)
     has_scrub_node = any(node.type == "Scrub" for node in pipeline.nodes)
-    if not has_scrub_node:
+    if not has_scrub_node and pipeline.scrub is not False:
         logger.warning(
             "\n⚠️  Pipeline does not include a Scrub node for PII detection/redaction.\n"
             "   Consider adding a Scrub node to protect sensitive information:\n"
@@ -133,6 +133,8 @@ def load_template_bundle(template: Union[Path, str]) -> QualitativeAnalysisPipel
             "       type: Scrub\n"
             "       inputs: [documents]\n"
             "       redact: true\n"
+            "   \n"
+            "   To suppress this warning, add 'scrub: false' to your pipeline YAML.\n"
         )
 
     return pipeline

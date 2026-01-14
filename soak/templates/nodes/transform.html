@@ -15,14 +15,30 @@
   </details>
   {% endif %}
 
+  {% if result.slot_dataframes %}
+  <div class="mb-3">
+    <h6>Structured Output:</h6>
+    {% for slot_name, df in result.slot_dataframes.items() %}
+    <details open class="mb-2">
+      <summary><strong>{{ slot_name }}</strong> ({{ df|length }} items)</summary>
+      <div class="mt-2">
+        {{ df|df_to_html|safe }}
+      </div>
+    </details>
+    {% endfor %}
+  </div>
+  {% endif %}
+
   {% if result.response_text %}
-  <div class="card card-body">
-    <h6>Response:</h6>
-    <div>
+  <details class="mb-3">
+    <summary><strong>Full Response Text</strong> (click to expand)</summary>
+    <div class="card card-body mt-2">
+      <div>
 {% markdown %}
 {{ result.response_text }}
 {% endmarkdown %}
+      </div>
     </div>
-  </div>
+  </details>
   {% endif %}
 </div>

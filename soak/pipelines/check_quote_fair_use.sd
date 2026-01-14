@@ -2,10 +2,9 @@
 For each Code, we present the source document text, a quote, and this question to the LLM.
 -->
 
-¡SYSTEM
-
+<system global replace>
 In thematic analysis, we select quotes from a source text to support a theme.
-We are evaluating whether quotes selected for a thematic analysis truly reflect the meaning in the source text. 
+We are evaluating whether quotes selected for a thematic analysis truly reflect the meaning in the source text.
 
 You will:
 
@@ -13,13 +12,12 @@ You will:
 - read the theme and description
 - consider the quote
 - answer questions about how well the quote supports the theme
-
-/END
+</system>
 
 
 # SOURCE TEXT
 
-{{quote.code.source_document.text>}}
+{{quote.code.source_document.text}}
 
 # THEME CREATED IN THE ANALYSIS
 
@@ -56,6 +54,9 @@ Ask,
 - does it really support the theme, as implied? 
 - would an independent-minded reader agree with this interpretation?
 
-Give your reasoning: [[responsd:quote_fair_use]]
+Give your reasoning: [[respond:quote_fair_use]]
 
 Was the quote is fairly used? [[pick:quote_fair_use|yes,no,unclear]]
+
+
+

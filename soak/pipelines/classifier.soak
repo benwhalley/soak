@@ -47,17 +47,17 @@ Read the text carefully and classify it:
 </text>
 
 
-¡BEGIN
+<checkpoint>
 
 What is the primary topic?
 [[pick:topic|health,technology,education,business,other]]
 
-¡OBLIVIATE
+<checkpoint>
 
 What is the sentiment?
 [[pick:sentiment|positive,negative,neutral,mixed]]
 
-¡OBLIVIATE
+<checkpoint>
 Rate the positivity on a scale of 1-5:
 [[pick:positivity|1,2,3,4,5]]
 
@@ -74,7 +74,7 @@ Read the text carefully and classify it:
 </text>
 
 
-¡BEGIN
+<checkpoint>
 
 What topics does the text cover:
 
@@ -84,12 +84,12 @@ What topics does the text cover:
 What is the primary topic?
 [[pick:topic|health,technology,education,business,other]]
 
-¡OBLIVIATE
+<checkpoint>
 
 What is the sentiment?
 [[pick:sentiment|positive,negative,neutral,mixed]]
 
-¡OBLIVIATE
+<checkpoint>
 Rate the positivity on a scale of 1-5:
 [[pick:positivity|1,2,3,4,5]]
 
@@ -107,7 +107,7 @@ Read the text carefully and classify it:
 </text>
 
 
-¡BEGIN
+<checkpoint>
 
 What topics does the text cover:
 
@@ -117,11 +117,11 @@ What topics does the text cover:
 What is the primary topic?
 [[pick:topic|health,technology,education,business,other]]
 
-¡OBLIVIATE
+<checkpoint>
 
 What is the sentiment?
 [[pick:sentiment|positive,negative,neutral,mixed]]
 
-¡OBLIVIATE
+<checkpoint>
 Rate the positivity on a scale of 1-5:
 [[pick:positivity|1,2,3,4,5]]

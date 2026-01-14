@@ -351,6 +351,7 @@ class DAG(BaseModel):
     default_context: Dict[str, Any] = {}
     default_config: Dict[str, Union[str, int, float]] = {}
     template_dirs: List[str] = []  # additional template search directories
+    scrub: Optional[bool] = None  # if False, suppress PII warning
 
     nodes: List["DAGNodeUnion"] = Field(default_factory=list)
     config: Optional[DAGConfig] = Field(default_factory=DAGConfig, exclude=False)

@@ -91,15 +91,18 @@ def export_chatter_result(result, folder: Path, file_prefix: str) -> None:
 
 
 def export_slots_as_text_files(result, folder: Path) -> None:
-    """Export each response slot as a separate text file.
+    """Export each response slot as a separate text file and CSV for structured types.
 
     For Transform nodes where we have one ChatterResult with multiple slots,
-    this creates one .txt file per slot instead of a combined response.txt.
+    this creates one .txt file per slot. Additionally, if a slot contains
+    Themes or Codes, exports a CSV file with structured data.
 
     Args:
         result: ChatterResult object to export
         folder: Directory to write files to
     """
+    from soak.models.base import Code, CodeList, Theme, Themes
+
     try:
         if not hasattr(result, "results") or not result.results:
             logger.warning("No output slots found in ChatterResult")
@@ -109,6 +112,26 @@ def export_slots_as_text_files(result, folder: Path) -> None:
         for slot_name, segment_result in result.results.items():
             slot_file = folder / f"{slot_name}.txt"
             slot_file.write_text(str(segment_result))
+
+            # Also export CSV for structured types
+            if hasattr(segment_result, "output"):
+                output = segment_result.output
+
+                # Export Themes to CSV
+                if isinstance(output, Themes):
+                    _export_themes_to_csv(output.themes, folder, slot_name)
+                    logger.info(f"Exported {len(output.themes)} themes from slot '{slot_name}' to CSV")
+                elif isinstance(output, Theme):
+                    _export_themes_to_csv([output], folder, slot_name)
+                    logger.info(f"Exported 1 theme from slot '{slot_name}' to CSV")
+
+                # Export Codes to CSV
+                elif isinstance(output, CodeList):
+                    _export_codes_to_csv(output.codes, folder, slot_name)
+                    logger.info(f"Exported {len(output.codes)} codes from slot '{slot_name}' to CSV")
+                elif isinstance(output, Code):
+                    _export_codes_to_csv([output], folder, slot_name)
+                    logger.info(f"Exported 1 code from slot '{slot_name}' to CSV")
 
     except Exception as e:
         logger.warning(f"Failed to export slots as text files: {e}")

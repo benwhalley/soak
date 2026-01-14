@@ -107,7 +107,6 @@ def get_embedding(
 MAX_CONCURRENCY = env_config("SOAK_MAX_CONCURRENCY", default=20, cast=int)
 semaphore = anyio.Semaphore(MAX_CONCURRENCY)
 
-
 # Exception classes for backward compatibility
 class CancelledRun(Exception):
     """Exception raised when a flow run is cancelled."""
@@ -307,14 +306,15 @@ class Theme(ResponseModel):
     # Post-processed fields (excluded from LLM schema)
     resolved_code_refs: Optional[List[Dict]] = PostProcessedField(default=None)
     label: Optional[str] = PostProcessedField(default=None)
-
+    
+    
     @property
     def resolved_codes(self) -> List[Code]:
         """Get Code objects matched from context."""
         if self.resolved_code_refs:
             return [Code(**c) for c in self.resolved_code_refs]
         return []
-
+    
     def set_label(self, template: str, index: int) -> None:
         """Set label from template string with index, name, and description.
 

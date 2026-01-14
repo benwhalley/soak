@@ -139,7 +139,11 @@ class Transform(ItemsNode, CompletionDAGNode):
         return [result] if result else []
 
     def result(self) -> Dict[str, Any]:
-        """Returns dict with metadata, prompt, response object, and raw ChatterResult."""
+        """Returns dict with metadata, prompt, response object, raw ChatterResult, and slot dataframes."""
+        import pandas as pd
+
+        from soak.models.base import Code, CodeList, Theme, Themes
+
         # Get base metadata from parent
         result = super().result()
 
@@ -159,6 +163,123 @@ class Transform(ItemsNode, CompletionDAGNode):
             str(chatter.response) if hasattr(chatter, "response") else None
         )
         result["chatter_result"] = chatter
+
+        # Extract slot dataframes for HTML display
+        result["slot_dataframes"] = {}
+        if hasattr(chatter, "results") and chatter.results:
+            for slot_name, segment_result in chatter.results.items():
+                if hasattr(segment_result, "output"):
+                    output = segment_result.output
+
+                    # Convert Themes to DataFrame
+                    if isinstance(output, Themes):
+                        rows = []
+                        for theme in output.themes:
+                            rows.append(
+                                {
+                                    "name": theme.name if hasattr(theme, "name") else "",
+                                    "description": (
+                                        theme.description
+                                        if hasattr(theme, "description")
+                                        else ""
+                                    ),
+                                    "code_slugs": (
+                                        ", ".join(theme.code_slugs)
+                                        if hasattr(theme, "code_slugs")
+                                        else ""
+                                    ),
+                                    "num_codes": (
+                                        len(theme.code_slugs)
+                                        if hasattr(theme, "code_slugs")
+                                        else 0
+                                    ),
+                                }
+                            )
+                        if rows:
+                            result["slot_dataframes"][slot_name] = pd.DataFrame(rows)
+
+                    elif isinstance(output, Theme):
+                        rows = [
+                            {
+                                "name": output.name if hasattr(output, "name") else "",
+                                "description": (
+                                    output.description
+                                    if hasattr(output, "description")
+                                    else ""
+                                ),
+                                "code_slugs": (
+                                    ", ".join(output.code_slugs)
+                                    if hasattr(output, "code_slugs")
+                                    else ""
+                                ),
+                                "num_codes": (
+                                    len(output.code_slugs)
+                                    if hasattr(output, "code_slugs")
+                                    else 0
+                                ),
+                            }
+                        ]
+                        result["slot_dataframes"][slot_name] = pd.DataFrame(rows)
+
+                    # Convert Codes to DataFrame
+                    elif isinstance(output, CodeList):
+                        rows = []
+                        for code in output.codes:
+                            quotes_text = []
+                            if hasattr(code, "all_quotes"):
+                                quotes_text = [
+                                    q.text if hasattr(q, "text") else str(q)
+                                    for q in code.all_quotes
+                                ]
+                            elif hasattr(code, "quotes"):
+                                quotes_text = [
+                                    q.text if hasattr(q, "text") else str(q)
+                                    for q in code.quotes
+                                ]
+
+                            rows.append(
+                                {
+                                    "slug": code.slug if hasattr(code, "slug") else "",
+                                    "name": code.name if hasattr(code, "name") else "",
+                                    "description": (
+                                        code.description
+                                        if hasattr(code, "description")
+                                        else ""
+                                    ),
+                                    "quotes": " | ".join(quotes_text),
+                                    "num_quotes": len(quotes_text),
+                                }
+                            )
+                        if rows:
+                            result["slot_dataframes"][slot_name] = pd.DataFrame(rows)
+
+                    elif isinstance(output, Code):
+                        quotes_text = []
+                        if hasattr(output, "all_quotes"):
+                            quotes_text = [
+                                q.text if hasattr(q, "text") else str(q)
+                                for q in output.all_quotes
+                            ]
+                        elif hasattr(output, "quotes"):
+                            quotes_text = [
+                                q.text if hasattr(q, "text") else str(q)
+                                for q in output.quotes
+                            ]
+
+                        rows = [
+                            {
+                                "slug": output.slug if hasattr(output, "slug") else "",
+                                "name": output.name if hasattr(output, "name") else "",
+                                "description": (
+                                    output.description
+                                    if hasattr(output, "description")
+                                    else ""
+                                ),
+                                "quotes": " | ".join(quotes_text),
+                                "num_quotes": len(quotes_text),
+                            }
+                        ]
+                        result["slot_dataframes"][slot_name] = pd.DataFrame(rows)
 
         return result
 

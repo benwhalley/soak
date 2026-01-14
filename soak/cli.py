@@ -30,7 +30,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 logger = logging.getLogger(__name__)
 
 PIPELINE_DIR = Path(__file__).parent / "pipelines"
-COMMANDS = {"run", "export", "dump", "compare", "show", "tui"}
+COMMANDS = {"run", "export", "dump", "compare", "show", "tui", "compare-strings"}
 
 
 @app.callback()
@@ -675,6 +675,12 @@ def compare(
         "--embedding-model",
         help="Embedding model name (for local: HuggingFace model, for api: model ID)",
     ),
+    k: float = typer.Option(
+        1.0,
+        "--k",
+        "-k",
+        help="Shepard similarity decay parameter (default: 1.0, higher = steeper decay)",
+    ),
 ):
     """Compare multiple analysis results and generate comparison report."""
 
@@ -735,12 +741,14 @@ def compare(
             "sort_by_average": sort_heatmaps,
             "embedding_backend": embedding_backend,
             "embedding_model": embedding_model,
+            "k": k,
         },
     )
 
     logger.info("Generating HTML report...")
     template_dir = Path(__file__).parent / "templates"
     env = Environment(loader=FileSystemLoader(template_dir))
+    env.globals["enumerate"] = enumerate
     template = env.get_template("comparison.html")
     html_content = template.render(comparison=comparison)
 
@@ -827,6 +835,190 @@ def show(
 
     # Print contents to stdout
     print(item_path.read_text(), file=sys.stdout)
+
+
+@app.command()
+def compare_strings(
+    xlsx_file: str = typer.Argument(
+        ..., help="Path to XLSX file with strings to compare"
+    ),
+    col_a: str = typer.Option(
+        "A", "--col-a", help="First column name or letter (default: A)"
+    ),
+    col_b: str = typer.Option(
+        "B", "--col-b", help="Second column name or letter (default: B)"
+    ),
+    threshold: float = typer.Option(
+        0.6, "--threshold", help="Similarity threshold for matching"
+    ),
+    embedding_backend: str = typer.Option(
+        "api",
+        "--embedding-backend",
+        help="Embedding backend: 'local' (sentence-transformers) or 'api' (OpenAI-compatible)",
+    ),
+    embedding_model: str = typer.Option(
+        None,
+        "--embedding-model",
+        help="Embedding model name (for local: HuggingFace model, for api: model ID)",
+    ),
+    k: float = typer.Option(
+        1.0,
+        "--k",
+        help="Shepard similarity decay parameter (default: 1.0, higher = steeper decay)",
+    ),
+):
+    """Compare similarity of two lists of strings from an XLSX file.
+
+    Reads column A and column B from the specified XLSX file and computes
+    similarity metrics between the two lists using embeddings.
+
+    Example:
+        soak compare-strings data.xlsx --threshold 0.7
+        soak compare-strings data.xlsx --col-a "List1" --col-b "List2"
+    """
+    import pandas as pd
+    import numpy as np
+
+    from .comparators.similarity_comparator import compare_result_similarity
+    from .models import QualitativeAnalysis, Theme
+
+    # Read the xlsx file
+    xlsx_path = Path(xlsx_file)
+    if not xlsx_path.exists():
+        logger.error(f"File not found: {xlsx_file}")
+        raise typer.Exit(1)
+
+    logger.info(f"Reading {xlsx_file}...")
+    try:
+        df = pd.read_excel(xlsx_file)
+    except Exception as e:
+        logger.error(f"Error reading XLSX file: {e}")
+        raise typer.Exit(1)
+
+    # Get the two columns
+    try:
+        list_a = df[col_a].dropna().astype(str).tolist()
+        list_b = df[col_b].dropna().astype(str).tolist()
+    except KeyError as e:
+        logger.error(f"Column not found: {e}")
+        logger.info(f"Available columns: {', '.join(df.columns)}")
+        raise typer.Exit(1)
+
+    if not list_a or not list_b:
+        logger.error("One or both columns are empty")
+        raise typer.Exit(1)
+
+    logger.info(f"Column {col_a}: {len(list_a)} items")
+    logger.info(f"Column {col_b}: {len(list_b)} items")
+
+    # Set default embedding model based on backend
+    if embedding_backend == "local" and embedding_model is None:
+        embedding_model = "all-MiniLM-L6-v2"
+        logger.info(f"Using default local embedding model: {embedding_model}")
+    elif embedding_backend == "api" and embedding_model is None:
+        embedding_model = "text-embedding-3-small"
+        logger.info(f"Using default API embedding model: {embedding_model}")
+
+    # Check for API credentials if using api backend
+    if embedding_backend == "api":
+        check_and_prompt_credentials(Path.cwd())
+
+    # Create minimal QualitativeAnalysis objects with themes from the string lists
+    themes_a = [Theme(name=s, description=s, code_slugs=[]) for s in list_a]
+    themes_b = [Theme(name=s, description=s, code_slugs=[]) for s in list_b]
+
+    analysis_a = QualitativeAnalysis(name=col_a, themes=themes_a)
+    analysis_b = QualitativeAnalysis(name=col_b, themes=themes_b)
+
+    logger.info("Computing similarity...")
+
+    # Compare using existing function
+    result = compare_result_similarity(
+        analysis_a,
+        analysis_b,
+        threshold=threshold,
+        embedding_template="{name}",
+        embedding_backend=embedding_backend,
+        embedding_model=embedding_model,
+        k=k,
+    )
+
+    # Print results to stdout
+    print("\n" + "=" * 60)
+    print(f"Similarity Comparison: {col_a} vs {col_b}")
+    print("=" * 60)
+    print(f"\nThreshold: {threshold}")
+    print(f"Embedding: {embedding_backend}/{embedding_model}")
+    print(f"Shepard k: {k}")
+
+    # Print the two lists being compared
+    print(f"\n{col_a} ({len(list_a)} items):")
+    for i, item in enumerate(list_a):
+        print(f"  {i}: {item}")
+
+    print(f"\n{col_b} ({len(list_b)} items):")
+    for i, item in enumerate(list_b):
+        print(f"  {i}: {item}")
+    print(f"\nMetrics:")
+    print(f"  Precision: {result['precision']:.3f}")
+    print(f"  Recall:    {result['recall']:.3f}")
+    print(f"  F1 Score:  {result['f1']:.3f}")
+    print(f"  Jaccard:   {result['jaccard']:.3f}")
+
+    print(f"\nHungarian Matching (1-to-1):")
+    print(f"  F1:           {result['hungarian']['thresholded_metrics']['f1']:.3f}")
+    print(f"  Soft F1:      {result['hungarian']['soft_metrics']['soft_f1']:.3f}")
+    print(f"  True Jaccard: {result['hungarian']['thresholded_metrics']['true_jaccard']:.3f}")
+
+    print(f"\nOptimal Transport (many-to-many):")
+    print(f"  OT Similarity:      {result['ot']['similarity']:.3f}")
+    print(f"  Null-relative:      {result['ot']['null_relative']:.3f} (0=random, 1=perfect)")
+    print(f"  Concentration:      {result['ot']['concentration']:.3f}")
+    print(f"  Null baseline:      {result['ot']['null_mean']:.3f}")
+
+    print(f"\nSimilarity (best match per item):")
+    print(f"  {col_a} → {col_b}: {result['a_b_most_similar']:.3f}")
+    print(f"  {col_b} → {col_a}: {result['b_a_most_similar']:.3f}")
+    print(f"  Similarity F1:     {result['similarity_f1']:.3f}")
+    print("\n" + "=" * 60)
+
+    # Helper function for printing matrices
+    def print_matrix(matrix, title, list_a, list_b):
+        print(f"\n{title} ({len(list_a)} x {len(list_b)}):")
+        print("-" * 60)
+
+        # Truncate long strings for display
+        def truncate(s, max_len=30):
+            return s if len(s) <= max_len else s[:max_len-3] + "..."
+
+        # Show a summary view if matrix is large
+        if len(list_a) > 10 or len(list_b) > 10:
+            print(f"(Matrix too large to display fully)")
+            print(f"\nTop 5 most similar pairs:")
+            # Find top N pairs
+            flat_indices = np.argsort(matrix.ravel())[::-1][:5]
+            for idx in flat_indices:
+                i, j = np.unravel_index(idx, matrix.shape)
+                print(f"  {truncate(list_a[i])} <-> {truncate(list_b[j])}: {matrix[i, j]:.3f}")
+        else:
+            # Print full matrix for small datasets
+            print(f"\n{' ':30s} | ", end="")
+            for item_b in list_b:
+                print(f"{truncate(item_b, 15):15s} ", end="")
+            print()
+            print("-" * (32 + len(list_b) * 16))
+
+            for i, item_a in enumerate(list_a):
+                print(f"{truncate(item_a, 30):30s} | ", end="")
+                for j in range(len(list_b)):
+                    print(f"{matrix[i, j]:15.3f} ", end="")
+                print()
+
+    # Print all similarity matrices
+    print_matrix(result['similarity_matrix'], "Cosine Similarity Matrix", list_a, list_b)
+    print_matrix(result['angle_similarity_matrix'], "Angular Similarity Matrix", list_a, list_b)
+    print_matrix(result['shepard_similarity_matrix'], f"Shepard Similarity Matrix (k={k})", list_a, list_b)
+
 
 
 def check_and_prompt_credentials(cwd: Path) -> tuple[str | None, str | None]:

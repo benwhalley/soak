@@ -68,24 +68,23 @@ Write a summary report of this text in 1 short paragraph.
 
 ---#classify_chunks
 
-¡HEADER
+<system>
 Read the text carefully and classify it:
 
 <text>
 {{input}}
 </text>
-
-/END
+</system>
 
 What topics does the text cover. What is the primary topic?
 [[pick:topic|health,technology,education,business,other]]
 
-¡OBLIVIATE
+<checkpoint>
 
 What is the sentiment?
 [[pick:sentiment|positive,negative,neutral,mixed]]
 
-¡OBLIVIATE
+<checkpoint>
 
 Rate the clarity of speaking/writing on a scale of 1-5 (5 is good):
 

@@ -1,0 +1,17 @@
+name: test_transform_csv
+default_context:
+  topic: "climate change"
+
+nodes:
+  - name: load_docs
+    type: LoadDocuments
+
+  - name: extract_themes
+    type: Transform
+    inputs: [load_docs]
+---#extract_themes
+Extract key themes from this text about {{topic}}.
+
+Text: {{load_docs}}
+
+[[themes]]

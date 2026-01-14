@@ -55,7 +55,8 @@ dependencies = [
     "spacy-transformers",
     "scrubadub-spacy",
     "transformers>=4.51.0",
-    "sentence-transformers>=2.5.1",    
+    "sentence-transformers>=2.5.1",
+    "pot>=0.9.6.post1",
 ]
 
 [project.optional-dependencies]

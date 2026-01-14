@@ -56,7 +56,8 @@ class Map(ItemsNode, CompletionDAGNode):
         boxed_items = []
         for item in items:
             if isinstance(item, TrackedItem):
-                boxed_items.append(Box({"input": item.content, "tracked_item": item}))
+                # Unpack metadata (contains Excel/CSV column data) into template context
+                boxed_items.append(Box({"input": item.content, "tracked_item": item, **item.metadata}))
             elif isinstance(item, dict):
                 boxed_items.append(Box(item))
             else:

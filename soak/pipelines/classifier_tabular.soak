@@ -36,7 +36,7 @@ Use these lines as context, but only make decisions based on the last utterance.
 
 > "{{utterance_text}}"
 
-¡BEGIN
+<checkpoint>
 
 Is this utterance a question?
 
@@ -56,7 +56,7 @@ Last utterance:
 Choose an option: [[pick:question_type|open,closed,not_a_question]]
 
 
-¡OBLIVIATE
+<checkpoint>
 
 Does the therapist respond with reflection?
 
