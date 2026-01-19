@@ -13,6 +13,7 @@ from soak.error_handlers import managed_llm_call
 from soak.models.base import (extract_prompt, get_action_lookup,
                               safe_json_dump, semaphore)
 from soak.models.dag import render_strict_template
+from soak.models.utils import post_process_chatter_result
 
 from .base import CompletionDAGNode, ItemsNode
 
@@ -124,6 +125,9 @@ class Transform(ItemsNode, CompletionDAGNode):
             self._accumulate_costs(result)
             self._llm_results.append(result)
 
+            # Post-process outputs to populate resolved_quotes/resolved_code_refs
+            post_process_chatter_result(result, merged_context)
+
             # update progress bar with per-node cost if using CostProgressBar
             from soak.models.progress import CostProgressBar
 
@@ -134,7 +138,7 @@ class Transform(ItemsNode, CompletionDAGNode):
 
         # update progress bar after processing the item
         if progress_bar is not None:
-            progress_bar.update(1)
+            progress_bar.update(getattr(progress_bar, "slots_per_item", 1))
 
         return [result] if result else []
 

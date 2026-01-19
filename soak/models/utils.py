@@ -248,6 +248,31 @@ def _export_themes_to_csv(themes: List, folder: Path, file_prefix: str) -> None:
 # Quote provenance post-processing functions
 
 
+def post_process_chatter_result(result, context: Dict[str, Any]) -> None:
+    """Post-process all outputs in a ChatterResult.
+
+    Calls post_process() on any Code, CodeList, Theme, or Themes objects
+    found in the result's outputs. This populates resolved_quotes and
+    resolved_code_refs fields needed for quote verification.
+
+    Args:
+        result: ChatterResult object with .outputs attribute
+        context: Template context dict (passed to post_process methods)
+    """
+    from soak.models.base import CodeList, Themes
+
+    if result is None or not hasattr(result, "outputs"):
+        return
+
+    for output_val in result.outputs.values():
+        if hasattr(output_val, "post_process"):
+            try:
+                output_val.post_process(context)
+            except Exception as e:
+                # Log but don't fail - post_process errors shouldn't break the pipeline
+                logger.warning(f"post_process failed for {type(output_val).__name__}: {e}")
+
+
 def post_process_code_quotes(code: Code, context: Dict[str, Any]):
     """Post-process quotes for a Code object.
 

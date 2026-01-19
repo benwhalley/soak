@@ -1031,3 +1031,15 @@ Lowe, D. G. (2004). "Distinctive Image Features from Scale-Invariant Keypoints."
 Mu, J., & Viswanath, B. (2018). "All-but-the-Top: Simple and Effective Postprocessing for Word Representations." In Proceedings of NAACL-HLT 2018.
 
 Ethayarajh, K. (2019). "How Contextual are Contextualized Word Representations? Comparing the Geometry of BERT, ELMo, and GPT-2 Embeddings." In Proceedings of EMNLP 2019.
+
+
+
+
+
+
+
+
+
+
+
+

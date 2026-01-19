@@ -56,6 +56,9 @@ class DAGConfig(BaseModel):
     skip_content_policy_violations: bool = True  # if False, fail pipeline
     log_failed_prompts: bool = True  # log offending prompts to stderr
 
+    # LLM call configuration
+    llm_timeout: float = 90.0  # timeout in seconds for individual LLM calls
+
     # incremental export configuration
     export_enabled: bool = False  # export nodes as they finish
     export_folder: Optional[Path] = None  # folder to export to

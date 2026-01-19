@@ -16,7 +16,8 @@ from litellm.exceptions import (APIConnectionError, APIResponseValidationError,
                                 ContentPolicyViolationError,
                                 ContextWindowExceededError,
                                 InternalServerError, NotFoundError,
-                                PermissionDeniedError, UnsupportedParamsError)
+                                PermissionDeniedError, Timeout,
+                                UnsupportedParamsError)
 from struckdown import StruckdownLLMError
 
 logger = logging.getLogger(__name__)
@@ -89,6 +90,8 @@ EXCEPTION_BEHAVIORS = {
     # configurable errors
     ContentPolicyViolationError: ErrorBehavior.SKIP,  # configurable via skip_content_policy_violations
     ContextWindowExceededError: ErrorBehavior.SKIP,  # configurable via fail_on_context_exceeded
+    # retryable/skippable errors
+    Timeout: ErrorBehavior.SKIP,  # LLM call timed out -- skip item and continue
     # retryable errors -- instructor handles these
     # (these shouldn't reach us if instructor's retry works, but we handle them gracefully)
 }
@@ -218,6 +221,14 @@ def log_error_to_stderr(
             log_func("=" * 60)
         else:
             log_func("Skipping this item. Consider chunking or reducing input size.")
+
+    elif isinstance(original_error, Timeout):
+        log_func(f"\n{prefix} [{error_type}] LLM call timed out in node '{node_name}'{item_str}")
+        log_func(f"Model: {model_name}")
+        log_func("The API did not respond within the timeout period.")
+        log_func("Try increasing --timeout or check API endpoint responsiveness.")
+        if behavior == ErrorBehavior.SKIP:
+            log_func("Skipping this item and continuing...")
 
     else:
         # generic error logging - lead with error type

@@ -218,7 +218,7 @@ class CompletionDAGNode(DAGNode):
         """Build extra_kwargs dict for LLM API calls.
 
         Constructs the standard kwargs used across all LLM calls including
-        temperature, seed, and optional max_tokens.
+        temperature, seed, timeout, and optional max_tokens.
 
         Returns:
             Dict with LLM call parameters
@@ -226,6 +226,7 @@ class CompletionDAGNode(DAGNode):
         kwargs = {
             "temperature": self.temperature,
             "seed": self.dag.config.seed,
+            "timeout": self.dag.config.llm_timeout,
         }
         if self.max_tokens is not None:
             kwargs["max_tokens"] = self.max_tokens
@@ -480,7 +481,8 @@ class ItemsNode(DAGNode):
             node_type: Optional node type label (defaults to self.type)
 
         Yields:
-            tqdm progress bar instance or None
+            tqdm progress bar instance or None. The bar has a `slots_per_item`
+            attribute indicating how many slots per item (for update increments).
         """
         if not self.dag.config.show_progress:
             yield None
@@ -489,6 +491,13 @@ class ItemsNode(DAGNode):
         node_type = node_type or self.type
         node_name = f"{node_type}: {self.name}" if node_type != self.type else self.name
 
+        # estimate slots per item from template (for better progress estimation)
+        slots_per_item = 1
+        if isinstance(self, CompletionDAGNode) and self.template:
+            slots_per_item = max(1, len(self.output_keys()))
+
+        total_completions = len(items) * slots_per_item
+
         # Use CostProgressBar if this is a CompletionDAGNode with cost tracking
         if isinstance(self, CompletionDAGNode) and self.dag.cost_tracker:
             from soak.models.progress import CostProgressBar
@@ -496,8 +505,8 @@ class ItemsNode(DAGNode):
             pbar = CostProgressBar(
                 tracker=self.dag.cost_tracker,
                 node_name=node_name,
-                total=len(items),
-                unit="item",
+                total=total_completions,
+                unit="call",
             )
         else:
             from tqdm import tqdm
@@ -505,12 +514,15 @@ class ItemsNode(DAGNode):
             # Pad description to match CostProgressBar alignment
             padded_name = node_name.ljust(35)
             pbar = tqdm(
-                total=len(items),
+                total=total_completions,
                 desc=padded_name,
-                unit="item",
+                unit="call",
                 file=sys.stderr,
                 ncols=120,
             )
+
+        # store slots count so callers know how much to increment
+        pbar.slots_per_item = slots_per_item
 
         try:
             yield pbar

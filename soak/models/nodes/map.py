@@ -14,6 +14,7 @@ from struckdown.parsing import parse_syntax
 from soak.error_handlers import managed_llm_call
 from soak.models.base import (TrackedItem, extract_prompt, safe_json_dump,
                               semaphore)
+from soak.models.utils import post_process_chatter_result
 
 from .base import (CompletionDAGNode, ItemsNode, default_map_task,
                    template_map_task)
@@ -111,17 +112,20 @@ class Map(ItemsNode, CompletionDAGNode):
                                 else:
                                     # Default LLM mode
                                     extra_kwargs = self.get_llm_kwargs()
+                                    llm_context = {**filtered_context, **item}
                                     results[index] = await managed_llm_call(
                                         node_name=self.name,
                                         config=self.dag.config,
                                         llm_func=self.task,
                                         item_index=index,
                                         template=self.template,
-                                        context={**filtered_context, **item},
+                                        context=llm_context,
                                         model=self.get_model(),
                                         credentials=self.dag.config.llm_credentials,
                                         **extra_kwargs,
                                     )
+                                    # Post-process outputs to populate resolved_quotes/resolved_code_refs
+                                    post_process_chatter_result(results[index], llm_context)
                             except Exception as e:
                                 # re-raise all other errors to fail the pipeline
                                 logger.error(
@@ -131,7 +135,7 @@ class Map(ItemsNode, CompletionDAGNode):
                             finally:
                                 # Update progress bar on completion
                                 if progress_bar is not None:
-                                    progress_bar.update(1)
+                                    progress_bar.update(getattr(progress_bar, "slots_per_item", 1))
 
                     tg.start_soon(run_and_store)
         finally:

@@ -5,17 +5,183 @@
 <head>
     <title>Analysis Comparison Report</title>
 
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/css/bootstrap-grid.min.css" integrity="sha512-uzG4YY/dpwIEUrfjYud6T7ieVM06DwkHYHNQc4Chb/dS1Sw==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/css/bootstrap-reboot.min.css" integrity="sha512-Hvxqga90bvpEid1McCftiBcPXI+TZR3GVf4KUdLu3NPx6/gPXSQTdY7AHaLLJDSJym6kOotc713b2D7gQ==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/css/bootstrap.min.css" integrity="sha512-rt/SrQ4UNIaGfDyEXZtNcyWvQeOq0QLygHluFQcSjaGB04IxWhal71tKuzP6K8eYXYB6vJV4pHkXcmFGGQ1/0w==" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/css/bootstrap-grid.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/css/bootstrap-reboot.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/css/bootstrap.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
 
     <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js" crossorigin="anonymous"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/js/bootstrap.bundle.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+    <style>
+        /* Sticky pair tabs */
+        .pair-tabs-container {
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            background: white;
+            padding: 0.75rem 0;
+            border-bottom: 2px solid #dee2e6;
+            margin-bottom: 1.5rem;
+        }
+        .pair-tabs .nav-link {
+            padding: 0.5rem 1rem;
+            border-radius: 0.25rem;
+            color: #495057;
+            background: #f8f9fa;
+            margin-right: 0.5rem;
+            margin-bottom: 0.5rem;
+            border: 1px solid #dee2e6;
+            font-size: 0.85rem;
+        }
+        .pair-tabs .nav-link:hover {
+            background: #e9ecef;
+            color: #007bff;
+        }
+        .pair-tabs .nav-link.active {
+            background: #007bff;
+            color: white;
+            border-color: #007bff;
+        }
+        .pair-pane {
+            display: none;
+        }
+        .pair-pane.active {
+            display: block;
+        }
+
+        /* Floating navigation */
+        .floating-nav {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            width: 180px;
+            max-height: calc(100vh - 100px);
+            overflow-y: auto;
+            z-index: 99;
+            font-size: 0.75rem;
+        }
+        .floating-nav .nav-link {
+            padding: 0.25rem 0.5rem;
+            color: #666;
+            border-left: 2px solid transparent;
+        }
+        .floating-nav .nav-link:hover {
+            color: #007bff;
+            border-left-color: #007bff;
+        }
+        .floating-nav .nav-link.active {
+            color: #007bff;
+            font-weight: bold;
+            border-left-color: #007bff;
+        }
+        .floating-nav .nav-section {
+            font-weight: bold;
+            color: #333;
+            padding: 0.4rem 0.5rem 0.2rem;
+            margin-top: 0.4rem;
+            border-bottom: 1px solid #ddd;
+            font-size: 0.7rem;
+        }
+        .floating-nav .nav-section:first-child {
+            margin-top: 0;
+        }
+        /* Adjust main content to not overlap with nav */
+        .main-content {
+            margin-right: 200px;
+        }
+        @media (max-width: 1200px) {
+            .floating-nav {
+                display: none;
+            }
+            .main-content {
+                margin-right: 0;
+            }
+        }
+        /* Smooth scrolling */
+        html {
+            scroll-behavior: smooth;
+        }
+        /* Offset for sticky header when jumping to anchors */
+        :target::before {
+            content: "";
+            display: block;
+            height: 70px;
+            margin-top: -70px;
+        }
+    </style>
 </head>
 
-<body>
-    <div class="container">
-        
+<body data-spy="scroll" data-target="#floating-nav" data-offset="100">
+
+    <!-- Floating Navigation (within-pair sections) -->
+    <nav id="floating-nav" class="floating-nav card shadow-sm d-none d-xl-block">
+        <div class="card-body p-2">
+            <div class="nav-section">Overview</div>
+            <nav class="nav flex-column">
+                <a class="nav-link" href="#analyses">Analyses</a>
+                <a class="nav-link" href="#embeddings">Embeddings</a>
+                <a class="nav-link" href="#network">Network Plot</a>
+            </nav>
+
+            <div class="nav-section">Within Active Pair</div>
+            <nav class="nav flex-column">
+                <a class="nav-link" href="#" onclick="scrollToActiveSection('cosine')">Cosine Similarity</a>
+                <a class="nav-link" href="#" onclick="scrollToActiveSection('summary')">Summary Stats</a>
+                <a class="nav-link" href="#" onclick="scrollToActiveSection('angular')">Angular Similarity</a>
+                <a class="nav-link" href="#" onclick="scrollToActiveSection('hungarian')">Hungarian Matching</a>
+                <a class="nav-link" href="#" onclick="scrollToActiveSection('ot')">Optimal Transport</a>
+                <a class="nav-link" href="#" onclick="scrollToActiveSection('best-matches')">Best Matches</a>
+                <a class="nav-link" href="#" onclick="scrollToActiveSection('additional')">Additional Metrics</a>
+            </nav>
+
+            <div class="nav-section">Config</div>
+            <nav class="nav flex-column">
+                <a class="nav-link" href="#config">Configuration</a>
+            </nav>
+        </div>
+    </nav>
+
+    <script>
+        // Track active pair index
+        var activePairIndex = 1;
+
+        // Switch between pair tabs
+        function switchPair(index) {
+            // Update active tab
+            document.querySelectorAll('.pair-tabs .nav-link').forEach(function(tab, i) {
+                tab.classList.toggle('active', i === index - 1);
+            });
+            // Update active pane
+            document.querySelectorAll('.pair-pane').forEach(function(pane, i) {
+                pane.classList.toggle('active', i === index - 1);
+            });
+            activePairIndex = index;
+            // Update URL hash for bookmarking
+            history.replaceState(null, null, '#pair-' + index);
+        }
+
+        // Scroll to section within active pair
+        function scrollToActiveSection(sectionPrefix) {
+            var section = document.getElementById(sectionPrefix + '-' + activePairIndex);
+            if (section) {
+                section.scrollIntoView({behavior: 'smooth'});
+            }
+        }
+
+        // On page load, check URL hash for pair selection
+        document.addEventListener('DOMContentLoaded', function() {
+            var hash = window.location.hash;
+            if (hash && hash.startsWith('#pair-')) {
+                var index = parseInt(hash.replace('#pair-', ''));
+                if (!isNaN(index) && index >= 1) {
+                    switchPair(index);
+                }
+            }
+        });
+    </script>
+
+    <div class="container main-content">
+
         <div class="row">
             <div class="col-12">
             <h1>Analysis Comparison Report</h1>
@@ -23,7 +189,7 @@
         </div>
 
         <hr>
-        <div class="analysis-results">
+        <div id="analyses" class="analysis-results">
             <h2 class="mt-4">Analyses Included in Comparison</h2>
 
             <div class="row">
@@ -48,7 +214,7 @@
 
         <hr class="mt-5">
 
-        <div class="embedding-details">
+        <div id="embeddings" class="embedding-details">
             <h2>Embedding Details</h2>
             <p class="text-muted">The actual strings that were embedded for similarity comparison. Labels are used in plots; embedded strings are used for calculating similarity.</p>
 
@@ -85,53 +251,106 @@
 
         <hr class="mt-5">
 
-        <div class="comparison-results">
-            <h2>Theme Network</h2>
-            <p class="text-muted">Visualization showing similarity relationships between themes across analyses (threshold: {{ comparison.config.threshold }})</p>
+        <div id="network" class="comparison-results">
+            <h2>Theme Network (UMAP Projection)</h2>
+            <p class="text-muted">2-D UMAP projection of theme embeddings from each analysis, shown in different colours. Each point represents a theme; proximity reflects semantic similarity in the original embedding space.</p>
 
             <div class="row">
                 <div class="col-md-12">
-                    <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comparison.additional_plots.network_plot.base64 }}" alt="Network plot">
+                    <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comparison.additional_plots.network_plot.base64 }}" alt="UMAP projection of theme embeddings">
                 </div>
+            </div>
+
+            <div class="alert alert-light small mt-3">
+                <strong>Interpreting this plot:</strong> UMAP is a non-linear dimensionality-reduction method that prioritises preserving local neighbourhood structure rather than global variance. Nearby points can be interpreted as closely related themes, while larger-scale distances and cluster shapes should be interpreted qualitatively rather than metrically. This plot is intended as an exploratory visualisation of thematic relationships and overlap between sets, not as a quantitative evaluation.
             </div>
 
             <hr class="mt-5">
 
-            <h2>Pairwise Comparisons</h2>
+            <h2 id="pairwise">Pairwise Comparisons</h2>
+            <p class="text-muted">Select a pair to view detailed comparison metrics.</p>
 
+            <!-- Sticky tab bar for pair selection -->
+            <div class="pair-tabs-container">
+                <nav class="nav pair-tabs flex-wrap">
+                    {% for key, comp in comparison.by_comparisons().items() %}
+                    <a class="nav-link{% if loop.first %} active{% endif %}" href="#" onclick="switchPair({{ loop.index }}); return false;">
+                        {{ comp.a.name }} vs {{ comp.b.name }}
+                    </a>
+                    {% endfor %}
+                </nav>
+            </div>
+
+            <!-- Tab panes for each pair -->
             {% for key, comp in comparison.by_comparisons().items() %}
-            <div class="comparison-pair mt-5">
+            <div id="pair-{{ loop.index }}" class="pair-pane{% if loop.first %} active{% endif %}">
                 <h3 class="mb-4">{{ comp.a.name }} vs {{ comp.b.name }}</h3>
 
+                <!-- ============================================== -->
+                <!-- SECTION 1: COSINE SIMILARITY (most familiar)   -->
+                <!-- ============================================== -->
+                <h4 id="cosine-{{ loop.index }}">Cosine Similarity</h4>
+                <p class="text-muted">Cosine similarity measures the angle between theme embedding vectors. Values range from 0 to 1 for text embeddings, with 1 indicating identical direction.</p>
                 <div class="row mb-4">
-                    <div class="col-6">
+                    <div class="col-md-6">
                         <div class="card">
-                            <div class="card-header">
-                                <strong>Analysis A: {{ comp.a.name }}</strong>
-                            </div>
+                            <div class="card-header bg-primary text-white">Continuous Values</div>
                             <div class="card-body">
-                                <h6>Themes</h6>
-                                <ul>
-                                    {% for t in comp.a.themes %}
-                                    <li>{{ t.name }}</li>
-                                    {% endfor %}
+                                <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comp.plots.heatmaps_cosine.base64 }}" alt="Cosine similarity heatmap">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header bg-secondary text-white">Binary Match (threshold={{ comparison.config.threshold }})</div>
+                            <div class="card-body">
+                                <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comp.plots.thresholded_heatmaps.base64 }}" alt="Thresholded heatmap">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ============================================== -->
+                <!-- SECTION 2: SUMMARY STATISTICS                  -->
+                <!-- ============================================== -->
+                <h4 id="summary-{{ loop.index }}">Summary Statistics</h4>
+                <p class="text-muted small">Thematic analysis doesn't have ground truth, so traditional precision/recall don't apply. Instead, we measure coverage (did themes find matches?) and fidelity (how close are the best matches?). Based on cosine similarity.</p>
+                <div class="row mb-4">
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header bg-info text-white">Coverage (Hit Rates)</div>
+                            <div class="card-body">
+                                <p class="small text-muted">Proportion of themes with at least one match above threshold ({{ comparison.config.threshold }})</p>
+                                <ul class="list-unstyled">
+                                    <li><strong>Hit Rate A:</strong> {{ "%.1f"|format(comp.stats.hit_rate_a * 100) }}%</li>
+                                    <li><strong>Hit Rate B:</strong> {{ "%.1f"|format(comp.stats.hit_rate_b * 100) }}%</li>
+                                    <li class="mt-2"><strong>Jaccard:</strong> {{ "%.3f"|format(comp.stats.jaccard) }}</li>
                                 </ul>
+                                <p class="small mt-2 text-muted"><em>High hit rates indicate both analyses found similar conceptual territory.</em></p>
                             </div>
                         </div>
                     </div>
 
-                    <div class="col-6">
+                    <div class="col-md-4">
                         <div class="card">
-                            <div class="card-header">
-                                <strong>Analysis B: {{ comp.b.name }}</strong>
-                            </div>
+                            <div class="card-header bg-success text-white">Fidelity (Match Quality)</div>
                             <div class="card-body">
-                                <h6>Themes</h6>
-                                <ul>
-                                    {% for t in comp.b.themes %}
-                                    <li>{{ t.name }}</li>
-                                    {% endfor %}
+                                <p class="small text-muted">How close are the best matches? (Mean of each theme's best match similarity)</p>
+                                <ul class="list-unstyled">
+                                    <li><strong>A→B:</strong> {{ "%.3f"|format(comp.stats.mean_max_sim_a_to_b) }}</li>
+                                    <li><strong>B→A:</strong> {{ "%.3f"|format(comp.stats.mean_max_sim_b_to_a) }}</li>
+                                    <li class="mt-2"><strong>Fidelity:</strong> {{ "%.3f"|format(comp.stats.fidelity) }}</li>
                                 </ul>
+                                <p class="small mt-2 text-muted"><em>Fidelity is the harmonic mean of directional scores. Higher = tighter semantic alignment.</em></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-4">
+                        <div class="card">
+                            <div class="card-header">Similarity Matrix</div>
+                            <div class="card-body">
+                                <pre class="small" style="max-height: 200px; overflow-y: auto; font-size: 0.7rem;">{{ comp.stats.similarity_matrix }}</pre>
                             </div>
                         </div>
                     </div>
@@ -139,60 +358,84 @@
 
                 <hr>
 
-                <h4>Hungarian Matching (Optimal 1-to-1 Assignment)</h4>
-                <p class="text-muted">The Hungarian algorithm finds the optimal one-to-one pairing between themes that maximizes total similarity. Unlike many-to-many matching, each theme maps to at most one theme in the other set. Uses Shepard similarity (k={{ comp.stats.shepard_k_value }}) for mathematically valid averaging.</p>
+                <!-- ============================================== -->
+                <!-- SECTION 3: ANGULAR SIMILARITY                  -->
+                <!-- ============================================== -->
+                <h4 id="angular-{{ loop.index }}">Angular Similarity</h4>
+                <p class="text-muted">Angular similarity uses the angular distance between vectors (arccos of cosine), normalized to [0,1]. Unlike cosine, it's a proper metric that satisfies the triangle inequality, making it mathematically rigorous for averaging.</p>
+                <div class="row mb-4">
+                    <div class="col-md-12">
+                        <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comp.plots.heatmaps_angle.base64 }}" alt="Angular similarity heatmap">
+                    </div>
+                </div>
+
+                <hr>
+
+                <!-- ============================================== -->
+                <!-- SECTION 4: HUNGARIAN MATCHING                  -->
+                <!-- ============================================== -->
+                <h4 id="hungarian-{{ loop.index }}">Hungarian Matching (Optimal 1-to-1 Assignment)</h4>
+                <p class="text-muted">The Hungarian algorithm finds the optimal one-to-one pairing that maximizes total similarity. Each theme maps to at most one theme in the other set -- no reuse allowed.</p>
+
+                <div class="alert alert-secondary small mb-3">
+                    <strong>Intuition:</strong> "If I had to explain set B's themes to someone who only knew set A, which single theme in A would each B theme correspond to, with no reuse?"
+                    <br><br>
+                    <strong>What this enables:</strong> Hungarian matching makes precision/recall well-defined by removing ambiguity about what counts as a "match". After matching: each pair = one prediction; unmatched A themes = false negatives; unmatched B themes = false positives.
+                    <br><br>
+                    <strong>Limitation:</strong> This penalises legitimate theme refinement (splitting one theme into two is treated as error). Use OT if you want to reward decomposition.
+                </div>
 
                 <div class="row mb-4">
-                    <div class="col-md-4">
-                        <div class="card">
-                            <div class="card-header bg-info text-white">Thresholded Metrics</div>
-                            <div class="card-body">
-                                <p class="small"><em>Binary classification: similarity >= {{ comparison.config.threshold }} = matched</em></p>
-                                <ul class="list-unstyled">
-                                    <li><strong>Precision:</strong> {{ "%.3f"|format(comp.stats.hungarian.thresholded_metrics.precision) }}</li>
-                                    <li><strong>Recall:</strong> {{ "%.3f"|format(comp.stats.hungarian.thresholded_metrics.recall) }}</li>
-                                    <li><strong>F1:</strong> {{ "%.3f"|format(comp.stats.hungarian.thresholded_metrics.f1) }}</li>
-                                    <li><strong>True Jaccard:</strong> {{ "%.3f"|format(comp.stats.hungarian.thresholded_metrics.true_jaccard) }}</li>
-                                    <li class="mt-2"><strong>Coverage A:</strong> {{ "%.1f"|format(comp.stats.hungarian.thresholded_metrics.coverage_a * 100) }}%</li>
-                                    <li><strong>Coverage B:</strong> {{ "%.1f"|format(comp.stats.hungarian.thresholded_metrics.coverage_b * 100) }}%</li>
-                                </ul>
+                    <div class="col-md-6">
+                        <div class="card border-primary">
+                            <div class="card-header bg-primary text-white">
+                                <strong>Mean Matched Similarity</strong> (primary metric)
                             </div>
-                        </div>
-                    </div>
-
-                    <div class="col-md-4">
-                        <div class="card">
-                            <div class="card-header bg-success text-white">Soft Metrics</div>
                             <div class="card-body">
-                                <p class="small"><em>Graded agreement using Shepard similarities (valid to average)</em></p>
-                                <ul class="list-unstyled">
-                                    <li><strong>Soft Precision:</strong> {{ "%.3f"|format(comp.stats.hungarian.soft_metrics.soft_precision) }}</li>
-                                    <li><strong>Soft Recall:</strong> {{ "%.3f"|format(comp.stats.hungarian.soft_metrics.soft_recall) }}</li>
-                                    <li><strong>Soft F1:</strong> {{ "%.3f"|format(comp.stats.hungarian.soft_metrics.soft_f1) }}</li>
-                                </ul>
-                                <p class="small mt-3"><strong>Interpretation:</strong><br>
-                                Soft precision = avg similarity of matched pairs<br>
-                                Soft recall = total similarity / larger set size<br>
-                                Higher = tighter semantic alignment</p>
-                            </div>
-                        </div>
-                    </div>
+                                <div class="text-center mb-3">
+                                    <h2 class="text-primary mb-0">{{ "%.3f"|format(comp.stats.hungarian.soft_metrics.soft_precision) }}</h2>
+                                    <p class="small text-muted">Average similarity of optimal pairs</p>
+                                </div>
+                                <p class="small"><strong>Interpretation:</strong> "How good are the best one-to-one correspondences?" Higher = tighter semantic alignment between the two theme sets.</p>
 
-                    <div class="col-md-4">
-                        <div class="card">
-                            <div class="card-header bg-warning">Similarity Distribution</div>
-                            <div class="card-body">
-                                <p class="small"><em>{{ comp.stats.hungarian.distribution.n_pairs }} matched pairs above threshold</em></p>
                                 {% if comp.stats.hungarian.distribution.n_pairs > 0 %}
-                                <ul class="list-unstyled">
-                                    <li><strong>Median:</strong> {{ "%.3f"|format(comp.stats.hungarian.distribution.median) }}</li>
-                                    <li><strong>Q1:</strong> {{ "%.3f"|format(comp.stats.hungarian.distribution.q1) }}</li>
-                                    <li><strong>Q3:</strong> {{ "%.3f"|format(comp.stats.hungarian.distribution.q3) }}</li>
-                                    <li><strong>Range:</strong> {{ "%.3f"|format(comp.stats.hungarian.distribution.min) }} - {{ "%.3f"|format(comp.stats.hungarian.distribution.max) }}</li>
+                                <hr>
+                                <p class="small mb-1"><strong>Distribution of {{ comp.stats.hungarian.distribution.n_pairs }} pairs above threshold:</strong></p>
+                                <ul class="list-unstyled small">
+                                    <li>Median: {{ "%.3f"|format(comp.stats.hungarian.distribution.median) }} &nbsp; (Q1: {{ "%.3f"|format(comp.stats.hungarian.distribution.q1) }}, Q3: {{ "%.3f"|format(comp.stats.hungarian.distribution.q3) }})</li>
+                                    <li>Range: {{ "%.3f"|format(comp.stats.hungarian.distribution.min) }} -- {{ "%.3f"|format(comp.stats.hungarian.distribution.max) }}</li>
                                 </ul>
-                                {% else %}
-                                <p class="text-muted">No pairs above threshold</p>
                                 {% endif %}
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header bg-secondary text-white">
+                                <strong>Precision / Recall</strong> (use with caution)
+                            </div>
+                            <div class="card-body">
+                                <p class="small text-muted">Based on {{ comp.stats.hungarian.distribution.n_pairs }} matched pairs above threshold ({{ comparison.config.threshold }})</p>
+                                <div class="row text-center">
+                                    <div class="col-4">
+                                        <h4 class="mb-0">{{ "%.0f"|format(comp.stats.hungarian.thresholded_metrics.recall * 100) }}%</h4>
+                                        <p class="small text-muted mb-0">Recall</p>
+                                        <p class="small text-muted">(coverage of A)</p>
+                                    </div>
+                                    <div class="col-4">
+                                        <h4 class="mb-0">{{ "%.0f"|format(comp.stats.hungarian.thresholded_metrics.precision * 100) }}%</h4>
+                                        <p class="small text-muted mb-0">Precision</p>
+                                        <p class="small text-muted">(coverage of B)</p>
+                                    </div>
+                                    <div class="col-4">
+                                        <h4 class="mb-0">{{ "%.3f"|format(comp.stats.hungarian.thresholded_metrics.true_jaccard) }}</h4>
+                                        <p class="small text-muted mb-0">Jaccard</p>
+                                        <p class="small text-muted">(for Raza)</p>
+                                    </div>
+                                </div>
+                                <hr>
+                                <p class="small mb-0"><strong>Caution:</strong> These metrics penalise over-splitting (hurts precision) and under-coverage (hurts recall). Only meaningful if you assume themes should map 1-to-1.</p>
                             </div>
                         </div>
                     </div>
@@ -210,7 +453,7 @@
                                 <tr>
                                     <th width="40%">Theme in {{ comp.a.name }}</th>
                                     <th width="40%">Theme in {{ comp.b.name }}</th>
-                                    <th width="20%">Shepard Similarity</th>
+                                    <th width="20%">Angular Similarity</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -239,70 +482,264 @@
 
                 <hr>
 
-                <h4>Optimal Transport (Many-to-Many Alignment)</h4>
-                <p class="text-muted">Optimal Transport models how theme-mass can be distributed across the other set, allowing many-to-many mappings. Unlike Hungarian matching (which enforces one-to-one), OT permits themes to split or merge.</p>
+                <h4 id="ot-{{ loop.index }}">Unbalanced Optimal Transport (Many-to-Many Alignment)</h4>
+                <p class="text-muted">Unbalanced Optimal Transport allows themes to remain unmatched, representing genuinely novel or missing concepts. Unlike balanced OT (which forces all mass to transport), unbalanced OT permits themes to be left out when no good match exists. The reg_m (K) parameter controls the penalty for leaving mass unmatched.</p>
 
-                <div class="row mb-4">
-                    <div class="col-md-3">
-                        <div class="card">
-                            <div class="card-header bg-primary text-white">OT Similarity</div>
+                <!-- K-value tabs -->
+                <ul class="nav nav-tabs mb-3" id="ot-k-tabs-{{ loop.index }}" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <a class="nav-link"
+                           id="ot-scree-tab-{{ loop.index }}"
+                           data-toggle="tab"
+                           href="#ot-scree-{{ loop.index }}"
+                           role="tab"
+                           aria-controls="ot-scree-{{ loop.index }}"
+                           aria-selected="false">
+                            📊 Scree
+                        </a>
+                    </li>
+                    {% for k_val in comp.stats.k_values %}
+                    <li class="nav-item" role="presentation">
+                        <a class="nav-link{% if k_val == comp.stats.default_k %} active{% endif %}"
+                           id="ot-k-{{ k_val|replace('.', '-') }}-tab-{{ loop.index }}"
+                           data-toggle="tab"
+                           href="#ot-k-{{ k_val|replace('.', '-') }}-{{ loop.index }}"
+                           role="tab"
+                           aria-controls="ot-k-{{ k_val|replace('.', '-') }}-{{ loop.index }}"
+                           aria-selected="{{ 'true' if k_val == comp.stats.default_k else 'false' }}">
+                            K={{ "%.2f"|format(k_val) }}
+                        </a>
+                    </li>
+                    {% endfor %}
+                </ul>
+
+                <div class="tab-content" id="ot-k-content-{{ loop.index }}">
+                    <!-- Scree tab pane -->
+                    <div class="tab-pane fade"
+                         id="ot-scree-{{ loop.index }}"
+                         role="tabpanel"
+                         aria-labelledby="ot-scree-tab-{{ loop.index }}">
+
+                        <div class="card mb-4">
+                            <div class="card-header bg-info text-white">
+                                <strong>Unmatched Mass vs K (Scree Plot)</strong>
+                            </div>
                             <div class="card-body">
-                                <h3 class="text-center">{{ "%.3f"|format(comp.stats.ot.similarity) }}</h3>
-                                <p class="small"><strong>Interpretation:</strong> Measures many-to-many conceptual correspondence. Allows themes in A to split across several B themes or vice versa. High = analyses share conceptual space even if labelled differently.</p>
+                                <p class="text-muted">This plot shows how unmatched mass changes as the K parameter varies. Lower K values allow more mass to remain unmatched (stricter matching), while higher K values force more themes to align even with poor matches.</p>
+                                <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comp.stats.unmatched_mass_scree.base64 }}" alt="Unmatched mass scree plot">
                             </div>
                         </div>
-                    </div>
 
-                    <div class="col-md-4">
-                        <div class="card">
-                            <div class="card-header bg-success text-white">Null-Relative</div>
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <strong>Summary Table: Metrics Across K Values</strong>
+                            </div>
                             <div class="card-body">
-                                <h3 class="text-center">{{ "%.3f"|format(comp.stats.ot.null_relative) }}</h3>
-                                <p class="small"><strong>Interpretation:</strong> Places A-B alignment along scale from random (0) → perfect (1). Formula: (OT - null_mean) / (1.0 - null_mean). Values close to 0 indicate alignment is no better than random shuffling. High values indicate meaningful structure beyond chance.</p>
+                                <div class="table-responsive">
+                                    <table class="table table-sm table-striped table-bordered">
+                                        <thead class="thead-light">
+                                            <tr>
+                                                <th>K</th>
+                                                <th>Shared Mass</th>
+                                                <th>Unmatched</th>
+                                                <th>Avg Cost</th>
+                                                <th>Splits (mean)</th>
+                                                <th>Joins (mean)</th>
+                                                <th>Relative Score</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for k_val in comp.stats.k_values %}
+                                            {% set ot_k = comp.stats.ot_by_k[k_val] %}
+                                            <tr{% if k_val == comp.stats.default_k %} class="table-primary"{% endif %}>
+                                                <td><strong>{{ "%.2f"|format(k_val) }}{% if k_val == comp.stats.default_k %} ★{% endif %}</strong></td>
+                                                <td>{{ "%.1f"|format(ot_k.ot.shared_mass * 100) }}%</td>
+                                                <td>{{ "%.1f"|format(ot_k.ot.unmatched_mass * 100) }}%</td>
+                                                <td>{{ "%.3f"|format(ot_k.ot.avg_cost) }}</td>
+                                                <td>{{ "%.2f"|format(ot_k.split_join_stats.splits_from_a.mean) }}</td>
+                                                <td>{{ "%.2f"|format(ot_k.split_join_stats.joins_to_b.mean) }}</td>
+                                                <td>{% if ot_k.ot.shared_mass_relative is defined %}{{ "%.2f"|format(ot_k.ot.shared_mass_relative) }}{% else %}-{% endif %}</td>
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <p class="small text-muted mt-2">★ = Default K value. Higher K = stronger penalty for unmatching = more mass forced to transport. Lower K = more permissive, allowing themes to remain unmatched.</p>
                             </div>
                         </div>
+
                     </div>
 
-                    <div class="col-md-4">
-                        <div class="card">
-                            <div class="card-header bg-warning">Concentration</div>
-                            <div class="card-body">
-                                <h3 class="text-center">{{ "%.3f"|format(comp.stats.ot.concentration) }}</h3>
-                                <p class="small"><strong>Interpretation:</strong> How tightly does similarity mass focus on a few theme pairs? High = both analyses converge onto same conceptual clusters. Low = diffuse relationships.</p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                    {% for k_val in comp.stats.k_values %}
+                    {% set ot_k = comp.stats.ot_by_k[k_val] %}
+                    <div class="tab-pane fade{% if k_val == comp.stats.default_k %} show active{% endif %}"
+                         id="ot-k-{{ k_val|replace('.', '-') }}-{{ loop.index }}"
+                         role="tabpanel"
+                         aria-labelledby="ot-k-{{ k_val|replace('.', '-') }}-tab-{{ loop.index }}">
 
-                <div class="card mb-4">
-                    <div class="card-header">
-                        <strong>OT Baselines & Context</strong>
-                    </div>
-                    <div class="card-body">
-                        <div class="row">
+                        <div class="row mb-4">
                             <div class="col-md-6">
-                                <h6>Null Distribution (Random Baseline)</h6>
-                                <ul class="list-unstyled">
-                                    <li><strong>Mean:</strong> {{ "%.3f"|format(comp.stats.ot.null_mean) }}</li>
-                                    <li><strong>95th percentile:</strong> {{ "%.3f"|format(comp.stats.ot.null_95pct) }}</li>
-                                </ul>
-                                <p class="small text-muted">Null distribution computed via 100 bootstrap iterations with random theme permutations. Shows what OT similarity looks like under meaningless alignment. If your OT similarity is close to this value, the alignment is no better than random.</p>
+                                <div class="card border-primary">
+                                    <div class="card-header bg-primary text-white">
+                                        <strong>Shared Mass{% if ot_k.ot.shared_mass_relative is defined %} (Relative to Null){% endif %}</strong>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row">
+                                            <div class="col-6 text-center">
+                                                {% if ot_k.ot.shared_mass_relative is defined %}
+                                                <h2 class="text-primary">{{ "%.2f"|format(ot_k.ot.shared_mass_relative) }}</h2>
+                                                <p class="small text-muted mb-0">Relative Score</p>
+                                                <p class="small"><em>0 = random, 1 = perfect</em></p>
+                                                {% else %}
+                                                <h2 class="text-primary">{{ "%.1f"|format(ot_k.ot.shared_mass * 100) }}%</h2>
+                                                <p class="small text-muted mb-0">Shared Mass</p>
+                                                {% endif %}
+                                            </div>
+                                            <div class="col-6">
+                                                <ul class="list-unstyled small">
+                                                    <li><strong>Observed:</strong> {{ "%.3f"|format(ot_k.ot.shared_mass) }}</li>
+                                                    {% if ot_k.ot.null_shared_mass_mean is defined %}
+                                                    <li><strong>Null mean:</strong> {{ "%.3f"|format(ot_k.ot.null_shared_mass_mean) }}</li>
+                                                    <li><strong>Excess:</strong> +{{ "%.3f"|format(ot_k.ot.shared_mass_excess) }}</li>
+                                                    <li><strong>Effect:</strong> {{ "%.1f"|format(ot_k.ot.shared_mass_effect) }}σ</li>
+                                                    {% endif %}
+                                                </ul>
+                                            </div>
+                                        </div>
+                                        {% if ot_k.ot.shared_mass_relative is defined %}
+                                        <p class="small mt-2 mb-0"><strong>Interpretation:</strong> Of the possible improvement beyond random alignment, what fraction did we achieve? Values > 0.3 suggest meaningful structure; > 0.5 is good; > 0.7 is strong.</p>
+                                        {% else %}
+                                        <p class="small mt-2 mb-0 text-muted"><em>Null baseline comparison only computed for default K={{ "%.1f"|format(comp.stats.default_k) }}. See Scree tab for cross-K comparison.</em></p>
+                                        {% endif %}
+                                    </div>
+                                </div>
                             </div>
+
                             <div class="col-md-6">
-                                <h6>Interpretation Guide</h6>
-                                <ul class="list-unstyled small">
-                                    <li><strong>Null-relative ≈ 0:</strong> Alignment is random, no meaningful structure</li>
-                                    <li><strong>Null-relative 0.3-0.5:</strong> Moderate alignment, some structure</li>
-                                    <li><strong>Null-relative 0.5-0.7:</strong> Good alignment, clear thematic overlap</li>
-                                    <li><strong>Null-relative > 0.7:</strong> Strong alignment, high correspondence</li>
-                                </ul>
+                                <div class="card border-success">
+                                    <div class="card-header bg-success text-white">
+                                        <strong>Average Cost{% if ot_k.ot.avg_cost_relative is defined %} (Relative to Null){% endif %}</strong>
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="row">
+                                            <div class="col-6 text-center">
+                                                {% if ot_k.ot.avg_cost_relative is defined %}
+                                                <h2 class="text-success">{{ "%.2f"|format(ot_k.ot.avg_cost_relative) }}</h2>
+                                                <p class="small text-muted mb-0">Relative Score</p>
+                                                <p class="small"><em>0 = random, 1 = perfect</em></p>
+                                                {% else %}
+                                                <h2 class="text-success">{{ "%.3f"|format(ot_k.ot.avg_cost) }}</h2>
+                                                <p class="small text-muted mb-0">Average Cost</p>
+                                                {% endif %}
+                                            </div>
+                                            <div class="col-6">
+                                                <ul class="list-unstyled small">
+                                                    <li><strong>Observed:</strong> {{ "%.3f"|format(ot_k.ot.avg_cost) }}</li>
+                                                    {% if ot_k.ot.null_avg_cost_mean is defined %}
+                                                    <li><strong>Null mean:</strong> {{ "%.3f"|format(ot_k.ot.null_avg_cost_mean) }}</li>
+                                                    <li><strong>Improvement:</strong> {{ "%.3f"|format(ot_k.ot.avg_cost_improvement) }}</li>
+                                                    {% endif %}
+                                                </ul>
+                                            </div>
+                                        </div>
+                                        {% if ot_k.ot.avg_cost_relative is defined %}
+                                        <p class="small mt-2 mb-0"><strong>Interpretation:</strong> How much lower is the transport cost compared to random? Lower cost = better semantic alignment. Values > 0.3 suggest themes are meaningfully closer than chance.</p>
+                                        {% else %}
+                                        <p class="small mt-2 mb-0 text-muted"><em>Null baseline comparison only computed for default K={{ "%.1f"|format(comp.stats.default_k) }}.</em></p>
+                                        {% endif %}
+                                    </div>
+                                </div>
                             </div>
                         </div>
 
-                        <div class="row mt-3">
-                            <div class="col-md-12">
-                                <h6>OT Coverage by Theme</h6>
-                                <p class="small text-muted">For each theme, how fully is its meaning represented in the other set? Low coverage themes are conceptual outliers or pipeline artefacts.</p>
+                        <div class="row mb-4">
+                            <div class="col-md-4">
+                                <div class="card">
+                                    <div class="card-header">Unmatched Mass</div>
+                                    <div class="card-body">
+                                        <h4 class="text-center text-warning">{{ "%.1f"|format(ot_k.ot.unmatched_mass * 100) }}%</h4>
+                                        <p class="small"><strong>Interpretation:</strong> Proportion of theme-mass that couldn't find a good match.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card">
+                                    <div class="card-header">Splits from A</div>
+                                    <div class="card-body">
+                                        <p class="small text-muted mb-2">Themes in A flowing to multiple themes in B</p>
+                                        <ul class="list-unstyled small mb-0">
+                                            <li><strong>Mean:</strong> {{ "%.2f"|format(ot_k.split_join_stats.splits_from_a.mean) }}</li>
+                                            <li><strong>Median:</strong> {{ "%.1f"|format(ot_k.split_join_stats.splits_from_a.median) }}</li>
+                                            <li><strong>Mode:</strong> {{ ot_k.split_join_stats.splits_from_a.mode }}</li>
+                                            <li><strong>Max:</strong> {{ ot_k.split_join_stats.splits_from_a.max }}</li>
+                                            <li><strong>Themes with >1 target:</strong> {{ ot_k.split_join_stats.splits_from_a.n_multiple }}/{{ ot_k.split_join_stats.splits_from_a.total }} ({{ "%.0f"|format(ot_k.split_join_stats.splits_from_a.pct_multiple * 100) }}%)</li>
+                                        </ul>
+                                        {% if ot_k.split_join_stats.splits_from_a.counts %}
+                                        <hr class="my-2">
+                                        <p class="small text-muted mb-1"><strong>Distribution:</strong></p>
+                                        <div class="small">
+                                            {% for n, count in ot_k.split_join_stats.splits_from_a.counts.items() %}
+                                            <span class="badge badge-secondary mr-1">{{ n }}→{{ count }}</span>
+                                            {% endfor %}
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="card">
+                                    <div class="card-header">Joins to B</div>
+                                    <div class="card-body">
+                                        <p class="small text-muted mb-2">Themes in B receiving from multiple themes in A</p>
+                                        <ul class="list-unstyled small mb-0">
+                                            <li><strong>Mean:</strong> {{ "%.2f"|format(ot_k.split_join_stats.joins_to_b.mean) }}</li>
+                                            <li><strong>Median:</strong> {{ "%.1f"|format(ot_k.split_join_stats.joins_to_b.median) }}</li>
+                                            <li><strong>Mode:</strong> {{ ot_k.split_join_stats.joins_to_b.mode }}</li>
+                                            <li><strong>Max:</strong> {{ ot_k.split_join_stats.joins_to_b.max }}</li>
+                                            <li><strong>Themes with >1 source:</strong> {{ ot_k.split_join_stats.joins_to_b.n_multiple }}/{{ ot_k.split_join_stats.joins_to_b.total }} ({{ "%.0f"|format(ot_k.split_join_stats.joins_to_b.pct_multiple * 100) }}%)</li>
+                                        </ul>
+                                        {% if ot_k.split_join_stats.joins_to_b.counts %}
+                                        <hr class="my-2">
+                                        <p class="small text-muted mb-1"><strong>Distribution:</strong></p>
+                                        <div class="small">
+                                            {% for n, count in ot_k.split_join_stats.joins_to_b.counts.items() %}
+                                            <span class="badge badge-secondary mr-1">{{ n }}→{{ count }}</span>
+                                            {% endfor %}
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <strong>Transport Visualisations (K={{ "%.2f"|format(k_val) }})</strong>
+                            </div>
+                            <div class="card-body">
+                                <div class="row">
+                                    <div class="col-md-12">
+                                        <h6>Transport Flow (Sankey)</h6>
+                                        <p class="small text-muted">Width of links shows amount of mass transported between themes. Colour indicates alignment quality (green = good match, pink = poor match). Hover over links for details.</p>
+                                        <iframe srcdoc="{{ ot_k.transport_sankey.html | e }}" style="width: 100%; height: 950px; border: 1px solid #ddd; border-radius: 4px;" frameborder="0"></iframe>
+                                    </div>
+                                </div>
+                                <div class="row mt-4">
+                                    <div class="col-md-12">
+                                        <h6>Transport Plan Heatmap</h6>
+                                        <p class="small text-muted">Each cell shows percentage of transported mass flowing from A to B theme. Values sum to 100%.</p>
+                                        <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ ot_k.transport_heatmap.base64 }}" alt="Transport heatmap">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <strong>Coverage by Theme (K={{ "%.2f"|format(k_val) }})</strong>
+                            </div>
+                            <div class="card-body">
+                                <p class="small text-muted">For each theme, how much of its mass was transported? Low coverage = theme is conceptually distinct from the other set.</p>
                                 <div class="row">
                                     <div class="col-md-6">
                                         <strong>{{ comp.a.name }} → {{ comp.b.name }}</strong>
@@ -317,7 +754,7 @@
                                                 {% for i, theme in enumerate(comp.embedded_a) %}
                                                 <tr>
                                                     <td class="small">{{ theme.theme_name }}</td>
-                                                    <td class="small">{{ "%.2f"|format(comp.stats.ot.coverage_a[i]) }}</td>
+                                                    <td class="small">{{ "%.2f"|format(ot_k.ot.coverage_a[i]) }}</td>
                                                 </tr>
                                                 {% endfor %}
                                             </tbody>
@@ -336,7 +773,7 @@
                                                 {% for i, theme in enumerate(comp.embedded_b) %}
                                                 <tr>
                                                     <td class="small">{{ theme.theme_name }}</td>
-                                                    <td class="small">{{ "%.2f"|format(comp.stats.ot.coverage_b[i]) }}</td>
+                                                    <td class="small">{{ "%.2f"|format(ot_k.ot.coverage_b[i]) }}</td>
                                                 </tr>
                                                 {% endfor %}
                                             </tbody>
@@ -345,12 +782,83 @@
                                 </div>
                             </div>
                         </div>
+
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <!-- Null baseline and embedding metadata (shared across K values) -->
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <strong>Null Baseline Comparison</strong>
+                    </div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h6>Shared Mass Comparison (Default K={{ "%.1f"|format(comp.stats.default_k) }})</h6>
+                                <table class="table table-sm table-bordered">
+                                    <tbody>
+                                        <tr>
+                                            <td><strong>A ↔ B (observed)</strong></td>
+                                            <td class="text-right"><span class="badge bg-success">{{ "%.1f"|format(comp.stats.ot.shared_mass * 100) }}%</span></td>
+                                        </tr>
+                                        <tr>
+                                            <td><strong>A ↔ B<sub>salad</sub> (null mean)</strong></td>
+                                            <td class="text-right"><span class="badge bg-secondary">{{ "%.1f"|format(comp.stats.ot.null_shared_mass_mean * 100) }}%</span></td>
+                                        </tr>
+                                        <tr class="table-light">
+                                            <td><strong>Relative improvement</strong></td>
+                                            <td class="text-right"><span class="badge bg-primary">{{ "%.2f"|format(comp.stats.ot.shared_mass_relative) }}</span> <small class="text-muted">(0=random, 1=perfect)</small></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                                <p class="small text-muted"><strong>Symmetric null:</strong> Both A and B themes are independently scrambled into "word salad" strings. Null combines A vs B<sub>salad</sub> and A<sub>salad</sub> vs B (N=50 each direction, 100 total). This tests whether <em>both</em> sets have real semantic content.</p>
+                                {% if comp.stats.word_salad_samples %}
+                                <div class="mt-2">
+                                    <a class="small text-muted" data-toggle="collapse" href="#wordSaladSamples-{{ loop.index }}" role="button" aria-expanded="false" aria-controls="wordSaladSamples-{{ loop.index }}">
+                                        ▶ Show all {{ comp.stats.word_salad_samples|length }} word salad samples used
+                                    </a>
+                                    <div class="collapse" id="wordSaladSamples-{{ loop.index }}">
+                                        <div class="card card-body mt-2 bg-light" style="max-height: 400px; overflow-y: auto;">
+                                            <p class="small text-muted mb-2">Each sample contains {{ comp.stats.word_salad_samples[0]|length }} scrambled "themes" (matching B's theme count). Words from B's themes are randomly shuffled while preserving length.</p>
+                                            {% for sample_idx, sample in enumerate(comp.stats.word_salad_samples) %}
+                                            <div class="mb-3 pb-2 {% if not loop.last %}border-bottom{% endif %}">
+                                                <strong class="small text-muted">Sample {{ sample_idx + 1 }}:</strong>
+                                                <div class="mt-1">
+                                                    {% for text in sample %}
+                                                    <div class="text-monospace mb-1" style="font-size: 0.7rem;"><span class="badge badge-secondary mr-1">{{ loop.index }}</span> {{ text }}</div>
+                                                    {% endfor %}
+                                                </div>
+                                            </div>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6">
+                                <h6>Secondary Metrics (Effect Sizes)</h6>
+                                <p class="small text-muted">Effect sizes use MAD (median absolute deviation) for robustness. <strong>Do not compare across analyses with different embedding lengths.</strong></p>
+                                <ul class="list-unstyled small">
+                                    <li>Shared mass effect: {{ "%.2f"|format(comp.stats.ot.shared_mass_effect) }} MADs above null</li>
+                                    {% if comp.stats.ot.avg_cost_effect is defined %}
+                                    <li>Avg cost effect: {{ "%.2f"|format(comp.stats.ot.avg_cost_effect) }} MADs better than null</li>
+                                    {% endif %}
+                                </ul>
+                                <h6 class="mt-3">Embedding Metadata</h6>
+                                <ul class="list-unstyled small text-muted">
+                                    <li>Mean embedding length A: {{ "%.1f"|format(comp.stats.mean_embedding_words_a) }} words</li>
+                                    <li>Mean embedding length B: {{ "%.1f"|format(comp.stats.mean_embedding_words_b) }} words</li>
+                                </ul>
+                                <p class="small mt-2"><em>Longer embeddings → more stable null → inflated effect sizes. Use relative metrics for cross-analysis comparisons.</em></p>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
                 <hr>
 
-                <h4>Best Matching Themes (Many-to-Many)</h4>
+                <h4 id="best-matches-{{ loop.index }}">Best Matching Themes (Many-to-Many)</h4>
                 <p class="text-muted small">For comparison: shows best match for each theme, allowing multiple themes to match the same target.</p>
                 <div class="row mb-4">
                     <div class="col-6">
@@ -430,155 +938,62 @@
 
                 <hr>
 
-                <h4>Similarity Metrics</h4>
-                <p class="text-muted">Multiple similarity metrics are computed to provide different perspectives on theme alignment. Each metric captures different aspects of semantic similarity.</p>
+                <!-- ============================================== -->
+                <!-- SECTION 6: ADDITIONAL METRICS                  -->
+                <!-- ============================================== -->
+                <h4 id="additional-{{ loop.index }}">Additional Similarity Metrics</h4>
+                <p class="text-muted small">Alternative similarity functions for specialized analyses.</p>
 
-                <!-- Cosine Similarity -->
-                <div class="card mb-3">
-                    <div class="card-header bg-primary text-white">
-                        <h5 class="mb-0">Cosine Similarity</h5>
-                    </div>
-                    <div class="card-body">
-                        <p class="small"><strong>What it measures:</strong> The cosine of the angle between theme embedding vectors. Ranges from -1 to 1, with 1 indicating identical direction.</p>
-                        <p class="small"><strong>Note:</strong> While intuitive, cosine similarity is not a true distance metric and should not be averaged. Use angular distance or Shepard similarity for more rigorous comparisons.</p>
-                        <div class="row">
-                            <div class="col-md-6">
-                                <h6>Continuous Values</h6>
-                                <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comp.plots.heatmaps_cosine.base64 }}" alt="Cosine similarity heatmap">
+                <div class="row">
+                    <!-- Shepard Similarity -->
+                    <div class="col-md-4 mb-3">
+                        <div class="card h-100">
+                            <div class="card-header bg-secondary text-white">
+                                <h6 class="mb-0">Shepard Similarity (k={{ comp.stats.shepard_k_value }})</h6>
                             </div>
-                            <div class="col-md-6">
-                                <h6>Binary Match (threshold={{ comparison.config.threshold }})</h6>
-                                <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comp.plots.thresholded_heatmaps.base64 }}" alt="Thresholded heatmap">
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Angular Similarity -->
-                <div class="card mb-3">
-                    <div class="card-header bg-success text-white">
-                        <h5 class="mb-0">Angular Similarity (Normalized)</h5>
-                    </div>
-                    <div class="card-body">
-                        <p class="small"><strong>What it measures:</strong> Uses the angular distance between vectors (arccos of cosine), normalized to [0,1] scale where 1 = identical and 0 = orthogonal (90° apart).</p>
-                        <p class="small"><strong>Why it's better:</strong> Angular distance is a proper metric that satisfies the triangle inequality, making it mathematically rigorous for averaging and comparison.</p>
-                        <div class="row">
-                            <div class="col-md-12">
-                                <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comp.plots.heatmaps_angle.base64 }}" alt="Angular similarity heatmap">
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- Shepard Similarity -->
-                <div class="card mb-3">
-                    <div class="card-header bg-info text-white">
-                        <h5 class="mb-0">Shepard Similarity (k={{ comp.stats.shepard_k_value }})</h5>
-                    </div>
-                    <div class="card-body">
-                        <p class="small"><strong>What it measures:</strong> Applies exponential decay to angular distance, modeling a cognitively realistic similarity function. Formula: (exp(-k·θ) - exp(-k·π)) / (1 - exp(-k·π))</p>
-                        <p class="small"><strong>Interpretation:</strong> Higher values indicate tighter semantic alignment. Values around 0.30-0.45 suggest moderately similar but not identical themes. The k parameter controls decay rate (larger k = steeper decay).</p>
-                        <p class="small"><strong>Within-set baseline:</strong> Mean = {{ "%.3f"|format(comp.stats.within_set_stats.mean) }}, SD = {{ "%.3f"|format(comp.stats.within_set_stats.std) }} (based on {{ comp.stats.within_set_stats.n_pairs }} within-set theme pairs)</p>
-                        <div class="row">
-                            <div class="col-md-12">
+                            <div class="card-body">
+                                <p class="small text-muted">Exponential decay on angular distance. Cognitively realistic similarity function.</p>
+                                <p class="small"><strong>Within-set baseline:</strong> Mean = {{ "%.3f"|format(comp.stats.within_set_stats.mean) }}, SD = {{ "%.3f"|format(comp.stats.within_set_stats.std) }}</p>
                                 <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comp.plots.heatmaps_shepard.base64 }}" alt="Shepard similarity heatmap">
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Percentile-Normalized Shepard -->
-                <div class="card mb-3">
-                    <div class="card-header bg-warning">
-                        <h5 class="mb-0">Percentile-Normalized Shepard</h5>
-                    </div>
-                    <div class="card-body">
-                        <p class="small"><strong>What it measures:</strong> Expresses cross-set similarity relative to the distribution of within-set similarities. A value of 0.80 means this theme pair is more similar than 80% of all within-set theme pairs.</p>
-                        <p class="small"><strong>Interpretation:</strong> Provides a within-corpus reference frame. Values > 0.80 indicate strong conceptual overlap. Answers: "How good is this match compared to typical theme similarity?"</p>
-                        <div class="row">
-                            <div class="col-md-12">
+                    <!-- Percentile-Normalized Shepard -->
+                    <div class="col-md-4 mb-3">
+                        <div class="card h-100">
+                            <div class="card-header bg-secondary text-white">
+                                <h6 class="mb-0">Percentile-Normalized</h6>
+                            </div>
+                            <div class="card-body">
+                                <p class="small text-muted">Cross-set similarity relative to within-set distribution. 0.80 = more similar than 80% of within-set pairs.</p>
                                 <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comp.plots.heatmaps_percentile.base64 }}" alt="Percentile-normalized heatmap">
                             </div>
                         </div>
                     </div>
-                </div>
 
-                <!-- Z-Score Normalized Shepard -->
-                <div class="card mb-3">
-                    <div class="card-header bg-danger text-white">
-                        <h5 class="mb-0">Z-Score Normalized Shepard</h5>
-                    </div>
-                    <div class="card-body">
-                        <p class="small"><strong>What it measures:</strong> Number of standard deviations above or below the typical within-set similarity. Positive = stronger than average; negative = weaker than average.</p>
-                        <p class="small"><strong>Interpretation:</strong> Z-score of +1.2 means "substantially stronger than average similarity"; -0.5 means "below typical internal similarity". Useful for identifying outliers and exceptional matches.</p>
-                        <div class="row">
-                            <div class="col-md-12">
+                    <!-- Z-Score Normalized Shepard -->
+                    <div class="col-md-4 mb-3">
+                        <div class="card h-100">
+                            <div class="card-header bg-secondary text-white">
+                                <h6 class="mb-0">Z-Score Normalized</h6>
+                            </div>
+                            <div class="card-body">
+                                <p class="small text-muted">Standard deviations above/below typical within-set similarity. Useful for identifying outliers.</p>
                                 <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comp.plots.heatmaps_z_score.base64 }}" alt="Z-score normalized heatmap">
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <hr class="mt-4">
-
-                <h5>Similarity Statistics</h5>
-                <div class="row">
-                    <div class="col-md-4">
-                        <div class="card">
-                            <div class="card-header">Binary Metrics</div>
-                            <div class="card-body">
-                                <ul class="list-unstyled">
-                                    <li><strong>Precision:</strong> {{ "%.3f"|format(comp.stats.precision) }}</li>
-                                    <li><strong>Recall:</strong> {{ "%.3f"|format(comp.stats.recall) }}</li>
-                                    <li><strong>F1:</strong> {{ "%.3f"|format(comp.stats.f1) }}</li>
-                                    <li><strong>Jaccard:</strong> {{ "%.3f"|format(comp.stats.jaccard) }}</li>
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-md-4">
-                        <div class="card">
-                            <div class="card-header">Continuous Metrics</div>
-                            <div class="card-body">
-                                <ul class="list-unstyled">
-                                    <li><strong>A→B (avg. best match):</strong> {{ "%.3f"|format(comp.stats.a_b_most_similar) }}</li>
-                                    <li><strong>B→A (avg. best match):</strong> {{ "%.3f"|format(comp.stats.b_a_most_similar) }}</li>
-                                    <li><strong>Similarity F1:</strong> {{ "%.3f"|format(comp.stats.similarity_f1) }}</li>
-                                </ul>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-md-4">
-                        <div class="card">
-                            <div class="card-header">Similarity Matrix</div>
-                            <div class="card-body">
-                                <pre class="small" style="max-height: 200px; overflow-y: auto; font-size: 0.7rem;">{{ comp.stats.similarity_matrix }}</pre>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    
-                    <div class="col-md-4">
-                        
-                        <li>Precision: proportion of B themes with ≥1 match in A</li>
-                        <li>Recall: proportion of A themes with ≥1 match in B</li>
-                        <li>F1: harmonic mean of precision and recall</li>
-                        <li>
-                           Jaccard: density of semantic overlap. Answers the question: "What fraction of all possible thematic relationships are similar?" 
-                        </li>    
-                    </div>
-                </div>
-
-                <hr class="mt-4 mb-5" style="border-top: 2px solid #333;">
             </div>
             {% endfor %}
+            <!-- End of pair panes -->
         </div>
 
         <hr class="mt-5">
 
-        <div class="comparison-config mt-4">
+        <div id="config" class="comparison-config mt-4">
             <h3>Comparison Configuration</h3>
             <pre class="bg-light p-3">{{ comparison.config }}</pre>
         </div>

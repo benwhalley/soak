@@ -137,7 +137,7 @@ class Classifier(ItemsNode, CompletionDAGNode):
                                 finally:
                                     # Update progress bar on completion (success or failure)
                                     if progress_bar is not None:
-                                        progress_bar.update(1)
+                                        progress_bar.update(getattr(progress_bar, "slots_per_item", 1))
 
                         tg.start_soon(run_and_store)
 

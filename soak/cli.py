@@ -250,6 +250,7 @@ def run(
         ["pipeline.html"],
         "--template",
         "-t",
+        envvar="SOAK_TEMPLATE",
         help="Template name (in soak/templates) or path to custom HTML template (can be used multiple times)",
     ),
     include_documents: bool = typer.Option(
@@ -270,13 +271,22 @@ def run(
     seed: int = typer.Option(
         None,
         "--seed",
+        envvar="SOAK_SEED",
         help="Random seed for reproducible outputs (overrides pipeline config)",
     ),
-    model_name: str = typer.Option(None, "--model", "-m", help="LLM model name"),
+    model_name: str = typer.Option(
+        None, "--model", "-m", envvar="SOAK_MODEL", help="LLM model name"
+    ),
     progress: bool = typer.Option(
         None,
         "--progress/--no-progress",
         help="Show progress bars (auto-detected: enabled for TTY, disabled with -vv)",
+    ),
+    timeout: int = typer.Option(
+        90,
+        "--timeout",
+        envvar="SOAK_LLM_TIMEOUT",
+        help="Timeout in seconds for individual LLM API calls (default: 90)",
     ),
 ):
     """Run a pipeline on input files."""
@@ -396,6 +406,10 @@ def run(
     pipeline.config.show_progress = progress
     if progress:
         logger.debug("Progress bars enabled")
+
+    # Set LLM timeout
+    pipeline.config.llm_timeout = timeout
+    logger.debug(f"LLM timeout set to {timeout} seconds")
 
     # Always create dump folder for incremental export
     dump_path = Path(f"{output}_dump")
@@ -626,11 +640,53 @@ def dump(
         logger.info(f"✓ Generated {len(template)} HTML file(s) in dump folder")
 
 
+def resolve_analysis_path(input_path: str) -> Path:
+    """Resolve an input path to a JSON file.
+
+    If input_path is a JSON file, return it directly.
+    If input_path is a directory, look for a JSON file with the same name
+    (optionally minus '_dump' suffix).
+    """
+    path = Path(input_path)
+
+    # if it's already a file, return it
+    if path.is_file():
+        return path
+
+    # if it's a directory, look for matching JSON file
+    if path.is_dir():
+        dir_name = path.name
+
+        # try exact match first: folder/folder.json
+        exact_match = path / f"{dir_name}.json"
+        if exact_match.exists():
+            return exact_match
+
+        # try without _dump suffix: folder_dump/folder.json
+        if dir_name.endswith("_dump"):
+            base_name = dir_name[:-5]  # remove '_dump'
+            stripped_match = path / f"{base_name}.json"
+            if stripped_match.exists():
+                return stripped_match
+
+        # list available JSON files for error message
+        json_files = list(path.glob("*.json"))
+        if json_files:
+            json_names = ", ".join(f.name for f in json_files[:5])
+            raise typer.BadParameter(
+                f"Could not find '{dir_name}.json' or '{dir_name[:-5] if dir_name.endswith('_dump') else dir_name}.json' "
+                f"in {path}. Available JSON files: {json_names}"
+            )
+        raise typer.BadParameter(f"No JSON files found in directory: {path}")
+
+    raise typer.BadParameter(f"Path does not exist: {path}")
+
+
 @app.command()
 def compare(
     input_files: list[str] = typer.Argument(
         ...,
-        help="JSON files containing QualitativeAnalysis results to compare (minimum 2)",
+        help="JSON files or directories containing QualitativeAnalysis results to compare (minimum 2)",
     ),
     output: str = typer.Option(
         "comparison.html",
@@ -641,11 +697,13 @@ def compare(
     threshold: float = typer.Option(
         0.6,
         "--threshold",
+        envvar="SOAK_THRESHOLD",
         help="Similarity threshold for matching themes",
     ),
     method: str = typer.Option(
         "umap",
         "--method",
+        envvar="SOAK_METHOD",
         help="Dimensionality reduction method (umap, mds, pca)",
     ),
     label: str = typer.Option(
@@ -655,31 +713,37 @@ def compare(
         help="Python format string for theme labels in visualizations. Available: {name}, {description}",
     ),
     embedding_template: str = typer.Option(
-        "{name}",
+        "{name}: {description}",
         "--embedding-template",
         "-e",
-        help="Python format string for generating theme embeddings. Available: {name}, {description}",
-    ),
-    sort_heatmaps: bool = typer.Option(
-        False,
-        "--sort-heatmaps",
-        help="Sort heatmap rows and columns by average similarity (highest first)",
+        envvar="SOAK_EMBEDDING_TEMPLATE",
+        help="Python format string for generating theme embeddings. Available: {name}, {description}.",
     ),
     embedding_backend: str = typer.Option(
         "api",
         "--embedding-backend",
+        envvar="SOAK_EMBEDDING_BACKEND",
         help="Embedding backend: 'local' (sentence-transformers) or 'api' (OpenAI-compatible)",
     ),
     embedding_model: str = typer.Option(
         None,
         "--embedding-model",
+        envvar="SOAK_EMBEDDING_MODEL",
         help="Embedding model name (for local: HuggingFace model, for api: model ID)",
     ),
     k: float = typer.Option(
         1.0,
         "--k",
         "-k",
+        envvar="SOAK_K",
         help="Shepard similarity decay parameter (default: 1.0, higher = steeper decay)",
+    ),
+    reg_m: float = typer.Option(
+        0.2,
+        "--reg-m",
+        "-K",
+        envvar="SOAK_REG_M",
+        help="OT mass penalty (K). Fixed value for cross-analysis comparability. Lower = more selective matching.",
     ),
 ):
     """Compare multiple analysis results and generate comparison report."""
@@ -695,13 +759,10 @@ def compare(
     logger.info(f"Loading {len(input_files)} analyses...")
     analyses = []
 
-    for input_json in input_files:
-        input_path = Path(input_json)
-        if not input_path.exists():
-            logger.error(f"File not found: {input_json}")
-            raise typer.Exit(1)
+    for input_arg in input_files:
+        input_path = resolve_analysis_path(input_arg)
 
-        with open(input_json, "r", encoding="utf-8") as f:
+        with open(input_path, "r", encoding="utf-8") as f:
             data = json.load(f)
 
         try:
@@ -722,7 +783,7 @@ def compare(
             analyses.append(analysis)
         except Exception as e:
             error_msg = format_exception_concise(e)
-            raise typer.BadParameter(f"Error loading {input_json}:\n{error_msg}")
+            raise typer.BadParameter(f"Error loading {input_path}:\n{error_msg}")
         logger.info(
             f"  Loaded: {analysis.name} ({len(analysis.themes)} themes, {len(analysis.codes)} codes)"
         )
@@ -738,10 +799,10 @@ def compare(
             "min_dist": 0.01,
             "label_template": label,
             "embedding_template": embedding_template,
-            "sort_by_average": sort_heatmaps,
             "embedding_backend": embedding_backend,
             "embedding_model": embedding_model,
             "k": k,
+            "reg_m": reg_m,
         },
     )
 
@@ -763,7 +824,7 @@ def compare(
     for key, comp in comparison.by_comparisons().items():
         logger.debug(f"  {key}:")
         logger.debug(
-            f"    F1: {comp['stats']['f1']:.3f}, Similarity F1: {comp['stats']['similarity_f1']:.3f}"
+            f"    Hit Rate A: {comp['stats']['hit_rate_a']:.1%}, Hit Rate B: {comp['stats']['hit_rate_b']:.1%}, Fidelity: {comp['stats']['fidelity']:.3f}"
         )
 
 
@@ -849,21 +910,27 @@ def compare_strings(
         "B", "--col-b", help="Second column name or letter (default: B)"
     ),
     threshold: float = typer.Option(
-        0.6, "--threshold", help="Similarity threshold for matching"
+        0.6,
+        "--threshold",
+        envvar="SOAK_THRESHOLD",
+        help="Similarity threshold for matching",
     ),
     embedding_backend: str = typer.Option(
         "api",
         "--embedding-backend",
+        envvar="SOAK_EMBEDDING_BACKEND",
         help="Embedding backend: 'local' (sentence-transformers) or 'api' (OpenAI-compatible)",
     ),
     embedding_model: str = typer.Option(
         None,
         "--embedding-model",
+        envvar="SOAK_EMBEDDING_MODEL",
         help="Embedding model name (for local: HuggingFace model, for api: model ID)",
     ),
     k: float = typer.Option(
         1.0,
         "--k",
+        envvar="SOAK_K",
         help="Shepard similarity decay parameter (default: 1.0, higher = steeper decay)",
     ),
 ):
@@ -959,27 +1026,26 @@ def compare_strings(
     print(f"\n{col_b} ({len(list_b)} items):")
     for i, item in enumerate(list_b):
         print(f"  {i}: {item}")
-    print(f"\nMetrics:")
-    print(f"  Precision: {result['precision']:.3f}")
-    print(f"  Recall:    {result['recall']:.3f}")
-    print(f"  F1 Score:  {result['f1']:.3f}")
-    print(f"  Jaccard:   {result['jaccard']:.3f}")
+    print(f"\nCoverage (Hit Rates):")
+    print(f"  Hit Rate A: {result['hit_rate_a']:.1%}")
+    print(f"  Hit Rate B: {result['hit_rate_b']:.1%}")
+    print(f"  Jaccard:    {result['jaccard']:.3f}")
+
+    print(f"\nFidelity (Mean Best-Match Similarity):")
+    print(f"  {col_a} → {col_b}: {result['mean_max_sim_a_to_b']:.3f}")
+    print(f"  {col_b} → {col_a}: {result['mean_max_sim_b_to_a']:.3f}")
+    print(f"  Fidelity:          {result['fidelity']:.3f}")
 
     print(f"\nHungarian Matching (1-to-1):")
-    print(f"  F1:           {result['hungarian']['thresholded_metrics']['f1']:.3f}")
-    print(f"  Soft F1:      {result['hungarian']['soft_metrics']['soft_f1']:.3f}")
+    print(f"  Coverage A:   {result['hungarian']['thresholded_metrics']['coverage_a']:.1%}")
+    print(f"  Coverage B:   {result['hungarian']['thresholded_metrics']['coverage_b']:.1%}")
     print(f"  True Jaccard: {result['hungarian']['thresholded_metrics']['true_jaccard']:.3f}")
 
     print(f"\nOptimal Transport (many-to-many):")
-    print(f"  OT Similarity:      {result['ot']['similarity']:.3f}")
-    print(f"  Null-relative:      {result['ot']['null_relative']:.3f} (0=random, 1=perfect)")
-    print(f"  Concentration:      {result['ot']['concentration']:.3f}")
-    print(f"  Null baseline:      {result['ot']['null_mean']:.3f}")
-
-    print(f"\nSimilarity (best match per item):")
-    print(f"  {col_a} → {col_b}: {result['a_b_most_similar']:.3f}")
-    print(f"  {col_b} → {col_a}: {result['b_a_most_similar']:.3f}")
-    print(f"  Similarity F1:     {result['similarity_f1']:.3f}")
+    print(f"  Shared Mass:        {result['ot']['shared_mass']:.3f}")
+    print(f"  Shared Mass Rel:    {result['ot'].get('shared_mass_relative', 0):.3f} (0=random, 1=perfect)")
+    print(f"  Avg Cost:           {result['ot']['avg_cost']:.3f}")
+    print(f"  Unmatched Mass:     {result['ot']['unmatched_mass']:.3f}")
     print("\n" + "=" * 60)
 
     # Helper function for printing matrices
