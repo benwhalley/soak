@@ -1528,6 +1528,8 @@ def compare_result_similarity(
                     "similarity": float(np.round(best_similarity, 3)),
                 }
             )
+        # sort by similarity descending
+        best_matches_a_to_b.sort(key=lambda x: x["similarity"], reverse=True)
 
     # For each theme in B, find the best matching theme in A
     best_matches_b_to_a = []
@@ -1542,6 +1544,8 @@ def compare_result_similarity(
                     "similarity": float(np.round(best_similarity, 3)),
                 }
             )
+        # sort by similarity descending
+        best_matches_b_to_a.sort(key=lambda x: x["similarity"], reverse=True)
 
     # prepare OT results for serialisation (remove numpy array)
     ot_serialisable = {key: v for key, v in ot_results.items() if key != "transport_plan"}
@@ -1693,13 +1697,12 @@ def network_similarity_plot(
             n_neighbors=effective_n_neighbors,
             min_dist=min_dist,
             metric="cosine",
-            random_state=42,
         )
         pos_2d = reducer.fit_transform(all_emb)
     elif method == "mds":
         # Classical MDS expects a distance matrix, so convert similarity
         dist_matrix = 1 - sim_matrix
-        reducer = MDS(n_components=2, dissimilarity="precomputed", random_state=42)
+        reducer = MDS(n_components=2, dissimilarity="precomputed")
         pos_2d = reducer.fit_transform(dist_matrix)
     else:
         reducer = PCA(n_components=2)
