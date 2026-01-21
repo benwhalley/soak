@@ -43,6 +43,7 @@ class DAGConfig(BaseModel):
     scrubber_model: str = "en_core_web_md"
     scrubber_salt: str | None = Field(default="42", exclude=True)
     seed: int = 42
+    randomise_document_order: bool = True  # shuffle documents to avoid folder-name ordering
     sample_n: int | None = None  # randomly sample N documents/rows
     head_n: int | None = None  # take first N documents/rows
     show_progress: bool = False  # show progress bars during execution
@@ -224,6 +225,12 @@ class DAGConfig(BaseModel):
                 if isinstance(doc, TrackedItem):
                     doc.content = scrubber.clean(doc.content)
                     doc.metadata["scrubbed"] = True
+
+        # Shuffle documents to avoid folder-name ordering bias
+        if self.randomise_document_order:
+            random.seed(self.seed)
+            random.shuffle(self.documents)
+            logger.debug(f"Shuffled {len(self.documents)} documents with seed={self.seed}")
 
         # Apply sampling/slicing if requested
         original_count = len(self.documents)
