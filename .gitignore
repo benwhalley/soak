@@ -15,3 +15,5 @@ site/
 todos-notes
 FILTH.md
 REDACTED_INFO.md
+notebooks/.ipynb_checkpoints
+notebooks
