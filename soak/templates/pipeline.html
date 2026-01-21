@@ -188,6 +188,31 @@
         </div>
         {% endif %}
 
+        <!-- SECTION 2.5: Report Texts -->
+        {% if pipeline.config.report_texts %}
+        <div class="section-header">
+            <h3>Report Summary</h3>
+        </div>
+        {% for node_name in pipeline.config.report_texts %}
+        {% if node_name in pipeline.nodes_dict %}
+        <div class="row">
+            <div class="col-12">
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <h5 class="mb-0">{{ node_name|title|replace('_', ' ') }}</h5>
+                    </div>
+                    <div class="card-body">
+                        {% markdown %}
+{{pipeline.nodes_dict[node_name].result().response_obj|safe}}
+                        {% endmarkdown %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        {% endfor %}
+        {% endif %}
+
         <!-- SECTION 3: Node Results -->
         <div class="section-header">
             <h3>3. Node Results</h3>

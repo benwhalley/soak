@@ -443,11 +443,11 @@
 
                 <div class="card mb-4">
                     <div class="card-header">
-                        <strong>Optimal Matched Pairs ({{ comp.stats.hungarian.matched_pairs|length }})</strong>
+                        <strong>Optimal Matched Pairs ({{ comp.stats.hungarian.all_pairs|length }})</strong>
                     </div>
                     <div class="card-body">
-                        {% if comp.stats.hungarian.matched_pairs|length > 0 %}
-                        <p class="small text-muted">Hungarian algorithm finds the optimal one-to-one assignment. Pairs shown are above threshold ({{ comparison.config.threshold }}).</p>
+                        {% if comp.stats.hungarian.all_pairs|length > 0 %}
+                        <p class="small text-muted">Hungarian algorithm finds the optimal one-to-one assignment.</p>
                         <table class="table table-sm table-striped">
                             <thead>
                                 <tr>
@@ -457,7 +457,7 @@
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for i, j, similarity in comp.stats.hungarian.matched_pairs %}
+                                {% for i, j, similarity in comp.stats.hungarian.all_pairs %}
                                 {% set theme_a = comp.embedded_a[i] %}
                                 {% set theme_b = comp.embedded_b[j] %}
                                 <tr>
@@ -475,7 +475,7 @@
                             </tbody>
                         </table>
                         {% else %}
-                        <p class="text-muted">No optimal pairs found above threshold.</p>
+                        <p class="text-muted">No optimal pairs found.</p>
                         {% endif %}
                     </div>
                 </div>

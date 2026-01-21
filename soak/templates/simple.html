@@ -162,6 +162,16 @@
             border-top: 2px solid #e1e8ed;
             margin: 50px 0 30px 0;
         }
+
+        details.meta-info summary {
+            cursor: pointer;
+            font-weight: 600;
+            color: #555;
+        }
+
+        details.meta-info summary:hover {
+            color: #2980b9;
+        }
     </style>
 </head>
 
@@ -176,22 +186,28 @@
             {% endfor %}
         </div>
         
-        <div class="meta-info">
+        <details class="meta-info">
+            <summary>Source files ({{ pipeline.config.document_paths|length }})</summary>
+            <ul style="margin-top: 10px; margin-bottom: 0;">
             {% for i in pipeline.config.document_paths %}
-            {{i.0}}, 
+                <li>{{i.0}}</li>
             {% endfor %}
-        </div>
+            </ul>
+        </details>
         
         
         {% endif %}
 
-        <h2>Summary</h2>
+        {% for node_name in pipeline.config.report_texts %}
+        {% if node_name in pipeline.nodes_dict %}
+        <h2>{{ node_name|title|replace('_', ' ') }}</h2>
         <div class="narrative-section">
         {% markdown %}
-{{pipeline.nodes_dict['narrative'].result().response_obj|safe}}
-        {% endmarkdown %}   
-
+{{pipeline.nodes_dict[node_name].result().response_obj|safe}}
+        {% endmarkdown %}
         </div>
+        {% endif %}
+        {% endfor %}
         
         
         <div class="section-divider"></div>
@@ -230,7 +246,7 @@ a.code-badge:hover {
         <div class="section-divider"></div>
         
         {% set node_result = pipeline.nodes_dict['codes'].result().response_obj %}
-    
+
         <h2>Codes</h2>
         {% for code in node_result.codes %}
         <div class="code-card" id="code-{{ code.slug }}">
