@@ -29,7 +29,7 @@ logger = logging.getLogger(__name__)
 
 class DAGNode(BaseModel):
     # this used for reserialization
-    model_config = {"discriminator": "type"}
+    model_config = {"discriminator": "type", "extra": "forbid"}
     type: str = Field(default_factory=lambda self: type(self).__name__, exclude=False)
 
     dag: Optional["DAG"] = Field(default=None, exclude=True)
