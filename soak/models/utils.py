@@ -639,3 +639,76 @@ def _get_codes_from_ancestors(node, dag, visited: set) -> List[Code]:
                 codes.extend(ancestor_codes)
 
     return codes
+
+
+def get_nested_attr(obj: Any, path: str) -> Any:
+    """Get nested attribute using dot notation.
+
+    Args:
+        obj: Object to extract from
+        path: Dot-separated path like "codes" or "results.codes.output"
+
+    Returns:
+        The extracted value, or None if path doesn't exist
+    """
+    parts = path.split(".")
+    current = obj
+    for part in parts:
+        if current is None:
+            return None
+        if hasattr(current, part):
+            current = getattr(current, part)
+        elif isinstance(current, dict) and part in current:
+            current = current[part]
+        else:
+            return None
+    return current
+
+
+def unwrap_chatter_items(items: List[Any], items_field: str) -> List[Any]:
+    """Unwrap items from container types using items_field.
+
+    Extracts nested items from ChatterResult or other container objects.
+    For ChatterResult, extracts from each segment's output using the items_field path.
+
+    Args:
+        items: List of items (may be containers like CodeList, ChatterResult, etc.)
+        items_field: Field path to extract items from containers (e.g., "codes")
+
+    Returns:
+        Flattened list of unwrapped items
+
+    Example:
+        # Extract Code objects from ChatterResults
+        codes = unwrap_chatter_items(chatter_results, "codes")
+        # Each ChatterResult's .results.*.output.codes is extracted and flattened
+    """
+    from struckdown import ChatterResult
+
+    unwrapped = []
+    for item in items:
+        if item is None:
+            continue
+        # handle ChatterResult specially - extract from results dict
+        if isinstance(item, ChatterResult):
+            for segment_name, segment in item.results.items():
+                extracted = get_nested_attr(segment.output, items_field)
+                if extracted is not None:
+                    if isinstance(extracted, list):
+                        unwrapped.extend(extracted)
+                    else:
+                        unwrapped.append(extracted)
+        else:
+            # try to extract using the field path
+            extracted = get_nested_attr(item, items_field)
+            if extracted is not None:
+                if isinstance(extracted, list):
+                    unwrapped.extend(extracted)
+                else:
+                    unwrapped.append(extracted)
+            else:
+                # fallback: keep the item as-is if extraction fails
+                logger.debug(f"Could not extract '{items_field}' from {type(item).__name__}")
+                unwrapped.append(item)
+
+    return unwrapped
