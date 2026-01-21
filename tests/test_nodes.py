@@ -195,7 +195,6 @@ async def test_filter_preserves_metadata():
         expression="'coffee' in input",
         mode="simple",
         dag=dag,
-        context={},
     )
 
     # process items

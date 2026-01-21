@@ -8,8 +8,7 @@ nodes:
 
   - name: batched
     type: Batch
-    chunk_size: 3
-    split_unit: tokens
+    batch_size: 3
     inputs:
       - chunks
 
