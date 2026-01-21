@@ -81,7 +81,50 @@ Use when:
     - chunk_codes
 ```
 
-### 4. Structuring Nodes
+### 4. Semantic Grouping Nodes
+
+**Cluster** - Groups items by semantic similarity
+
+Use when:
+
+- You have many codes/items and want to group similar ones
+- Preparing for consolidation (e.g., merging similar codes into themes)
+- Exploring natural groupings in qualitative data
+- Reducing the number of items for downstream processing
+
+
+For example: in a large corpus, coding each document may produce a large number of overlapping codes. To reduce duplication, we can cluster codes into related groups and then ask an LLM to generate a new code or codes for each group (this avoid presenting the whole list of codes to the LLM at once).
+
+
+```yaml
+- name: grouped_codes
+  type: Cluster
+  inputs: [coded_documents].   # only 1 input is supported
+  items_field: codes           # extract the `codes` field from each input
+  method:
+    name: hdbscan
+    min_cluster_size_proportion: 0.25  # aim for ~4 clusters
+    min_cluster_size: 5                # but at least 5 per cluster
+    max_cluster_size: 50               # and no more than 50
+```
+
+How it works:
+1. Extracts text from each item (using `text_field`) or the content of `items_field` (converted to text by default, the template can be customised)
+2. Computes embeddings for all items
+3. Runs HDBSCAN density-based clustering 
+4. Splits oversized clusters, groups noise points
+5. Returns clusters as TrackedItems (each containing grouped items)
+
+
+
+### About HDBSCAN
+
+HDBSCAN is used here as a practical way to group things that look similar, without assuming that everything must fit neatly into a category. It groups items when there is enough shared structure between them and leaves things ungrouped when there isn’t.
+Users can set the minimum and maximum cluster sizes (soak will recusively re-split oversized clusters into smaller ones if needed).
+
+
+
+### 5. Structuring Nodes
 
 **Batch** - Group items by criteria
 
@@ -198,11 +241,11 @@ Use when:
 
 ### Question: Do I need an LLM?
 
-**Yes**: Use **Map**, **Transform**, **TransformReduce**, or **Classifier**
+**Yes**: For **Map**, **Transform**, **TransformReduce**, or **Classifier**
 - These nodes have templates and call LLMs
 
-**No**: Use **Split**, **Reduce**, **Batch**, **GroupBy**, **Ungroup**, or **Filter**
-- These nodes do structural operations only
+**No**:  For **Split**, **Reduce**, **Cluster**, **Batch**, **GroupBy**, **Ungroup**, or **Filter**
+- These nodes do structural operations only (Cluster uses embeddings, not an LLM)
 
 ### Question: Do items need context from other items?
 
@@ -218,7 +261,8 @@ Use when:
 
 **Organizing** data structure:
 - **Split**: Break apart
-- **Batch**/**GroupBy**: Group together
+- **Cluster**: Group by semantic similarity
+- **Batch**/**GroupBy**: Group by metadata/fields
 - **Ungroup**: Flatten structure
 - **Filter**: Remove items
 
@@ -399,6 +443,7 @@ class MyCustomNode(ItemsNode, CompletionDAGNode):
 | Reduce | Many | 1 | No | No | Collect results into text |
 | Transform | 1+ | 1 | Yes | No | Consolidate and generate |
 | TransformReduce | Many | 1 | Yes | No | Reduce + transform combined |
+| Cluster | Many | Many | No | No | Group by semantic similarity |
 | Batch | Many | Many | No | No | Group by metadata field |
 | GroupBy | Many | Many | No | No | Group by multiple fields |
 | Ungroup | Many | Many | No | No | Flatten batch structure |

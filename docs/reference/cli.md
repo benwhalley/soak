@@ -2,7 +2,27 @@
 
 soak provides a command-line interface for running pipelines and working with results.
 
+## Global Options
+
+These options apply to all commands:
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--verbose` | `-v` | Increase verbosity (`-v` = INFO, `-vv` = DEBUG) |
+| `--install-completion` | | Install shell completion for the current shell |
+| `--show-completion` | | Show completion script for the current shell |
+| `--help` | | Show help message and exit |
+
 ## Commands
+
+| Command | Description |
+|---------|-------------|
+| `run` | Run a pipeline on input files |
+| `compare` | Compare multiple analysis results and generate comparison report |
+| `show` | Show the contents of a built-in pipeline or template |
+| `dump` | Dump detailed DAG execution to folder structure for inspection |
+| `compare-strings` | Compare similarity of two lists of strings from an XLSX file |
+| `coverage` | Analyse how well themes from an analysis are represented across documents |
 
 ### run
 
@@ -27,11 +47,13 @@ uv run soak PIPELINE INPUT_FILES [OPTIONS]
 | `--include-documents` | | Include original document text in JSON output |
 | `--context KEY=VALUE` | `-c` | Override context variables (can be used multiple times) |
 | `--force` | `-f` | Overwrite existing output files/folders (checked before pipeline runs) |
-| `--sample N` | `-S` | Randomly sample N rows/documents from input |
-| `--head N` | `-H` | Take first N rows/documents from input |
-| `--seed N` | | Random seed for reproducible outputs (overrides pipeline config) |
+| `--sample N` | `-S` | Randomly sample N rows/documents from input (mutually exclusive with `--head`) |
+| `--head N` | `-H` | Take first N rows/documents from input (mutually exclusive with `--sample`) |
+| `--seed N` | | Random seed for reproducible outputs and document shuffling (default: 42) |
 | `--progress/--no-progress` | | Show progress bars (auto-detected: enabled for TTY, disabled with -vv) |
-| `--verbose` | `-v` | Increase verbosity (`-v` = INFO, `-vv` = DEBUG) |
+| `--timeout N` | | Timeout in seconds for individual LLM API calls (default: 90) |
+| `--skip-node NAME` | | Skip specified node(s) during execution (can be used multiple times) |
+| `--stop-at NAME` | | Stop execution before the specified node runs |
 
 **Examples:**
 
@@ -110,7 +132,7 @@ With `--output results`:
 
 ### compare
 
-Compare multiple analysis results.
+Compare multiple analysis results and generate comparison report.
 
 ```bash
 uv run soak compare [OPTIONS] INPUT_FILES...
@@ -118,7 +140,7 @@ uv run soak compare [OPTIONS] INPUT_FILES...
 
 **Arguments:**
 
-- `INPUT_FILES` - Two or more JSON files containing analysis results
+- `INPUT_FILES` - Two or more JSON files or directories containing QualitativeAnalysis results to compare
 
 **Options:**
 
@@ -128,22 +150,32 @@ uv run soak compare [OPTIONS] INPUT_FILES...
 | `--threshold FLOAT` | | Similarity threshold for matching themes (default: 0.6) |
 | `--method METHOD` | | Dimensionality reduction: `umap`, `mds`, `pca` (default: `umap`) |
 | `--label TEMPLATE` | `-l` | Format string for labels: `{name}`, `{description}` (default: `{name}`) |
-| `--embedding-template TEMPLATE` | `-e` | Format string for embeddings (default: `{name}`) |
+| `--embedding-template TEMPLATE` | `-e` | Format string for generating theme embeddings (default: `{name}: {description}`) |
+| `--embedding-backend` | | Embedding backend: `local` (sentence-transformers) or `api` (OpenAI-compatible) (default: `api`) |
+| `--embedding-model` | | Embedding model name (for local: HuggingFace model, for api: model ID) |
+| `--k` | `-k` | Shepard similarity decay parameter (default: 1.0, higher = steeper decay) |
+| `--reg-m` | `-K` | OT mass penalty (K). Fixed value for cross-analysis comparability. Lower = more selective matching (default: 0.2) |
 
 **Examples:**
 
 ```bash
 # Compare two analyses
-uv run soak compare results2.json -o comparison.html results1.json
+uv run soak compare results1.json results2.json -o comparison.html
 
 # Compare with custom similarity threshold
-uv run soak compare run2.json run3.json --threshold 0.7 run1.json
+uv run soak compare run1.json run2.json run3.json --threshold 0.7
 
-# Use different visualization method
+# Use different visualisation method
 uv run soak compare --method pca -o comparison.html *.json
 
 # Custom label template
 uv run soak compare -l "{name}: {description}" -o comparison.html *.json
+
+# Use local embeddings instead of API
+uv run soak compare --embedding-backend local *.json
+
+# Adjust optimal transport parameters
+uv run soak compare --k 2.0 --reg-m 0.1 *.json
 ```
 
 **Output:**

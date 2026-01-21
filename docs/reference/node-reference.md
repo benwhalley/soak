@@ -457,6 +457,216 @@ Unified quote verification node that can:
 - [Quote Verification Algorithm](quote-verification.md) - Detailed algorithm specification
 - [Quote Verification Approach](../explanation/quote-verification-approach.md) - Design rationale
 
+### Cluster
+
+Group items by semantic similarity using density-based clustering.
+
+**Type:** `Cluster`
+
+**Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `name` | str | Required | Node name |
+| `inputs` | List[str] | Required | Input nodes |
+| `items_field` | str | `"codes"` | Field to extract items from (null for TrackedItems) |
+| `text_field` | str | `"content"` | How to extract text for embedding |
+| `method` | ClusterMethod | HDBSCAN defaults | Clustering method configuration |
+
+**HDBSCAN Method Parameters:**
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `name` | str | `"hdbscan"` | Method identifier |
+| `min_cluster_size_proportion` | float | `null` | Target cluster size as proportion (e.g., 0.25 = ~4 clusters) |
+| `min_cluster_size` | int | `2` | Hard floor -- clusters never smaller than this |
+| `max_cluster_size` | int | `100` | Hard ceiling -- clusters split if larger (null = no limit) |
+| `min_samples` | int | `1` | HDBSCAN min_samples parameter |
+
+**Size Control Logic:**
+
+- `min_cluster_size_proportion` is a **goal** -- suggests cluster size based on total items
+- `min_cluster_size` is a **hard floor** -- overrides proportion if higher
+- `max_cluster_size` is a **hard ceiling** -- clusters exceeding this are split
+
+Example with 100 items, proportion=0.25, min=10, max=50:
+- Proportion suggests min_cluster_size=25 (100 × 0.25)
+- Floor of 10 doesn't apply (25 > 10)
+- Effective min_cluster_size = 25
+- Clusters larger than 50 get recursively split
+
+**Input:** List of items (Codes, TrackedItems, or any objects)
+**Output:** List of TrackedItems, each representing a cluster
+
+**How It Works:**
+
+1. **Extract items** using `items_field` (e.g., extract Code objects from CodeList)
+2. **Extract text** using `text_field` (content, metadata field, or Jinja2 template)
+3. **Compute embeddings** for all unique texts
+4. **Run HDBSCAN** with calculated effective min_cluster_size
+5. **Handle oversized clusters** by recursive splitting (respects max_cluster_size)
+6. **Group noise points** (singletons) into batches
+7. **Return clusters** as TrackedItems with original items in metadata
+
+**text_field Options:**
+
+- `"content"` (default): Uses TrackedItem.content or str(item)
+- `"metadata.field_name"`: Extracts from item.metadata["field_name"]
+- `"{{name}}: {{description}}"`: Jinja2 template for custom text
+
+**Examples:**
+
+**Cluster codes by name and description:**
+
+```yaml
+- name: grouped_codes
+  type: Cluster
+  inputs: [coded_chunks]
+  items_field: codes
+  text_field: "{{name}}: {{description}}"
+  method:
+    name: hdbscan
+    min_cluster_size_proportion: 0.25
+    min_cluster_size: 5
+    max_cluster_size: 30
+```
+
+**Cluster text chunks directly:**
+
+```yaml
+- name: grouped_chunks
+  type: Cluster
+  inputs: [chunks]
+  items_field: null  # items are TrackedItems, not containers
+  text_field: content
+```
+
+**Large clusters for broad themes:**
+
+```yaml
+- name: broad_groups
+  type: Cluster
+  inputs: [all_codes]
+  items_field: codes
+  method:
+    name: hdbscan
+    min_cluster_size_proportion: 0.25  # ~4 groups
+    max_cluster_size: null             # no upper limit
+```
+
+**Accessing Cluster Results:**
+
+Each output cluster is a TrackedItem with:
+- `content`: Stringified cluster items (joined by `---`)
+- `metadata.items`: Original items (Code objects, etc.)
+- `metadata.cluster_id`: e.g., "cluster_0"
+- `metadata.cluster_size`: Number of items
+
+In downstream templates:
+
+```jinja
+{% for cluster in grouped_codes %}
+Cluster {{cluster.metadata.cluster_id}} ({{cluster.metadata.cluster_size}} items):
+{% for code in cluster.metadata.items %}
+- {{code.name}}: {{code.description}}
+{% endfor %}
+{% endfor %}
+```
+
+**Export:**
+
+```
+03_Cluster_grouped_codes/
+├── cluster_summary.txt           # Statistics and per-cluster sizes
+├── cluster_0_content.txt         # Stringified cluster content
+├── cluster_1_content.txt
+├── ...
+├── outputs/
+│   ├── cluster_0/
+│   │   ├── 0000_code-slug.txt    # Individual items
+│   │   └── 0001_code-slug.txt
+│   ├── cluster_1/
+│   │   └── ...
+└── meta.txt
+```
+
+**cluster_summary.txt contents:**
+
+```
+Cluster Summary
+===============
+Total items: 345
+Number of clusters: 18
+Cluster size min: 5
+Cluster size max: 50
+Cluster size mean: 19.2
+
+Method: hdbscan
+max_cluster_size: 50
+min_cluster_size: 10
+min_cluster_size_proportion: 0.25
+min_samples: 1
+effective_min_cluster_size: 86
+
+Processing stats:
+  Singletons (noise points): 12
+  Oversized clusters split: 2
+
+Per-cluster sizes:
+  cluster_47: 50
+  cluster_12: 48
+  cluster_3: 32
+  ...
+```
+
+**Common Patterns:**
+
+**Code → Cluster → Consolidate:**
+
+```yaml
+nodes:
+  - name: chunk_codes
+    type: Map
+    inputs: [chunks]
+
+  - name: grouped_codes
+    type: Cluster
+    inputs: [chunk_codes]
+    items_field: codes
+
+  - name: themes
+    type: Map
+    inputs: [grouped_codes]
+    # Each cluster becomes input for theme generation
+```
+
+**Hierarchical clustering:**
+
+```yaml
+nodes:
+  # First pass: many small clusters
+  - name: fine_clusters
+    type: Cluster
+    method:
+      name: hdbscan
+      min_cluster_size: 3
+      max_cluster_size: 10
+
+  # Consolidate each cluster
+  - name: consolidated
+    type: Map
+    inputs: [fine_clusters]
+
+  # Second pass: fewer large clusters
+  - name: broad_clusters
+    type: Cluster
+    inputs: [consolidated]
+    method:
+      name: hdbscan
+      min_cluster_size_proportion: 0.2
+      max_cluster_size: null
+```
+
 ### Batch
 
 Group items into batches for processing.

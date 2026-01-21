@@ -208,6 +208,44 @@ document_1__chunks__0__codes  # After coding
 
 The `sources` list tracks all original documents contributing to each item.
 
+## Document Ordering and Bias Prevention
+
+### The Problem: Systematic Ordering Bias
+
+When using glob patterns to load documents, file system ordering can introduce systematic bias:
+
+```bash
+uv run soak zs data/group1/*.txt data/group2/*.txt
+```
+
+Without shuffling, all `group1` documents appear first in the context window, followed by all `group2` documents. This creates a problem because:
+
+1. **Attention effects**: LLMs may attend differently to content at different positions in long prompts -- early content can receive less attention in very long contexts ("lost in the middle" effect)
+2. **Systematic bias**: If document groups correlate with meaningful categories (e.g., treatment vs control, different time periods, different sources), ordering effects could systematically bias the analysis
+3. **Hidden confounds**: Folder structure often reflects data collection order, source, or other factors that shouldn't influence coding
+
+### The Solution: Randomised Document Order
+
+By default, soak shuffles documents before processing:
+
+```yaml
+default_config:
+  randomise_document_order: true  # default
+  seed: 42                        # for reproducibility
+```
+
+This ensures documents from different sources are interleaved randomly, preventing any single group from being systematically positioned in a particular part of the context window.
+
+To disable shuffling, in your `.soak` pipeline file:
+
+```yaml
+default_config:
+  randomise_document_order: false
+```
+
+But for qualitative analyses, keep shuffling enabled to avoid unintentional ordering effects.
+
+
 ## DAG Optimization
 
 ### Batching
