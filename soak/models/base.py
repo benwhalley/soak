@@ -21,7 +21,7 @@ from struckdown.return_type_models import ResponseModel
 logger = logging.getLogger(__name__)
 
 # Configuration: Quote hash length (base32 encoding)
-QUOTE_HASH_LENGTH = int(os.getenv("QUOTE_HASH_LENGTH", "6"))
+QUOTE_HASH_LENGTH = int(os.getenv("QUOTE_HASH_LENGTH", "8"))
 
 SOAK_MAX_RUNTIME = 60 * 30  # 30 mins
 
@@ -141,7 +141,7 @@ class BatchList(BaseModel):
 
 
 # Type definitions
-CodeSlugStr = constr(min_length=12, max_length=128)
+CodeSlugStr = constr(min_length=8, max_length=150, pattern=r"^[a-zA-Z0-9-]+$")
 
 
 # Helper for post-processed fields
@@ -202,7 +202,7 @@ QuoteOrRef = Union[Quote, QuoteReference]
 class Code(ResponseModel):
     slug: CodeSlugStr = Field(
         ...,
-        description="A very short abbreviated unique slug/reference for this Code (MAX 20 ascii characters).",
+        description="A very short abbreviated unique slug/reference for this Code. MAXIMUM of 40 ascii characters, never more.",
     )
     name: str = Field(..., min_length=1, description="A short name for the code.")
     description: str = Field(
@@ -210,13 +210,14 @@ class Code(ResponseModel):
     )
 
     # LLM generates Union[Quote, QuoteReference]
-    # Pydantic handles discriminated union via 'type' field
+    # pydantic handles discriminated union via 'type' field
     quotes: List[Union[Quote, QuoteReference]] = Field(
         default_factory=list,
-        description="Example quotes from the text which illustrate the code. Choose the best examples.",
+        max_length=24,
+        description="Example quotes from the text which illustrate the code. Choose the best examples. Maximum 24 quotes allowed, but typically fewer--be selective.",
     )
 
-    # Post-processed field (excluded from LLM schema)
+    # post-processed field (excluded from LLM schema)
     resolved_quotes: Optional[List[Dict]] = PostProcessedField(default=None)
 
     def __str__(self):
@@ -299,10 +300,13 @@ class Theme(ResponseModel):
     code_slugs: List[CodeSlugStr] = Field(
         ...,
         min_length=0,
-        max_length=64,
-        description="A List of the code-references that are part of this theme. Identify them accurately by slug/hash code from the text. Each code slug MUST BE no more than 20 ascii characters. Only refer to codes in the input text above.",
+        max_length=60,
+        description="A List of the code-references that are part of this theme. Identify them accurately by the slug/hash from the text. Each code slug MUST BE no more than 40 ascii characters. Alphanumeric only, no spaces. Only refer to codes in the input text above. An absolute MAXIMUM of 60 codes is allowed per theme, but normally far fewer--be selective.",
     )
-
+    def __str__(self):
+        cds_ = str([str(c) for c in self.resolved_codes])
+        return f"Theme: {self.name}\n{self.description}\nCodes: {cds_}"
+        
     # Post-processed fields (excluded from LLM schema)
     resolved_code_refs: Optional[List[Dict]] = PostProcessedField(default=None)
     label: Optional[str] = PostProcessedField(default=None)
@@ -335,8 +339,8 @@ class Theme(ResponseModel):
 class Themes(BaseModel):
     themes: List[Theme] = Field(..., min_length=1)
 
-    # def to_markdown(self):
-    #     return "\n- ".join([i.name for i in self.themes])
+    def __str__(self):
+        return "---\n\n".join([str(i) for i in self.themes])
 
     def post_process(self, context: Dict[str, Any]):
         """Post-process each theme in the list."""
