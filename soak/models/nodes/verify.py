@@ -530,16 +530,28 @@ class VerifyQuotes(CompletionDAGNode):
         - List of ChatterResults (from Map nodes)
         - Single ChatterResult (from Transform/Reduce nodes)
         - Direct Themes or CodeList objects
+        - List of Code objects (wrapped into CodeList)
+        - List of Theme objects (wrapped into Themes)
 
         Returns:
             List of Themes or CodeList objects ready for quote extraction
         """
-        from soak.models.base import CodeList, Themes
+        from soak.models.base import Code, CodeList, Theme, Themes
 
         outputs = []
 
         # convert to list if single item
         items = input_data if isinstance(input_data, list) else [input_data]
+
+        # check if items is a list of Code or Theme objects directly
+        if items and all(isinstance(item, Code) for item in items):
+            # wrap plain list of Code objects into CodeList
+            outputs.append(CodeList(codes=items))
+            return outputs
+        if items and all(isinstance(item, Theme) for item in items):
+            # wrap plain list of Theme objects into Themes
+            outputs.append(Themes(themes=items))
+            return outputs
 
         for item in items:
             if isinstance(item, (Themes, CodeList)):
