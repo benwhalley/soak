@@ -2,9 +2,10 @@
 
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from soak.models.dag import render_strict_template
+from soak.models.utils import unwrap_chatter_items
 
 from .base import DAGNode
 
@@ -14,22 +15,42 @@ logger = logging.getLogger(__name__)
 class Reduce(DAGNode):
     """Node that reduces items by peeling one layer of grouping.
 
-    Behavior:
+    Behavior (template mode, default):
     - Nested BatchList: Reduce each inner BatchList, return flat list (peel one layer)
     - Single-level BatchList: Reduce each batch, return flat list
     - Flat list: Reduce to single string
 
+    Behavior (items_field mode):
+    - When items_field is set, extracts structured items from containers (e.g., ChatterResult)
+    - Flattens all inputs into a single list of extracted items
+    - Returns the list directly without template rendering
+    - Useful for collecting Code/Theme objects from multiple Map outputs
+
     When exclude_overlap=True, uses core content from TrackedItems (excluding overlap regions)
     to avoid duplicating overlapped content when rejoining chunks from Split nodes.
+
+    Example YAML:
+        # Template mode (default): join text
+        - name: combined_text
+          type: Reduce
+          template: "{{input.content}}"
+          inputs: [chunks]
+
+        # Items field mode: extract and flatten Code objects
+        - name: all_codes
+          type: Reduce
+          items_field: codes
+          inputs: [coded_chunks]  # List of ChatterResults with codes
     """
 
     type: Literal["Reduce"] = "Reduce"
     template: str = "{{input}} "
     exclude_overlap: bool = True  # Exclude overlap by default when joining chunks
+    items_field: Optional[str] = None  # When set, extract items instead of rendering template
 
     async def run(
         self,
-    ) -> Union[List[Union[str, "TrackedItem"]], Union[str, "TrackedItem"]]:
+    ) -> Union[List[Any], str, "TrackedItem"]:
         """Reduce items, peeling one layer of BatchList nesting."""
         await super().run()
 
@@ -45,7 +66,11 @@ class Reduce(DAGNode):
         else:
             input_data = self.dag.config.documents
 
-        # Handle different input types
+        # Items field mode: extract and flatten structured items
+        if self.items_field:
+            return await self._reduce_with_items_field(input_data)
+
+        # Template mode: original behavior
         if isinstance(input_data, BatchList):
             if input_data.is_nested():
                 # Nested: reduce each inner BatchList
@@ -82,6 +107,37 @@ class Reduce(DAGNode):
             )
             return result
 
+    async def _reduce_with_items_field(self, input_data: Any) -> List[Any]:
+        """Extract and flatten structured items using items_field.
+
+        Flattens all input (including BatchList) and extracts items from containers.
+
+        Args:
+            input_data: Input data (list, BatchList, or single item)
+
+        Returns:
+            Flat list of extracted items (e.g., Code objects)
+        """
+        from .batch import BatchList
+
+        # Flatten all input to a single list
+        if isinstance(input_data, BatchList):
+            raw_items = input_data.flatten_all()
+        elif isinstance(input_data, list):
+            raw_items = input_data
+        else:
+            raw_items = [input_data]
+
+        # Extract items using items_field
+        extracted = unwrap_chatter_items(raw_items, self.items_field)
+
+        self.output = extracted
+        logger.info(
+            f"Reduce '{self.name}': Extracted {len(extracted)} items "
+            f"(items_field='{self.items_field}') from {len(raw_items)} inputs"
+        )
+        return extracted
+
     async def _reduce_batchlist(self, batchlist) -> Union[str, "TrackedItem"]:
         """Reduce a BatchList (or nested list) to a single value.
 
@@ -116,6 +172,13 @@ class Reduce(DAGNode):
             TrackedItem if input items are TrackedItems, otherwise string
         """
         from soak.models.base import TrackedItem
+
+        # filter out None items (from skipped/failed upstream items)
+        items = [item for item in items if item is not None]
+
+        if not items:
+            logger.warning(f"Reduce '{self.name}': No valid items to reduce (all were None/skipped)")
+            return ""
 
         rendered = []
         all_sources = []
@@ -174,21 +237,41 @@ class Reduce(DAGNode):
         return combined_content
 
     def result(self) -> Dict[str, Any]:
-        """Returns dict with metadata and reduced output."""
+        """Returns dict with metadata and reduced output.
+
+        When items_field is used, wraps output in appropriate container types
+        (CodeList for codes, Themes for themes) to provide consistent interface
+        with Transform nodes.
+        """
+        from soak.models.base import Code, CodeList, Theme, Themes
+
         # Get base metadata from parent
         result = super().result()
 
         # Add Reduce-specific data
         result["output"] = self.output
         result["output_type"] = type(self.output).__name__ if self.output else None
+
+        # Wrap list outputs in container types for template consistency
+        response_obj = None
+        if self.items_field and isinstance(self.output, list) and self.output:
+            first_item = self.output[0]
+            if isinstance(first_item, Code):
+                response_obj = CodeList(codes=self.output)
+            elif isinstance(first_item, Theme):
+                response_obj = Themes(themes=self.output)
+
+        result["response_obj"] = response_obj
         return result
 
     def export(self, folder: Path, unique_id: str = ""):
         """Export Reduce node details."""
+        import json
+
         super().export(folder, unique_id=unique_id)
 
-        # Write reduce template
-        if self.template:
+        # Write reduce template (only in template mode)
+        if self.template and not self.items_field:
             (folder / "reduce_template.md").write_text(self.template)
 
         # Write reduced output to outputs/ folder for consistency
@@ -199,6 +282,23 @@ class Reduce(DAGNode):
             if isinstance(self.output, str):
                 (outputs_folder / "reduced.txt").write_text(self.output)
             elif isinstance(self.output, list):
-                # Handle list of reduced outputs
-                for idx, item in enumerate(self.output, 1):
-                    (outputs_folder / f"reduced_{idx:03d}.txt").write_text(str(item))
+                # Handle list of outputs
+                if self.items_field:
+                    # Items field mode: export as JSON for structured items
+                    items_json = []
+                    for item in self.output:
+                        if hasattr(item, "model_dump"):
+                            items_json.append(item.model_dump())
+                        else:
+                            items_json.append(str(item))
+                    (outputs_folder / "items.json").write_text(
+                        json.dumps(items_json, indent=2, default=str)
+                    )
+                    # Also write human-readable text
+                    (outputs_folder / "items.txt").write_text(
+                        "\n\n---\n\n".join(str(item) for item in self.output)
+                    )
+                else:
+                    # Template mode: write each reduced output
+                    for idx, item in enumerate(self.output, 1):
+                        (outputs_folder / f"reduced_{idx:03d}.txt").write_text(str(item))
