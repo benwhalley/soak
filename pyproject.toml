@@ -59,6 +59,7 @@ dependencies = [
     "pot>=0.9.6.post1",
     "pyphen>=0.16.0",
     "plotly>=5.18.0",
+    "tenacity>=8.2.0",
 ]
 
 [project.optional-dependencies]
