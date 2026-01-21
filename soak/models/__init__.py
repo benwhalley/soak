@@ -16,9 +16,9 @@ from .base import (  # Exceptions; Base models; Utility functions
 from .dag import (DAG, DAGConfig, DAGNodeUnion, Edge, OutputUnion,
                   get_template_variables, render_strict_template, run_node)
 # All node types
-from .nodes import (Batch, BatchList, Classifier, CompletionDAGNode, DAGNode,
-                    Filter, GroupBy, ItemsNode, Map, Reduce, Scrub, Split,
-                    Transform, Ungroup, VerifyQuotes, default_map_task)
+from .nodes import (Batch, BatchList, Classifier, Cluster, CompletionDAGNode,
+                    DAGNode, Filter, GroupBy, ItemsNode, Map, Reduce, Scrub,
+                    Split, Transform, Ungroup, VerifyQuotes, default_map_task)
 # Pipeline
 from .pipeline import QualitativeAnalysisPipeline
 
@@ -52,6 +52,7 @@ __all__ = [
     "Batch",
     "BatchList",
     "Classifier",
+    "Cluster",
     "CompletionDAGNode",
     "Filter",
     "GroupBy",

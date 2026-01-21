@@ -151,8 +151,7 @@ uv run soak compare [OPTIONS] INPUT_FILES...
 | `--method METHOD` | | Dimensionality reduction: `umap`, `mds`, `pca` (default: `umap`) |
 | `--label TEMPLATE` | `-l` | Format string for labels: `{name}`, `{description}` (default: `{name}`) |
 | `--embedding-template TEMPLATE` | `-e` | Format string for generating theme embeddings (default: `{name}: {description}`) |
-| `--embedding-backend` | | Embedding backend: `local` (sentence-transformers) or `api` (OpenAI-compatible) (default: `api`) |
-| `--embedding-model` | | Embedding model name (for local: HuggingFace model, for api: model ID) |
+| `--embedding-model` | | Embedding model (default: `text-embedding-3-large`). Use `local/model-name` for sentence-transformers (e.g., `local/all-MiniLM-L6-v2`) |
 | `--k` | `-k` | Shepard similarity decay parameter (default: 1.0, higher = steeper decay) |
 | `--reg-m` | `-K` | OT mass penalty (K). Fixed value for cross-analysis comparability. Lower = more selective matching (default: 0.2) |
 
@@ -172,7 +171,7 @@ uv run soak compare --method pca -o comparison.html *.json
 uv run soak compare -l "{name}: {description}" -o comparison.html *.json
 
 # Use local embeddings instead of API
-uv run soak compare --embedding-backend local *.json
+uv run soak compare --embedding-model local/all-MiniLM-L6-v2 *.json
 
 # Adjust optimal transport parameters
 uv run soak compare --k 2.0 --reg-m 0.1 *.json

@@ -505,8 +505,26 @@ Example with 100 items, proportion=0.25, min=10, max=50:
 3. **Compute embeddings** for all unique texts
 4. **Run HDBSCAN** with calculated effective min_cluster_size
 5. **Handle oversized clusters** by recursive splitting (respects max_cluster_size)
-6. **Group noise points** (singletons) into batches
+6. **Group singletons** (noise points) into batches (see below)
 7. **Return clusters** as TrackedItems with original items in metadata
+
+**Singleton Handling:**
+
+HDBSCAN assigns items that don't fit well into any cluster as "noise points" (label -1). These singletons are not discarded or placed into an "others" cluster with special naming -- instead they are batched together into regular clusters:
+
+- Singletons are grouped into batches of up to `max_cluster_size`
+- If `max_cluster_size` is null, all singletons go into a single batch
+- These batches appear as normal clusters (e.g., `cluster_12`, `cluster_13`) in the output
+- There is no metadata flag distinguishing singleton-derived clusters from coherent clusters
+
+The only place singleton counts are visible is in the export summary (`cluster_summary.txt`):
+
+```
+Processing stats:
+  Singletons (noise points): 42
+```
+
+This means if you have 150 singletons and `max_cluster_size=100`, you get two additional clusters containing 100 and 50 items respectively, indistinguishable from semantically coherent clusters in downstream processing.
 
 **text_field Options:**
 

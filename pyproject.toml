@@ -60,6 +60,7 @@ dependencies = [
     "pyphen>=0.16.0",
     "plotly>=5.18.0",
     "tenacity>=8.2.0",
+    "hdbscan>=0.8.33",
 ]
 
 [project.optional-dependencies]

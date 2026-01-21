@@ -1133,8 +1133,7 @@ def compare_result_similarity(
     B: QualitativeAnalysis,
     threshold: float = 0.6,
     embedding_template: str = "{name}",
-    embedding_backend: str = "local",
-    embedding_model: str = "all-MiniLM-L6-v2",
+    embedding_model: str = "text-embedding-3-large",
     k: float = 1.0,
     reg_m: float = 0.2,
     n_null_samples: int = 100,
@@ -1222,13 +1221,11 @@ def compare_result_similarity(
     logger.debug("Getting embeddings for A and B")
     emb_A = get_embedding(
         list(map(lambda x: x.strip(), A)),
-        backend=embedding_backend,
-        model_name=embedding_model,
+        model=embedding_model,
     )
     emb_B = get_embedding(
         list(map(lambda x: x.strip(), B)),
-        backend=embedding_backend,
-        model_name=embedding_model,
+        model=embedding_model,
     )
     logger.debug("Got embeddings for A and B")
     assert len(emb_A) == len(A), f"Mismatch in emb_A: {len(emb_A)} != {len(A)}"
@@ -1327,27 +1324,22 @@ def compare_result_similarity(
 
     # Direction 1: A vs word-salad-B
     salad_B_list = generate_word_salad_texts(B_texts, n_samples=n_samples_per_direction)
-    null_cost_matrices_B = []
-    for salad_texts in tqdm(salad_B_list, desc="Null embeddings (A vs B_salad)", file=sys.stderr, leave=False):
-        emb_B_salad = get_embedding(
-            [t.strip() for t in salad_texts],
-            backend=embedding_backend,
-            model_name=embedding_model,
-        )
-        sim_salad = cosine_similarity(emb_A, emb_B_salad)
-        null_cost_matrices_B.append(1 - sim_salad)
-
     # Direction 2: word-salad-A vs B
     salad_A_list = generate_word_salad_texts(A_texts, n_samples=n_samples_per_direction)
-    null_cost_matrices_A = []
-    for salad_texts in tqdm(salad_A_list, desc="Null embeddings (A_salad vs B)", file=sys.stderr, leave=False):
-        emb_A_salad = get_embedding(
-            [t.strip() for t in salad_texts],
-            backend=embedding_backend,
-            model_name=embedding_model,
-        )
-        sim_salad = cosine_similarity(emb_A_salad, emb_B)
-        null_cost_matrices_A.append(1 - sim_salad)
+
+    # batch all word salad texts into a single embedding call for performance
+    all_salad_texts = [t.strip() for salad_texts in salad_B_list + salad_A_list for t in salad_texts]
+
+    logger.info(f"Embedding {len(all_salad_texts)} word salad texts in single batch...")
+    all_salad_embeddings = np.asarray(get_embedding(all_salad_texts, model=embedding_model))
+
+    # reshape and split: (n_samples, n_themes, embedding_dim)
+    n_B_total = n_samples_per_direction * len(B_texts)
+    emb_B_salads = all_salad_embeddings[:n_B_total].reshape(n_samples_per_direction, len(B_texts), -1)
+    emb_A_salads = all_salad_embeddings[n_B_total:].reshape(n_samples_per_direction, len(A_texts), -1)
+
+    null_cost_matrices_B = [1 - cosine_similarity(emb_A, emb) for emb in emb_B_salads]
+    null_cost_matrices_A = [1 - cosine_similarity(emb, emb_B) for emb in emb_A_salads]
 
     # Combine both directions for symmetric null
     null_cost_matrices = null_cost_matrices_B + null_cost_matrices_A
@@ -1608,8 +1600,7 @@ def network_similarity_plot(
     threshold=0.6,
     exclude_within_set_edges=True,
     embedding_template="{name}",
-    embedding_backend: str = "local",
-    embedding_model: str = "all-MiniLM-L6-v2",
+    embedding_model: str = "text-embedding-3-large",
 ) -> str:
     """Create similarity plot using embedding visualization.
 
@@ -1659,7 +1650,7 @@ def network_similarity_plot(
 
     # Get embeddings for all sets using embedding_template
     embeddings = [
-        get_embedding(set_str, backend=embedding_backend, model_name=embedding_model)
+        get_embedding(set_str, model=embedding_model)
         for set_str in theme_sets_for_embedding
     ]
     all_emb = np.vstack(embeddings)
@@ -1796,8 +1787,7 @@ def create_pairwise_heatmap(
     threshold=0.6,
     use_threshold=True,
     embedding_template="{name}",
-    embedding_backend: str = "local",
-    embedding_model: str = "all-MiniLM-L6-v2",
+    embedding_model: str = "text-embedding-3-large",
     metric_type: str = "cosine",
     k: float = 1.0,
     comparison_result: Optional[Dict[str, Any]] = None,
@@ -1859,7 +1849,6 @@ def create_pairwise_heatmap(
             b,
             threshold=threshold or 0.5,  # ensure not None
             embedding_template=embedding_template,
-            embedding_backend=embedding_backend,
             embedding_model=embedding_model,
             k=k,
         )
@@ -1968,8 +1957,7 @@ class SimilarityComparator:
         method = config.get("method", "umap")
         label_template = config.get("label_template", "{name}")
         embedding_template = config.get("embedding_template", "{name}")
-        embedding_backend = config.get("embedding_backend", "local")
-        embedding_model = config.get("embedding_model", "all-MiniLM-L6-v2")
+        embedding_model = config.get("embedding_model", "text-embedding-3-large")
         k = config.get("k", 1.0)
         reg_m = config.get("reg_m", 0.2)
 
@@ -2002,7 +1990,6 @@ class SimilarityComparator:
                 j,
                 threshold=threshold,
                 embedding_template=embedding_template,
-                embedding_backend=embedding_backend,
                 embedding_model=embedding_model,
                 k=k,
                 reg_m=reg_m,
@@ -2022,7 +2009,6 @@ class SimilarityComparator:
                     threshold=threshold,
                     use_threshold=False,
                     embedding_template=embedding_template,
-                    embedding_backend=embedding_backend,
                     embedding_model=embedding_model,
                     metric_type=metric_type,
                     k=k,
@@ -2042,7 +2028,6 @@ class SimilarityComparator:
                 threshold=threshold,
                 use_threshold=True,
                 embedding_template=embedding_template,
-                embedding_backend=embedding_backend,
                 embedding_model=embedding_model,
                 metric_type="cosine",
                 k=k,
@@ -2058,7 +2043,6 @@ class SimilarityComparator:
             min_dist=min_dist,
             threshold=threshold,
             embedding_template=embedding_template,
-            embedding_backend=embedding_backend,
             embedding_model=embedding_model,
         )
 

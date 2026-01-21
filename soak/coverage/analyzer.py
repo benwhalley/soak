@@ -25,8 +25,7 @@ class ThemeCoverageAnalyzer:
         split_unit: Literal["words", "tokens", "chars", "sentences", "paragraphs"] = "words",
         aggregation: Literal["max", "mean", "p95"] = "max",
         embedding_template: str = "{name}: {description}",
-        embedding_backend: str = "local",
-        embedding_model: str = "all-MiniLM-L6-v2",
+        embedding_model: str = "text-embedding-3-large",
         sample_frac: Optional[float] = None,
         sample_n: Optional[int] = None,
         embed_source: Literal["quotes", "themes", "both"] = "quotes",
@@ -39,8 +38,7 @@ class ThemeCoverageAnalyzer:
             split_unit: Unit for chunking ("words", "tokens", or "chars")
             aggregation: Method to aggregate chunk scores to document ("max", "mean", "p95")
             embedding_template: Template for formatting theme text before embedding
-            embedding_backend: "local" (sentence-transformers) or "api" (struckdown/litellm)
-            embedding_model: Model name for embeddings
+            embedding_model: Model for embeddings (use "local/model-name" for sentence-transformers)
             sample_frac: Sample fraction of chunks (e.g., 0.1 for 10%)
             sample_n: Sample fixed number of chunks
             embed_source: What to embed for themes: "quotes" (default), "themes", or "both"
@@ -50,7 +48,6 @@ class ThemeCoverageAnalyzer:
         self.split_unit = split_unit
         self.aggregation = aggregation
         self.embedding_template = embedding_template
-        self.embedding_backend = embedding_backend
         self.embedding_model = embedding_model
         self.sample_frac = sample_frac
         self.sample_n = sample_n
@@ -187,7 +184,6 @@ class ThemeCoverageAnalyzer:
                 "split_unit": self.split_unit,
                 "aggregation": self.aggregation,
                 "embedding_template": self.embedding_template,
-                "embedding_backend": self.embedding_backend,
                 "embedding_model": self.embedding_model,
                 "embed_source": self.embed_source,
                 "sample_frac": self.sample_frac,
@@ -442,9 +438,8 @@ class ThemeCoverageAnalyzer:
         API backend uses struckdown/litellm with parallel batch processing.
         """
         embeddings = get_embedding(
-            tuple(texts),
-            backend=self.embedding_backend,
-            model_name=self.embedding_model,
+            list(texts),
+            model=self.embedding_model,
         )
         return np.array(embeddings)
 

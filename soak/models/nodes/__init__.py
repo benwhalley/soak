@@ -7,6 +7,7 @@ from .base import (CompletionDAGNode, DAGNode, ItemsNode, Split,
                    default_map_task)
 from .batch import Batch, BatchList
 from .classifier import Classifier
+from .cluster import Cluster
 from .filter import Filter
 from .groupby import GroupBy
 from .map import Map
@@ -26,6 +27,7 @@ __all__ = [
     "Batch",
     "BatchList",
     "Classifier",
+    "Cluster",
     "Filter",
     "GroupBy",
     "Map",

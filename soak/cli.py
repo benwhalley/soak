@@ -758,17 +758,11 @@ def compare(
         envvar="SOAK_EMBEDDING_TEMPLATE",
         help="Python format string for generating theme embeddings. Available: {name}, {description}.",
     ),
-    embedding_backend: str = typer.Option(
-        "api",
-        "--embedding-backend",
-        envvar="SOAK_EMBEDDING_BACKEND",
-        help="Embedding backend: 'local' (sentence-transformers) or 'api' (OpenAI-compatible)",
-    ),
     embedding_model: str = typer.Option(
-        None,
+        "text-embedding-3-large",
         "--embedding-model",
         envvar="SOAK_EMBEDDING_MODEL",
-        help="Embedding model name (for local: HuggingFace model, for api: model ID)",
+        help="Embedding model (use 'local/model-name' for sentence-transformers, e.g., 'local/all-MiniLM-L6-v2')",
     ),
     k: float = typer.Option(
         1.0,
@@ -790,10 +784,6 @@ def compare(
     if len(input_files) < 2:
         logger.error("At least 2 JSON files required for comparison")
         raise typer.Exit(1)
-    
-    if embedding_backend == "local" and embedding_model is None:
-        logger.warning("Embedding model required for local backend; using Qwen/Qwen3-Embedding-0.6B")
-        embedding_model = "Qwen/Qwen3-Embedding-0.6B"
         
     logger.info(f"Loading {len(input_files)} analyses...")
     analyses = []
@@ -841,7 +831,6 @@ def compare(
             "min_dist": 0.01,
             "label_template": label,
             "embedding_template": embedding_template,
-            "embedding_backend": embedding_backend,
             "embedding_model": embedding_model,
             "k": k,
             "reg_m": reg_m,
@@ -957,17 +946,11 @@ def compare_strings(
         envvar="SOAK_THRESHOLD",
         help="Similarity threshold for matching",
     ),
-    embedding_backend: str = typer.Option(
-        "api",
-        "--embedding-backend",
-        envvar="SOAK_EMBEDDING_BACKEND",
-        help="Embedding backend: 'local' (sentence-transformers) or 'api' (OpenAI-compatible)",
-    ),
     embedding_model: str = typer.Option(
-        None,
+        "text-embedding-3-large",
         "--embedding-model",
         envvar="SOAK_EMBEDDING_MODEL",
-        help="Embedding model name (for local: HuggingFace model, for api: model ID)",
+        help="Embedding model (use 'local/model-name' for sentence-transformers, e.g., 'local/all-MiniLM-L6-v2')",
     ),
     k: float = typer.Option(
         1.0,
@@ -1020,16 +1003,8 @@ def compare_strings(
     logger.info(f"Column {col_a}: {len(list_a)} items")
     logger.info(f"Column {col_b}: {len(list_b)} items")
 
-    # Set default embedding model based on backend
-    if embedding_backend == "local" and embedding_model is None:
-        embedding_model = "all-MiniLM-L6-v2"
-        logger.info(f"Using default local embedding model: {embedding_model}")
-    elif embedding_backend == "api" and embedding_model is None:
-        embedding_model = "text-embedding-3-large"
-        logger.info(f"Using default API embedding model: {embedding_model}")
-
     # Check for API credentials if using api backend
-    if embedding_backend == "api":
+    if not embedding_model.startswith("local/"):
         check_and_prompt_credentials(Path.cwd())
 
     # Create minimal QualitativeAnalysis objects with themes from the string lists
@@ -1047,7 +1022,6 @@ def compare_strings(
         analysis_b,
         threshold=threshold,
         embedding_template="{name}",
-        embedding_backend=embedding_backend,
         embedding_model=embedding_model,
         k=k,
     )
@@ -1057,7 +1031,7 @@ def compare_strings(
     print(f"Similarity Comparison: {col_a} vs {col_b}")
     print("=" * 60)
     print(f"\nThreshold: {threshold}")
-    print(f"Embedding: {embedding_backend}/{embedding_model}")
+    print(f"Embedding: {embedding_model}")
     print(f"Shepard k: {k}")
 
     # Print the two lists being compared
@@ -1164,16 +1138,11 @@ def coverage(
         envvar="SOAK_EMBEDDING_TEMPLATE",
         help="Template for theme text before embedding",
     ),
-    embedding_backend: str = typer.Option(
-        "local",
-        "--embedding-backend",
-        envvar="SOAK_EMBEDDING_BACKEND",
-        help="Embedding backend: 'local' (sentence-transformers) or 'api' (struckdown/litellm)",
-    ),
     embedding_model: str = typer.Option(
-        None,
+        "text-embedding-3-large",
         "--embedding-model",
-        help="Embedding model name (default: all-MiniLM-L6-v2 for local, text-embedding-3-small for api)",
+        envvar="SOAK_EMBEDDING_MODEL",
+        help="Embedding model (use 'local/model-name' for sentence-transformers, e.g., 'local/all-MiniLM-L6-v2')",
     ),
     sample_frac: float = typer.Option(
         None,
@@ -1257,16 +1226,9 @@ def coverage(
         logger.error(f"Invalid embed source '{embed}'. Must be one of: {valid_embed_sources}")
         raise typer.Exit(1)
 
-    # set default embedding model based on backend
-    if embedding_model is None:
-        if embedding_backend == "local":
-            embedding_model = "all-MiniLM-L6-v2"
-        else:
-            embedding_model = "text-embedding-3-small"
-        logger.info(f"Using default embedding model: {embedding_model}")
-
     # check for API credentials if using api backend
-    if embedding_backend == "api":
+    # check for API credentials if using api backend
+    if not embedding_model.startswith("local/"):
         check_and_prompt_credentials(Path.cwd())
 
     # load analysis JSON
@@ -1426,7 +1388,6 @@ def coverage(
         split_unit=split_unit,
         aggregation=aggregation,
         embedding_template=embedding_template,
-        embedding_backend=embedding_backend,
         embedding_model=embedding_model,
         sample_frac=sample_frac,
         sample_n=sample_n,

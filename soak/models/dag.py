@@ -2,6 +2,7 @@
 
 import itertools
 import logging
+import pdb
 import random
 from dataclasses import dataclass
 from datetime import datetime
@@ -49,8 +50,7 @@ class DAGConfig(BaseModel):
     show_progress: bool = False  # show progress bars during execution
 
     # embedding configuration
-    embedding_backend: str = "local"  # "local" or "api"
-    embedding_model: str = "all-MiniLM-L6-v2"  # model for embeddings (HuggingFace for local, OpenAI-compatible for api)
+    embedding_model: str = "text-embedding-3-large"  # model for embeddings (use "local/model-name" for sentence-transformers)
 
     # error handling configuration
     fail_on_context_exceeded: bool = True  # if False, skip item with warning
@@ -64,6 +64,18 @@ class DAGConfig(BaseModel):
     export_enabled: bool = False  # export nodes as they finish
     export_folder: Optional[Path] = None  # folder to export to
     export_metadata: Dict[str, Any] = Field(default_factory=dict)  # metadata for export
+
+    # node skipping and stopping
+    skip_nodes: List[str] = Field(default_factory=list)  # nodes to skip during execution
+    stop_at_node: Optional[str] = None  # stop execution before this node runs
+
+    # debugging
+    pdb_on_exception: bool = False  # drop into pdb on unhandled exceptions
+
+    # report configuration
+    report_texts: List[str] = Field(
+        default_factory=lambda: ["narrative"]
+    )  # Transform nodes to show as text in HTML reports
 
     def get_model(self):
         """Create LLM instance with configured model_name."""
@@ -332,6 +344,7 @@ DAGNodeUnion = Annotated[
         "GroupBy",
         "Ungroup",
         "Scrub",
+        "Cluster",
     ],
     Field(discriminator="type"),
 ]
@@ -452,6 +465,59 @@ class DAG(BaseModel):
             self.cancel_scope.cancel()
             logger.warning(f"DAG {self.name} cancelled")
 
+    def _validate_execution_options(self) -> Tuple[Set[str], Optional[str]]:
+        """Validate skip_nodes and stop_at_node configuration.
+
+        Returns:
+            Tuple of (skip_nodes set, stop_at_node name or None)
+        """
+        node_names = {n.name for n in self.nodes}
+
+        # Validate skip_nodes
+        skip_nodes = set(self.config.skip_nodes)
+        if skip_nodes:
+            unknown_skips = skip_nodes - node_names
+            if unknown_skips:
+                logger.warning(f"Skip nodes not found in DAG: {', '.join(unknown_skips)}")
+            valid_skips = skip_nodes & node_names
+            if valid_skips:
+                logger.info(f"Skipping nodes: {', '.join(valid_skips)}")
+
+        # Validate stop_at_node
+        stop_at_node = self.config.stop_at_node
+        if stop_at_node:
+            if stop_at_node not in node_names:
+                logger.warning(f"Stop-at node not found in DAG: {stop_at_node}")
+                stop_at_node = None
+            else:
+                logger.info(f"Will stop at node: {stop_at_node}")
+
+        return skip_nodes, stop_at_node
+
+    async def _execute_batches(
+        self, skip_nodes: Set[str], stop_at_node: Optional[str]
+    ) -> None:
+        """Execute DAG batches with skip and stop-at logic.
+
+        Args:
+            skip_nodes: Set of node names to skip
+            stop_at_node: Stop execution before this node runs (None to run all)
+        """
+        for batch in self.get_execution_order():
+            # Check if we should stop before this batch
+            if stop_at_node and stop_at_node in batch:
+                logger.info(f"Stopping execution at node: {stop_at_node}")
+                break
+
+            # Execute batch concurrently
+            with anyio.fail_after(SOAK_MAX_RUNTIME):
+                async with anyio.create_task_group() as tg:
+                    for name in batch:
+                        if name in skip_nodes:
+                            logger.debug(f"Skipping node: {name}")
+                            continue
+                        tg.start_soon(run_node, self.nodes_dict[name])
+
     async def run(self):
         """Execute DAG by running nodes in dependency-ordered batches.
 
@@ -465,6 +531,9 @@ class DAG(BaseModel):
             self.config.load_documents()
             if not self.config.llm_credentials:
                 raise Exception("LLMCredentials must be set for DAG")
+
+            # Validate skip_nodes and stop_at_node
+            skip_nodes, stop_at_node = self._validate_execution_options()
 
             # Pre-compute node export folders if incremental export is enabled
             if self.config.export_enabled and self.config.export_folder:
@@ -480,21 +549,9 @@ class DAG(BaseModel):
             # Execute nodes with optional global cost display
             if cost_display_context:
                 with cost_display_context:
-                    for batch in self.get_execution_order():
-                        # use anyio structured concurrency - start all tasks in batch concurrently
-                        with anyio.fail_after(SOAK_MAX_RUNTIME):
-                            async with anyio.create_task_group() as tg:
-                                for name in batch:
-                                    tg.start_soon(run_node, self.nodes_dict[name])
-                        # all tasks in batch complete when task group exits
+                    await self._execute_batches(skip_nodes, stop_at_node)
             else:
-                for batch in self.get_execution_order():
-                    # use anyio structured concurrency - start all tasks in batch concurrently
-                    with anyio.fail_after(SOAK_MAX_RUNTIME):
-                        async with anyio.create_task_group() as tg:
-                            for name in batch:
-                                tg.start_soon(run_node, self.nodes_dict[name])
-                    # all tasks in batch complete when task group exits
+                await self._execute_batches(skip_nodes, stop_at_node)
 
             # aggregate costs after all nodes complete
             self._aggregate_costs()
@@ -509,6 +566,14 @@ class DAG(BaseModel):
 
             err = f"DAG execution failed: {str(e)}\n{traceback.format_exc()}"
             logger.error(err)
+
+            if self.config.pdb_on_exception:
+                # unwrap ExceptionGroups from async TaskGroup to get the actual exception
+                exc = e
+                while isinstance(exc, BaseExceptionGroup) and exc.exceptions:
+                    exc = exc.exceptions[0]
+                pdb.post_mortem(exc.__traceback__)
+
             return self, str(e)
 
     def _prepare_incremental_export(self) -> None:
