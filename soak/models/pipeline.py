@@ -17,8 +17,15 @@ from pydantic import PrivateAttr
 
 class QualitativeAnalysisPipeline(DAG):
     _cost_summary: dict = PrivateAttr(default_factory=dict)
+    _cached_model_dump: Optional[dict] = PrivateAttr(default=None)
 
     name: Optional[str] = None
+
+    def get_model_dump(self) -> dict:
+        """Get cached model_dump(mode='json'), computing once if needed."""
+        if self._cached_model_dump is None:
+            self._cached_model_dump = self.model_dump(mode="json")
+        return self._cached_model_dump
 
     def to_html(self, template_path: Optional[str] = None) -> str:
         """Render the analysis as HTML using Jinja2 template from file.
@@ -141,8 +148,9 @@ class QualitativeAnalysisPipeline(DAG):
         execution_order = self.get_execution_order()
 
         # Render template with data
-        # model_dump with mode='json' ensures all data is JSON-serializable
-        dd = self.model_dump(mode="json")
+        # use cached model_dump to avoid recomputing for each template
+        dd = self.get_model_dump().copy()
+        dd["config"] = dd["config"].copy()  # shallow copy to avoid mutating cache
         dd["config"]["documents"] = []
         return template.render(
             pipeline=self,
