@@ -19,8 +19,32 @@ from litellm.exceptions import (APIConnectionError, APIResponseValidationError,
                                 PermissionDeniedError, Timeout,
                                 UnsupportedParamsError)
 from struckdown import StruckdownLLMError
+from tenacity import (
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential,
+    before_sleep_log,
+)
 
 logger = logging.getLogger(__name__)
+
+# Exceptions that should trigger retry with backoff
+RETRYABLE_EXCEPTIONS = (
+    APIConnectionError,
+    InternalServerError,
+    Timeout,
+)
+
+
+def _is_retryable_exception(exc: Exception) -> bool:
+    """Check if exception should trigger a retry (handles wrapped StruckdownLLMError)."""
+    if isinstance(exc, RETRYABLE_EXCEPTIONS):
+        return True
+    if isinstance(exc, StruckdownLLMError):
+        original = getattr(exc, "original_error", None)
+        return isinstance(original, RETRYABLE_EXCEPTIONS)
+    return False
 
 
 class MaxConsecutiveConnectionErrorsExceeded(Exception):
@@ -346,13 +370,15 @@ def handle_llm_error_in_node(
 async def managed_llm_call(
     node_name: str, config, llm_func, item_index: Optional[int] = None, *args, **kwargs
 ) -> Optional[Any]:
-    """Centralized wrapper for LLM calls with error handling and connection tracking.
+    """Centralized wrapper for LLM calls with error handling, retry, and connection tracking.
 
     This function handles the standard pattern for all LLM calls:
-    - Execute the LLM function
+    - Retry with exponential backoff on transient errors (connection, timeout, 5xx)
     - Reset connection error counter on success
     - Handle StruckdownLLMError with appropriate behavior (skip/fail)
     - Let other exceptions propagate
+
+    Retry behaviour: N attempts, exponential backoff (max 60s)
 
     Args:
         node_name: Name of the node making the call
@@ -368,12 +394,27 @@ async def managed_llm_call(
     Raises:
         Exception: If error should fail the pipeline
     """
+
+    @retry(
+        retry=retry_if_exception(_is_retryable_exception),
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(multiplier=2, min=5, max=60),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+        reraise=True,
+    )
+    async def _call_with_retry():
+        return await llm_func(*args, **kwargs)
+
     try:
-        result = await llm_func(*args, **kwargs)
-        connection_error_counter.reset()  # centralized success handling
+        result = await _call_with_retry()
+        connection_error_counter.reset()
         return result
     except StruckdownLLMError as e:
         if handle_llm_error_in_node(e, node_name, config, item_index):
             return None  # skip this item
-        else:
-            raise  # re-raise to fail pipeline
+        raise
+    except RETRYABLE_EXCEPTIONS as e:
+        # Retryable error that exhausted all retries (not wrapped in StruckdownLLMError)
+        if handle_llm_error_in_node(e, node_name, config, item_index):
+            return None
+        raise
