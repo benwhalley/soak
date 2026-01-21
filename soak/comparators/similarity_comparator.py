@@ -1800,6 +1800,7 @@ def create_pairwise_heatmap(
     embedding_model: str = "all-MiniLM-L6-v2",
     metric_type: str = "cosine",
     k: float = 1.0,
+    comparison_result: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Create a heatmap visualization for a single pair of pipeline results.
 
@@ -1813,6 +1814,8 @@ def create_pairwise_heatmap(
         embedding_template: Python format string for embeddings. Available: {name}, {description}
         metric_type: Type of similarity metric ("cosine", "angle", "shepard", "percentile", "z_score")
         k: Shepard similarity decay parameter (default: 1.0)
+        comparison_result: Pre-computed result from compare_result_similarity. If provided,
+            skips recomputation (avoids redundant OT calculations).
 
     Note:
         Theme labels must be set before calling this function (via theme.set_label())
@@ -1847,15 +1850,19 @@ def create_pairwise_heatmap(
     plt.close("all")
     fig, ax = plt.subplots(figsize=(fig_width, fig_height))
 
-    comparison = compare_result_similarity(
-        a,
-        b,
-        threshold=threshold or 0.5,  # ensure not None
-        embedding_template=embedding_template,
-        embedding_backend=embedding_backend,
-        embedding_model=embedding_model,
-        k=k,
-    )
+    # use pre-computed comparison if provided, otherwise compute
+    if comparison_result is not None:
+        comparison = comparison_result
+    else:
+        comparison = compare_result_similarity(
+            a,
+            b,
+            threshold=threshold or 0.5,  # ensure not None
+            embedding_template=embedding_template,
+            embedding_backend=embedding_backend,
+            embedding_model=embedding_model,
+            k=k,
+        )
 
     # select matrix based on metric type
     metric_labels = {
@@ -2003,7 +2010,7 @@ class SimilarityComparator:
             for i, j in result_combinations
         ]
 
-        # generate heatmaps for all metric types
+        # generate heatmaps for all metric types, reusing pre-computed similarity results
         metric_types = ["cosine", "angle", "shepard", "percentile", "z_score"]
 
         heatmaps_by_metric = {}
@@ -2019,8 +2026,9 @@ class SimilarityComparator:
                     embedding_model=embedding_model,
                     metric_type=metric_type,
                     k=k,
+                    comparison_result=sim_result,
                 )
-                for a, b in result_combinations
+                for (a, b), sim_result in zip(result_combinations, similarity_results)
             ]
 
         # keep legacy cosine heatmaps for backward compatibility
@@ -2038,8 +2046,9 @@ class SimilarityComparator:
                 embedding_model=embedding_model,
                 metric_type="cosine",
                 k=k,
+                comparison_result=sim_result,
             )
-            for a, b in result_combinations
+            for (a, b), sim_result in zip(result_combinations, similarity_results)
         ]
 
         network_plot = network_similarity_plot(
