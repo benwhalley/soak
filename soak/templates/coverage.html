@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html>
+<meta charset="UTF-8">
+
+<head>
+    <title>Theme Coverage Report</title>
+
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/css/bootstrap-grid.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/css/bootstrap-reboot.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/css/bootstrap.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+
+    <script src="https://code.jquery.com/jquery-3.5.1.slim.min.js" crossorigin="anonymous"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/js/bootstrap.bundle.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+
+    <style>
+        .floating-nav {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 180px;
+            max-height: calc(100vh - 40px);
+            overflow-y: auto;
+            z-index: 99;
+            font-size: 0.75rem;
+        }
+        .floating-nav .nav-link {
+            padding: 0.25rem 0.5rem;
+            color: #666;
+            border-left: 2px solid transparent;
+        }
+        .floating-nav .nav-link:hover {
+            color: #007bff;
+            border-left-color: #007bff;
+        }
+        .main-content {
+            margin-right: 200px;
+        }
+        @media (max-width: 1200px) {
+            .floating-nav {
+                display: none;
+            }
+            .main-content {
+                margin-right: 0;
+            }
+        }
+        html {
+            scroll-behavior: smooth;
+        }
+        .theme-card {
+            margin-bottom: 1rem;
+        }
+        .coverage-score {
+            font-size: 1.5rem;
+            font-weight: bold;
+        }
+        .coverage-high { color: #28a745; }
+        .coverage-medium { color: #ffc107; }
+        .coverage-low { color: #dc3545; }
+        .doc-rank-list {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .doc-rank-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.25rem 0;
+            border-bottom: 1px solid #eee;
+        }
+        .doc-rank-item:last-child {
+            border-bottom: none;
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Floating Navigation -->
+    <nav id="floating-nav" class="floating-nav card shadow-sm d-none d-xl-block">
+        <div class="card-body p-2">
+            <nav class="nav flex-column">
+                <a class="nav-link" href="#summary">Summary</a>
+                <a class="nav-link" href="#heatmap">Document Heatmap</a>
+                {% if normalized_heatmap %}
+                <a class="nav-link" href="#chunk-heatmaps">Chunk Heatmaps</a>
+                {% endif %}
+                {% if theme_trajectories %}
+                <a class="nav-link" href="#trajectories">Theme Trajectories</a>
+                {% endif %}
+                {% if within_doc_variation %}
+                <a class="nav-link" href="#variation">Within-Doc Variation</a>
+                {% endif %}
+                {% if group_heatmap %}
+                <a class="nav-link" href="#group-heatmap">Group Heatmap</a>
+                {% endif %}
+                <a class="nav-link" href="#themes">Top Chunks</a>
+                {% if result.groups %}
+                <a class="nav-link" href="#groups">Group Statistics</a>
+                {% endif %}
+                <a class="nav-link" href="#documents">Document Details</a>
+                <a class="nav-link" href="#config">Configuration</a>
+            </nav>
+        </div>
+    </nav>
+
+    <div class="container main-content">
+        <h1 class="mt-4">Theme Coverage Report</h1>
+        <p class="text-muted">Analysis: <strong>{{ result.analysis_name }}</strong></p>
+
+        <hr>
+
+        <!-- Summary Section -->
+        <section id="summary" class="mb-5">
+            <h2>Summary</h2>
+            <div class="row">
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h5 class="card-title">Themes</h5>
+                            <p class="coverage-score">{{ result.themes|length }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h5 class="card-title">Documents</h5>
+                            <p class="coverage-score">{{ result.documents|length }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h5 class="card-title">Total Chunks</h5>
+                            <p class="coverage-score">{{ result.config.n_chunks }}</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h5 class="card-title">Chunks/Doc</h5>
+                            <p class="coverage-score">{{ (result.config.n_chunks / result.documents|length)|round(0)|int }}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mt-3">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">Themes Analysed</div>
+                        <div class="card-body">
+                            <ul class="list-unstyled mb-0">
+                                {% for theme in result.themes %}
+                                <li class="mb-2">
+                                    <strong>{{ theme.name }}</strong>
+                                    <br><small class="text-muted">{{ theme.description }}</small>
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <hr>
+
+        <!-- Document-Level Heatmap Section -->
+        <section id="heatmap" class="mb-5">
+            <h2>Document-Level Coverage</h2>
+            <p class="text-muted">Coverage scores aggregated across each entire document ({{ result.config.aggregation }} of chunk similarities).</p>
+
+            <ul class="nav nav-tabs" id="docHeatmapTabs" role="tablist">
+                <li class="nav-item">
+                    <a class="nav-link active" id="continuous-tab" data-toggle="tab" href="#continuous" role="tab">Continuous</a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" id="thresholded-tab" data-toggle="tab" href="#thresholded" role="tab">Thresholded ({{ threshold }})</a>
+                </li>
+            </ul>
+            <div class="tab-content mt-3" id="docHeatmapTabContent">
+                <div class="tab-pane fade show active" id="continuous" role="tabpanel">
+                    <p class="text-muted small">Colour scale from 30th percentile to maximum coverage score.</p>
+                    <div class="text-center">
+                        <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ heatmap }}" alt="Theme coverage heatmap (continuous)">
+                    </div>
+                </div>
+                <div class="tab-pane fade" id="thresholded" role="tabpanel">
+                    <p class="text-muted small">Red = above {{ threshold }}, Grey = below {{ threshold }}.</p>
+                    <div class="text-center">
+                        <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ heatmap_thresholded }}" alt="Theme coverage heatmap (thresholded)">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        {% if normalized_heatmap or absolute_heatmap %}
+        <hr>
+
+        <!-- Chunk-Level Heatmaps Section -->
+        <section id="chunk-heatmaps" class="mb-5">
+            <h2>Chunk-Level Coverage</h2>
+            <p class="text-muted">Shows where theme matches occur within documents. Each panel represents one theme. Max similarity within each bin.</p>
+
+            <ul class="nav nav-tabs" id="chunkHeatmapTabs" role="tablist">
+                {% if normalized_heatmap %}
+                <li class="nav-item">
+                    <a class="nav-link active" id="normalized-tab" data-toggle="tab" href="#normalized" role="tab">Normalised ({{ n_bins }} bins)</a>
+                </li>
+                {% endif %}
+                {% if normalized_heatmap_zscore %}
+                <li class="nav-item">
+                    <a class="nav-link" id="zscore-tab" data-toggle="tab" href="#zscore" role="tab">Z-Scored</a>
+                </li>
+                {% endif %}
+                {% if absolute_heatmap %}
+                <li class="nav-item">
+                    <a class="nav-link {% if not normalized_heatmap %}active{% endif %}" id="absolute-tab" data-toggle="tab" href="#absolute" role="tab">Absolute Chunks</a>
+                </li>
+                {% endif %}
+            </ul>
+            <div class="tab-content mt-3" id="chunkHeatmapTabContent">
+                {% if normalized_heatmap %}
+                <div class="tab-pane fade show active" id="normalized" role="tabpanel">
+                    <p class="text-muted small">Each document is divided into {{ n_bins }} equal bins (0-100% of document). All documents have the same width.</p>
+                    <div class="text-center">
+                        <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ normalized_heatmap }}" alt="Normalised chunk-level heatmap">
+                    </div>
+                </div>
+                {% endif %}
+                {% if normalized_heatmap_zscore %}
+                <div class="tab-pane fade" id="zscore" role="tabpanel">
+                    <p class="text-muted small">Z-scored values with negative scores truncated to 0. Highlights above-average regions.</p>
+                    <div class="text-center">
+                        <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ normalized_heatmap_zscore }}" alt="Z-scored normalised heatmap">
+                    </div>
+                </div>
+                {% endif %}
+                {% if absolute_heatmap %}
+                <div class="tab-pane fade {% if not normalized_heatmap %}show active{% endif %}" id="absolute" role="tabpanel">
+                    <p class="text-muted small">Chunks grouped by absolute position (groups of ~{{ (result.config.n_chunks / result.documents|length / n_bins)|round(0)|int }} chunks). Documents have variable widths based on length.</p>
+                    <div class="text-center">
+                        <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ absolute_heatmap }}" alt="Absolute chunk-level heatmap">
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </section>
+        {% endif %}
+
+        {% if theme_trajectories %}
+        <hr>
+
+        <!-- Theme Trajectories Section -->
+        <section id="trajectories" class="mb-5">
+            <h2>Theme Trajectories</h2>
+            <p class="text-muted">How theme coverage varies across document position (LOESS-smoothed average across all documents).</p>
+            <div class="text-center">
+                <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ theme_trajectories }}" alt="Theme trajectories across document position">
+            </div>
+        </section>
+        {% endif %}
+
+        {% if within_doc_variation %}
+        <hr>
+
+        <!-- Within-Document Variation Section -->
+        <section id="variation" class="mb-5">
+            <h2>Within-Document Variation</h2>
+            <p class="text-muted">Statistics on max-binned similarity values within each document, averaged across all documents.</p>
+
+            <div class="table-responsive">
+                <table class="table table-striped table-sm">
+                    <thead>
+                        <tr>
+                            <th>Theme</th>
+                            <th class="text-center">Avg</th>
+                            <th class="text-center">Max</th>
+                            <th class="text-center">P95</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for theme_name, stats in within_doc_variation.items() %}
+                        <tr>
+                            <td>{{ theme_name[:50] }}{% if theme_name|length > 50 %}...{% endif %}</td>
+                            <td class="text-center">{{ "%.3f"|format(stats.avg) }}</td>
+                            <td class="text-center">{{ "%.3f"|format(stats.max) }}</td>
+                            <td class="text-center">{{ "%.3f"|format(stats.p95) }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        {% endif %}
+
+        {% if group_heatmap %}
+        <hr>
+
+        <!-- Group Heatmap Section -->
+        <section id="group-heatmap" class="mb-5">
+            <h2>Group-Level Coverage</h2>
+            <p class="text-muted">Mean coverage scores aggregated by document group.</p>
+            <div class="text-center">
+                <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ group_heatmap }}" alt="Group coverage heatmap">
+            </div>
+        </section>
+        {% endif %}
+
+        <hr>
+
+        <!-- Per-Theme Top Chunks -->
+        <section id="themes" class="mb-5">
+            <h2>Top Matching Chunks Per Theme</h2>
+            <p class="text-muted">For each theme, the 50 highest-similarity chunks across all documents.</p>
+
+            <div class="accordion" id="themeAccordion">
+                {% for theme in result.themes %}
+                {% set theme_name = theme.name %}
+                <div class="card">
+                    <div class="card-header" id="heading{{ loop.index }}">
+                        <h5 class="mb-0">
+                            <button class="btn btn-link {% if not loop.first %}collapsed{% endif %}" type="button" data-toggle="collapse" data-target="#collapse{{ loop.index }}">
+                                {{ theme.name }}
+                            </button>
+                        </h5>
+                    </div>
+                    <div id="collapse{{ loop.index }}" class="collapse {% if loop.first %}show{% endif %}" data-parent="#themeAccordion">
+                        <div class="card-body">
+                            <p class="text-muted small mb-3">{{ theme.description }}</p>
+                            {% if theme_name in result.top_chunks_per_theme %}
+                            <ol class="list-group list-group-numbered">
+                                {% for chunk in result.top_chunks_per_theme[theme_name] %}
+                                <li class="list-group-item d-flex justify-content-between align-items-start">
+                                    <div class="ms-2 me-auto" style="flex: 1;">
+                                        <div class="fw-bold small text-muted mb-1">
+                                            {{ chunk.filename }}
+                                            <span class="badge badge-primary">{{ "%.3f"|format(chunk.similarity) }}</span>
+                                        </div>
+                                        <small class="text-dark" style="white-space: pre-wrap;">{{ chunk.chunk_text }}</small>
+                                    </div>
+                                </li>
+                                {% endfor %}
+                            </ol>
+                            {% else %}
+                            <p class="text-muted">No chunks available.</p>
+                            {% endif %}
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </section>
+
+        {% if result.groups %}
+        <hr>
+
+        <!-- Group Statistics Section -->
+        <section id="groups" class="mb-5">
+            <h2>Group Statistics</h2>
+            <p class="text-muted">Coverage statistics aggregated by document group.</p>
+
+            <div class="table-responsive">
+                <table class="table table-striped table-sm">
+                    <thead>
+                        <tr>
+                            <th>Group</th>
+                            <th>N Docs</th>
+                            {% for theme_name in result.theme_names %}
+                            <th class="text-center">{{ theme_name[:15] }}{% if theme_name|length > 15 %}...{% endif %}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for group in result.groups %}
+                        <tr>
+                            <td><strong>{{ group.group_name }}</strong></td>
+                            <td>{{ group.n_documents }}</td>
+                            {% for theme_name in result.theme_names %}
+                            <td class="text-center">
+                                {{ "%.2f"|format(group.theme_scores[theme_name]) }}
+                                <br><small class="text-muted">&plusmn;{{ "%.2f"|format(group.theme_scores_std[theme_name]) }}</small>
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+        {% endif %}
+
+        <hr>
+
+        <!-- Document Details Section -->
+        <section id="documents" class="mb-5">
+            <h2>Document Details</h2>
+            <p class="text-muted">Coverage scores for each document across all themes.</p>
+
+            <div class="table-responsive">
+                <table class="table table-striped table-sm">
+                    <thead>
+                        <tr>
+                            <th>Document</th>
+                            {% if result.groups %}
+                            <th>Group</th>
+                            {% endif %}
+                            <th>Chunks</th>
+                            {% for theme_name in result.theme_names %}
+                            <th class="text-center">{{ theme_name[:12] }}{% if theme_name|length > 12 %}...{% endif %}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for doc in result.documents %}
+                        <tr>
+                            <td>{{ doc.filename }}</td>
+                            {% if result.groups %}
+                            <td>{{ doc.group or '-' }}</td>
+                            {% endif %}
+                            <td>{{ doc.n_chunks }}</td>
+                            {% for theme_name in result.theme_names %}
+                            <td class="text-center">
+                                <span class="{% if doc.theme_scores[theme_name] >= 0.7 %}text-success{% elif doc.theme_scores[theme_name] >= 0.4 %}text-warning{% else %}text-muted{% endif %}">
+                                    {{ "%.2f"|format(doc.theme_scores[theme_name]) }}
+                                </span>
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <hr>
+
+        <!-- Configuration Section -->
+        <section id="config" class="mb-5">
+            <h2>Configuration</h2>
+            <div class="card">
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <dt class="col-sm-4">Chunk Size</dt>
+                        <dd class="col-sm-8">{{ result.config.chunk_size }} {{ result.config.split_unit }}</dd>
+
+                        <dt class="col-sm-4">Overlap</dt>
+                        <dd class="col-sm-8">{{ result.config.overlap }} {{ result.config.split_unit }}</dd>
+
+                        <dt class="col-sm-4">Aggregation Method</dt>
+                        <dd class="col-sm-8">{{ result.config.aggregation }}</dd>
+
+                        <dt class="col-sm-4">Embedding Backend</dt>
+                        <dd class="col-sm-8">{{ result.config.embedding_backend }}</dd>
+
+                        <dt class="col-sm-4">Embedding Model</dt>
+                        <dd class="col-sm-8">{{ result.config.embedding_model }}</dd>
+
+                        <dt class="col-sm-4">Embed Source</dt>
+                        <dd class="col-sm-8">{{ result.config.embed_source }}{% if result.config.n_quotes %} ({{ result.config.n_quotes }} quotes){% endif %}</dd>
+
+                        <dt class="col-sm-4">Embedding Template</dt>
+                        <dd class="col-sm-8"><code>{{ result.config.embedding_template }}</code></dd>
+
+                        <dt class="col-sm-4">Heatmap Threshold</dt>
+                        <dd class="col-sm-8">{{ threshold }}</dd>
+
+                        <dt class="col-sm-4">Normalised Bins</dt>
+                        <dd class="col-sm-8">{{ n_bins }}</dd>
+
+                        <dt class="col-sm-4">Total Documents</dt>
+                        <dd class="col-sm-8">{{ result.config.n_documents }}</dd>
+
+                        <dt class="col-sm-4">Total Chunks</dt>
+                        <dd class="col-sm-8">{{ result.config.n_chunks_total }}{% if result.config.n_chunks_sampled != result.config.n_chunks_total %} (sampled: {{ result.config.n_chunks_sampled }}){% endif %}</dd>
+
+                        <dt class="col-sm-4">Total Themes</dt>
+                        <dd class="col-sm-8">{{ result.config.n_themes }}</dd>
+                    </dl>
+                </div>
+            </div>
+        </section>
+
+    </div>
+</body>
+</html>
