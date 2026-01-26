@@ -879,7 +879,7 @@ def compare(
 @app.command()
 def show(
     item_type: str = typer.Argument(
-        ..., help="Type of item to show: 'pipeline' or 'template'"
+        ..., help="Type of item to show: 'pipeline', 'template', or a pipeline name directly"
     ),
     name: str = typer.Argument(
         None,
@@ -893,18 +893,31 @@ def show(
         soak show template          # List all available templates
         soak show pipeline demo     # Show contents of demo pipeline
         soak show template default  # Show contents of default template
+        soak show demo              # Show contents of demo pipeline (shorthand)
 
     You can redirect output to create your own custom versions:
         soak show pipeline demo > my_pipeline.soak
         soak show template default > my_template.html
     """
 
+    # if item_type is not a known type, treat it as a pipeline name
     if item_type not in ["pipeline", "template"]:
-        print(
-            f"Error: item_type must be 'pipeline' or 'template', got: {item_type}",
-            file=sys.stderr,
-        )
-        raise typer.Exit(1)
+        # shift arguments: item_type becomes the name, search for pipeline
+        name = item_type
+        item_type = "pipeline"
+
+        # check current directory first, then built-in
+        cwd_candidate = Path.cwd() / name
+        cwd_candidate_soak = Path.cwd() / f"{name}.soak"
+
+        if cwd_candidate.is_file():
+            print(cwd_candidate.read_text(), file=sys.stdout)
+            return
+        if cwd_candidate_soak.is_file():
+            print(cwd_candidate_soak.read_text(), file=sys.stdout)
+            return
+
+        # fall through to built-in pipeline search below
 
     if item_type == "pipeline":
         items_dir = PIPELINE_DIR
