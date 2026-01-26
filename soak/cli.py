@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 _pdb_on_exception = False
 
 PIPELINE_DIR = Path(__file__).parent / "pipelines"
-COMMANDS = {"run", "export", "dump", "compare", "show", "tui", "coverage"}
+COMMANDS = {"run", "export", "dump", "compare", "show", "tui", "coverage", "test"}
 
 
 def get_soak_version() -> str:
@@ -238,7 +238,7 @@ def resolve_template(template: str) -> Path:
 
 @app.command()
 def run(
-    pipeline: str = typer.Argument(..., help="Pipeline name to run (e.g., 'poc')"),
+    pipeline: str = typer.Argument(..., help="Pipeline name to run (e.g., 'zs')"),
     input: list[Path] = typer.Argument(
         None,
         help="Input file paths (file patterns or zip files, supports globs like '*.txt')",
@@ -365,39 +365,52 @@ def run(
         output = Path(pipyml).stem
         logger.info(f"Using default output name: {output}")
 
-    # Check if ANY output files/folders exist BEFORE running pipeline
-    output_json = Path(f"{output}.json")
+    # Check for existing dump folder and outputs
+    dump_path = Path(f"{output}_dump")
+    existing_json = dump_path / f"{output}.json"
 
-    # Check for all template HTML files
-    output_html_files = []
+    # Check which templates already exist vs new ones requested
+    existing_html_files = []
+    new_templates = []
     for tmpl in template:
         template_stem = Path(resolve_template(tmpl)).stem
-        output_html_files.append(Path(f"{output}_{template_stem}.html"))
-
-    # Check for dump folder (always created)
-    expected_dump_folder = Path(f"{output}_dump")
-
-    # Collect all existing paths
-    existing = []
-    if output_json.exists():
-        existing.append(str(output_json))
-    for html_file in output_html_files:
-        if html_file.exists():
-            existing.append(str(html_file))
-    if expected_dump_folder.exists():
-        existing.append(str(expected_dump_folder) + "/")
-
-    # Fail if any conflicts and not force
-    if existing:
-        if not force:
-            print(
-                f"Error: Output file(s)/folder(s) already exist: {', '.join(existing)}",
-                file=sys.stderr,
-            )
-            print(f"Use --force/-f to overwrite", file=sys.stderr)
-            raise typer.Exit(1)
+        html_path = dump_path / f"{output}_{template_stem}.html"
+        if html_path.exists():
+            existing_html_files.append(html_path)
         else:
-            logger.warning(f"Overwriting existing output folder: {', '.join(existing)}")
+            new_templates.append(tmpl)
+
+    # Template-only mode: if JSON exists, no -f, and new templates requested
+    if existing_json.exists() and not force and new_templates:
+        logger.info(f"Found existing analysis at {existing_json}")
+        logger.info(f"Rendering {len(new_templates)} new template(s): {', '.join(new_templates)}")
+
+        # Load existing pipeline and render new templates only
+        pipeline_for_html = load_pipeline_json(str(existing_json))
+        html_outputs = generate_all_html_outputs(
+            pipeline_for_html, new_templates, on_error="raise"
+        )
+
+        for tmpl in new_templates:
+            template_stem = Path(resolve_template(tmpl)).stem
+            html_filename = dump_path / f"{output}_{template_stem}.html"
+            logger.info(f"Writing HTML with template '{template_stem}' to {html_filename}")
+            with open(html_filename, "w", encoding="utf-8") as f:
+                f.write(html_outputs[tmpl])
+
+        logger.info(f"✓ Generated {len(new_templates)} new template(s)")
+        raise typer.Exit(0)
+
+    # Check for conflicts when running full pipeline
+    if dump_path.exists() and not force:
+        print(
+            f"Error: Output folder already exists: {dump_path}/",
+            file=sys.stderr,
+        )
+        print(f"Use --force/-f to overwrite", file=sys.stderr)
+        raise typer.Exit(1)
+    elif dump_path.exists() and force:
+        logger.warning(f"Overwriting existing output folder: {dump_path}/")
 
     try:
         pipeline = load_template_bundle(pipyml)
@@ -456,10 +469,7 @@ def run(
     # Set pdb on exception
     pipeline.config.pdb_on_exception = _pdb_on_exception
 
-    # Always create dump folder for incremental export
-    dump_path = Path(f"{output}_dump")
-
-    # Remove existing dump folder if force is enabled
+    # Remove existing dump folder if force is enabled (dump_path declared earlier)
     if dump_path.exists() and force:
         logger.info(f"Removing existing dump folder: {dump_path}")
         shutil.rmtree(dump_path)
@@ -618,78 +628,6 @@ def run(
     # Note: Execution details already exported incrementally to {dump_path}
     # during pipeline execution (nodes exported as they finished)
     logger.info(f"✓ Execution dump saved to: {dump_path}")
-
-
-@app.command()
-def dump(
-    input_json: str = typer.Argument(
-        ..., help="Path to JSON file from a saved pipeline run"
-    ),
-    output_folder: str = typer.Option(
-        None,
-        "--output-folder",
-        "-o",
-        help="Output folder path. If not specified, creates <input_stem>_dump/ in current directory",
-    ),
-    template: list[str] = typer.Option(
-        None,
-        "--template",
-        "-t",
-        help="Generate HTML files in dump using template(s) (can be used multiple times)",
-    ),
-    force: bool = typer.Option(
-        False,
-        "--force",
-        "-f",
-        help="Overwrite output folder if it already exists",
-    ),
-):
-    """Dump detailed DAG execution to folder structure for inspection."""
-
-    # Load the pipeline
-    pipeline = load_pipeline_json(input_json)
-
-    # Determine output folder
-    input_path = Path(input_json)
-    if output_folder is None:
-        output_folder = f"{input_path.stem}_dump"
-
-    output_path = Path(output_folder)
-
-    # Check if output folder exists
-    if output_path.exists():
-        if not force:
-            print(
-                f"Error: Output folder already exists: {output_path}", file=sys.stderr
-            )
-            print(f"Use --force/-F to overwrite", file=sys.stderr)
-            raise typer.Exit(1)
-        else:
-            logger.info(f"Removing existing folder: {output_path}")
-            shutil.rmtree(output_path)
-
-    # Export execution details
-    metadata = {
-        "source_file": str(input_path),
-        "command": f"soak dump {input_json}",
-    }
-
-    logger.info(f"Dumping execution details to {output_path}")
-    pipeline.export_execution(output_path, metadata=metadata)
-
-    # Generate HTML files if template(s) specified
-    if template:
-        html_outputs = generate_all_html_outputs(pipeline, template, on_error="warn")
-        for tmpl, html_content in html_outputs.items():
-            template_stem = Path(resolve_template(tmpl)).stem
-            html_path = output_path / f"analysis_{template_stem}.html"
-            logger.info(f"Writing HTML with template '{template_stem}' to {html_path}")
-            with open(html_path, "w", encoding="utf-8") as f:
-                f.write(html_content)
-
-    logger.info(f"✓ Execution dump saved to: {output_path}")
-    if template:
-        logger.info(f"✓ Generated {len(template)} HTML file(s) in dump folder")
 
 
 def resolve_analysis_path(input_path: str) -> Path:
@@ -1803,11 +1741,13 @@ def check_and_prompt_credentials(cwd: Path) -> tuple[str | None, str | None]:
 
         if not api_key:
             api_key = typer.prompt("Enter LLM_API_KEY", err=True)
+            api_key = api_key.strip().strip('"').strip("'")  # strip quotes from user input
             env_vars["LLM_API_KEY"] = api_key
 
         if not base_url:
             default_url = "https://api.openai.com/v1"
             base_url = typer.prompt("Enter LLM_API_BASE", default=default_url, err=True)
+            base_url = base_url.strip().strip('"').strip("'")  # strip quotes from user input
             env_vars["LLM_API_BASE"] = base_url
 
         # Save to .env file
@@ -1827,7 +1767,26 @@ def tui():
     from trogon import Trogon
     from typer.main import get_group
 
-    Trogon(get_group(app), app_name="soak", command="tui").run()
+    Trogon(get_group(app), app_name="soak").run()
+
+
+@app.command()
+def test():
+    """Test LLM and embedding connections with current settings.
+
+    Passes through to struckdown's `sd test` command.
+
+    Examples:
+        soak test
+    """
+    import subprocess
+
+    # check and prompt for credentials first (soak-specific)
+    check_and_prompt_credentials(Path.cwd())
+
+    # delegate to struckdown's test command
+    result = subprocess.run(["sd", "test"])
+    raise typer.Exit(result.returncode)
 
 
 def setup_logging(verbose: int):

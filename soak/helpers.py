@@ -51,6 +51,8 @@ def save_env_file(env_path: Path, env_vars: dict[str, str]) -> None:
     """Save environment variables to .env file with quoted values."""
     with open(env_path, "w") as f:
         for key, value in env_vars.items():
+            # Strip existing quotes to avoid double-quoting
+            value = str(value).strip('"').strip("'")
             f.write(f'{key}="{value}"\n')
 
 

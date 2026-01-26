@@ -20,7 +20,6 @@ These options apply to all commands:
 | `run` | Run a pipeline on input files |
 | `compare` | Compare analyses or string lists and generate comparison statistics |
 | `show` | Show the contents of a built-in pipeline or template |
-| `dump` | Dump detailed DAG execution to folder structure for inspection |
 | `coverage` | Analyse how well themes from an analysis are represented across documents |
 
 ### run
@@ -111,23 +110,32 @@ soak looks for pipeline files in this order:
 
 **Output:**
 
-Output files are always written to disk (never to stdout):
+Output files are always written to disk (never to stdout). All files go into a dump folder:
 
 Without `--output` (pipeline `zs.soak`):
-- `zs.json` - Full pipeline data
-- `zs_pipeline.html` - Rendered view (default template)
-- `zs_dump/` - Detailed execution folder with node outputs
+```
+zs_dump/
+├── zs.json              # Full pipeline data
+├── zs_pipeline.html     # Rendered view (default template)
+├── 01_Split_chunks/     # Per-node execution details
+├── 02_Map_codes/
+└── ...
+```
 
 With `--output results`:
-- `results.json` - Full pipeline data
-- `results_pipeline.html` - Rendered view (default template)
-- Additional HTML files if multiple `-t` options specified (e.g., `results_simple.html`)
-- `results_dump/` - Detailed execution folder
+```
+results_dump/
+├── results.json
+├── results_pipeline.html
+├── results_simple.html  # If -t simple specified
+└── ...
+```
 
 **Conflict handling:**
-- Before running the pipeline, soak checks if any output files/folders already exist
-- If conflicts found without `--force`: exits with error (prevents wasted pipeline execution)
-- If conflicts found with `--force`: warns and overwrites all conflicting files/folders
+- Before running the pipeline, soak checks if the output folder already exists
+- If output folder exists with JSON but no `--force`: generates only new templates (template-only mode)
+- If output folder exists with `--force`: warns and overwrites everything
+- Template-only mode allows adding new templates without re-running the pipeline
 
 ### compare
 
@@ -228,57 +236,6 @@ uv run soak show template default > my_template.html
 - `narrative.html` - Narrative-focused output
 - `comparison.html` - Multi-run comparison view
 
-### dump
-
-Export detailed DAG execution to folder structure.
-
-```bash
-uv run soak dump [OPTIONS] INPUT_JSON
-```
-
-**Arguments:**
-
-- `INPUT_JSON` - Path to JSON file from previous run
-
-**Options:**
-
-| Option | Short | Description |
-|--------|-------|-------------|
-| `--output-folder PATH` | `-o` | Output folder (default: `<input_stem>_dump`) |
-| `--template NAME` | `-t` | Generate HTML files in dump using template(s) (can be used multiple times) |
-| `--force` | `-f` | Overwrite existing folder |
-
-**Examples:**
-
-```bash
-# Dump execution details
-uv run soak dump
-
-# Custom output folder results.json
-uv run soak dump results.json -o detailed_analysis
-
-# Overwrite existing dump
-uv run soak dump --force results.json
-
-# Dump with HTML generation
-uv run soak dump results.json -t pipeline.html
-```
-
-**Output Structure:**
-
-```
-results_dump/
-├── 01_Split_chunks/
-│   ├── inputs/           # Original documents
-│   ├── outputs/          # Generated chunks
-│   └── meta.txt          # Node configuration
-├── 02_Map_codes/
-│   ├── inputs/           # Chunks processed
-│   ├── 0000_*.json       # Full response for each chunk
-│   └── ...
-└── metadata.json         # Command and configuration
-```
-
 ## Environment Variables
 
 | Variable | Description | Default |
@@ -337,17 +294,14 @@ uv run soak show template default > my_template.html
 uv run soak zs data/*.txt -o results -t my_template.html
 ```
 
-**Reuse saved results:**
+**Add new templates to existing results:**
 
 ```bash
 # Run once
 uv run soak zs -o results data/*.txt
 
-# Inspect detailed execution
-uv run soak dump results.json
-
-# Generate HTML from dump with custom template
-uv run soak dump results.json -t my_template.html
+# Add another template without re-running (template-only mode)
+uv run soak zs -o results -t my_template.html data/*.txt
 ```
 
 **Process large datasets:**

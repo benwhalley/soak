@@ -222,10 +222,7 @@ open test_pipeline.html
 # 3. Run on full dataset
 soak run classifier_tabular survey.csv -o full_analysis -v
 
-# 4. Export detailed results
-soak dump full_analysis.json -o detailed_output
-
-# 5. Check CSV output
-open detailed_output/classify/classifications.csv
+# 4. Check CSV output (results are in the dump folder)
+open full_analysis_dump/01_Classifier_classify/classifications.csv
 ```
 
