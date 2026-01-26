@@ -350,6 +350,7 @@ DAGNodeUnion = Annotated[
 ]
 
 # Type alias for node outputs
+# Note: Any at end handles deserialized ChatterResult data (ChatterResult isn't Pydantic)
 OutputUnion = Union[
     str,
     List[str],
@@ -362,6 +363,8 @@ OutputUnion = Union[
     # for multi-model classifier
     Dict[str, List[ChatterResult]],
     "BatchList",  # Forward reference to avoid circular import
+    List[Any],  # fallback for serialized outputs (may contain None or dicts)
+    Dict[str, Any],  # fallback for other serialized outputs
 ]
 
 

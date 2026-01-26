@@ -507,7 +507,7 @@
                            role="tab"
                            aria-controls="ot-k-{{ k_val|replace('.', '-') }}-{{ loop.index }}"
                            aria-selected="{{ 'true' if k_val == comp.stats.default_k else 'false' }}">
-                            K={{ "%.2f"|format(k_val) }}
+                            K={{ "%.2f"|format(k_val) }}{% if k_val == comp.stats.default_k %} ★{% endif %}{% if k_val == comp.stats.elbow_k %} ◆{% endif %}
                         </a>
                     </li>
                     {% endfor %}
@@ -526,6 +526,10 @@
                             </div>
                             <div class="card-body">
                                 <p class="text-muted">This plot shows how unmatched mass changes as the K parameter varies. Lower K values allow more mass to remain unmatched (stricter matching), while higher K values force more themes to align even with poor matches.</p>
+                                <div class="alert alert-info">
+                                    <strong>★ Default K={{ "%.2f"|format(comp.stats.default_k) }}</strong> &nbsp;|&nbsp;
+                                    <strong>◆ Diminishing returns K={{ "%.2f"|format(comp.stats.elbow_k) }}</strong> (beyond this K, gains in shared mass become marginal)
+                                </div>
                                 <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comp.stats.unmatched_mass_scree.base64 }}" alt="Unmatched mass scree plot">
                             </div>
                         </div>
@@ -551,8 +555,8 @@
                                         <tbody>
                                             {% for k_val in comp.stats.k_values %}
                                             {% set ot_k = comp.stats.ot_by_k[k_val] %}
-                                            <tr{% if k_val == comp.stats.default_k %} class="table-primary"{% endif %}>
-                                                <td><strong>{{ "%.2f"|format(k_val) }}{% if k_val == comp.stats.default_k %} ★{% endif %}</strong></td>
+                                            <tr{% if k_val == comp.stats.default_k %} class="table-primary"{% elif k_val == comp.stats.elbow_k %} class="table-warning"{% endif %}>
+                                                <td><strong>{{ "%.2f"|format(k_val) }}{% if k_val == comp.stats.default_k %} ★{% endif %}{% if k_val == comp.stats.elbow_k %} ◆{% endif %}</strong></td>
                                                 <td>{{ "%.1f"|format(ot_k.ot.shared_mass * 100) }}%</td>
                                                 <td>{{ "%.1f"|format(ot_k.ot.unmatched_mass * 100) }}%</td>
                                                 <td>{{ "%.3f"|format(ot_k.ot.avg_cost) }}</td>
@@ -721,7 +725,7 @@
                                     <div class="col-md-12">
                                         <h6>Transport Flow (Sankey)</h6>
                                         <p class="small text-muted">Width of links shows amount of mass transported between themes. Colour indicates alignment quality (green = good match, pink = poor match). Hover over links for details.</p>
-                                        <iframe srcdoc="{{ ot_k.transport_sankey.html | e }}" style="width: 100%; height: 950px; border: 1px solid #ddd; border-radius: 4px;" frameborder="0"></iframe>
+                                        <iframe srcdoc="{{ ot_k.transport_sankey.html | e }}" style="width: 100%; height: 700px; border: 1px solid #ddd; border-radius: 4px;" frameborder="0"></iframe>
                                     </div>
                                 </div>
                                 <div class="row mt-4">

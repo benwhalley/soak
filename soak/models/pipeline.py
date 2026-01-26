@@ -165,10 +165,8 @@ class QualitativeAnalysisPipeline(DAG):
         def safe_get_output(name, key):
             """Extract output from node, handling both live and serialized formats.
 
-            Uses ChatterResult.outputs property which maps segment names to their .output values.
-            For codes: outputs['codes'] returns CodeList, need to extract .codes
-            For themes: outputs['themes'] returns Themes, need to extract .themes
-            For narrative: outputs[key] returns direct string
+            For live ChatterResult: uses .outputs property
+            For deserialized dict: navigates results[key]['output']
             """
             try:
                 from soak.models.base import CodeList, Themes
@@ -177,33 +175,40 @@ class QualitativeAnalysisPipeline(DAG):
                 if not node or not node.output:
                     return None
 
-                # Handle list output (ChatterResult)
+                # Handle list output (ChatterResult or deserialized dict)
                 if isinstance(node.output, list) and len(node.output) > 0:
                     chatter = node.output[0]
+                    segment_output = None
 
-                    # Use .outputs property for cleaner access (maps to SegmentResult.output values)
+                    # Live ChatterResult: use .outputs property
                     if hasattr(chatter, "outputs"):
                         outputs = chatter.outputs
                         if key in outputs:
                             segment_output = outputs[key]
 
-                            # Handle CodeList: extract .codes attribute
-                            if isinstance(segment_output, CodeList):
-                                return segment_output.codes
+                    # Deserialized dict: navigate results[key]['output']
+                    elif isinstance(chatter, dict) and "results" in chatter:
+                        results = chatter.get("results", {})
+                        if key in results:
+                            segment_output = results[key].get("output")
 
-                            # Handle Themes: extract .themes attribute
-                            if isinstance(segment_output, Themes):
-                                return segment_output.themes
+                    if segment_output is None:
+                        return None
 
-                            # For legacy dict format: {'codes': [...]}
-                            if (
-                                isinstance(segment_output, dict)
-                                and key in segment_output
-                            ):
-                                return segment_output[key]
+                    # Handle CodeList: extract .codes attribute
+                    if isinstance(segment_output, CodeList):
+                        return segment_output.codes
 
-                            # For narrative or other direct values
-                            return segment_output
+                    # Handle Themes: extract .themes attribute
+                    if isinstance(segment_output, Themes):
+                        return segment_output.themes
+
+                    # For dict format: {'codes': [...]} or {'themes': [...]}
+                    if isinstance(segment_output, dict) and key in segment_output:
+                        return segment_output[key]
+
+                    # For narrative or other direct values
+                    return segment_output
 
                 return None
             except Exception as e:

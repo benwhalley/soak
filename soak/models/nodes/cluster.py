@@ -78,12 +78,18 @@ class HDBSCANMethod(BaseModel):
         self._effective_min_cluster_size = effective_min_cluster_size
 
         # run HDBSCAN
+        logger.info(
+            f"HDBSCAN: min_cluster_size={effective_min_cluster_size}, "
+            f"min_samples={self.min_samples}, n_samples={n_samples}"
+        )
         clusterer = hdbscan.HDBSCAN(
             min_cluster_size=effective_min_cluster_size,
             min_samples=self.min_samples,
             metric="euclidean",
         )
+        logger.info(f"Running HDBSCAN fit_predict on {n_samples} samples...")
         labels = clusterer.fit_predict(embeddings)
+        logger.info("HDBSCAN fit_predict complete.")
 
         # group indices by label
         clusters_by_label: Dict[int, List[int]] = {}
@@ -97,10 +103,22 @@ class HDBSCANMethod(BaseModel):
 
         # count oversized clusters before splitting
         oversized_count = 0
+        oversized_sizes = []
         for label, indices in clusters_by_label.items():
             if self.max_cluster_size is not None and len(indices) > self.max_cluster_size:
                 oversized_count += 1
+                oversized_sizes.append(len(indices))
         self._oversized_count = oversized_count
+
+        logger.info(
+            f"Initial clustering: {len(clusters_by_label)} clusters, "
+            f"{self._singleton_count} singletons"
+        )
+        if oversized_count > 0:
+            logger.info(
+                f"Splitting {oversized_count} oversized clusters "
+                f"(sizes: {sorted(oversized_sizes, reverse=True)}, max_size={self.max_cluster_size})..."
+            )
 
         for label, indices in clusters_by_label.items():
             if self.max_cluster_size is None or len(indices) <= self.max_cluster_size:
@@ -125,6 +143,8 @@ class HDBSCANMethod(BaseModel):
         embeddings: np.ndarray,
         original_indices: List[int],
         effective_min_cluster_size: int,
+        depth: int = 0,
+        max_depth: int = 5,
     ) -> List[List[int]]:
         """Recursively split an oversized cluster.
 
@@ -132,6 +152,8 @@ class HDBSCANMethod(BaseModel):
             embeddings: embeddings for items in this cluster
             original_indices: original indices in the full dataset
             effective_min_cluster_size: the calculated min size to use for splitting
+            depth: current recursion depth
+            max_depth: maximum recursion depth before falling back to random chunking
 
         Returns:
             List of lists of original indices, each <= max_cluster_size
@@ -141,6 +163,16 @@ class HDBSCANMethod(BaseModel):
         n = len(embeddings)
         if n <= self.max_cluster_size:
             return [original_indices]
+
+        # check recursion depth limit
+        if depth >= max_depth:
+            logger.info(
+                f"  Max recursion depth ({max_depth}) reached for cluster of {n} items, "
+                f"using random chunking"
+            )
+            return self._random_chunk(original_indices, effective_min_cluster_size)
+
+        logger.debug(f"  Splitting oversized cluster: {n} items (depth={depth})")
 
         # try HDBSCAN with smaller min_cluster_size to force splitting
         # use half of effective, but not smaller than 2
@@ -155,7 +187,7 @@ class HDBSCANMethod(BaseModel):
         # check if it actually split
         unique_labels = set(labels) - {-1}
         if len(unique_labels) <= 1:
-            # HDBSCAN won't split further -- random chunk
+            logger.debug(f"  HDBSCAN won't split {n} items further, using random chunking")
             return self._random_chunk(original_indices, effective_min_cluster_size)
 
         # group by new labels
@@ -167,6 +199,20 @@ class HDBSCANMethod(BaseModel):
             else:
                 clusters_by_label.setdefault(label, []).append(i)
 
+        # check if we made meaningful progress (largest cluster should be < 80% of input)
+        largest_cluster_size = max(len(indices) for indices in clusters_by_label.values())
+        if largest_cluster_size > n * 0.8:
+            logger.debug(
+                f"  Insufficient split progress: largest sub-cluster is {largest_cluster_size}/{n} "
+                f"({largest_cluster_size/n*100:.0f}%), using random chunking"
+            )
+            return self._random_chunk(original_indices, effective_min_cluster_size)
+
+        logger.debug(
+            f"  Split {n} items into {len(clusters_by_label)} sub-clusters "
+            f"(sizes: {sorted([len(v) for v in clusters_by_label.values()], reverse=True)[:5]})"
+        )
+
         result = []
         for label, local_indices in clusters_by_label.items():
             global_indices = [original_indices[i] for i in local_indices]
@@ -174,10 +220,14 @@ class HDBSCANMethod(BaseModel):
             if len(global_indices) <= self.max_cluster_size:
                 result.append(global_indices)
             else:
-                # recurse
+                # recurse with incremented depth
                 sub_embeddings = embeddings[local_indices]
                 sub_result = self._split_oversized(
-                    sub_embeddings, global_indices, effective_min_cluster_size
+                    sub_embeddings,
+                    global_indices,
+                    effective_min_cluster_size,
+                    depth=depth + 1,
+                    max_depth=max_depth,
                 )
                 result.extend(sub_result)
 
@@ -272,6 +322,7 @@ class Cluster(DAGNode):
             Each item's metadata is annotated with cluster_id and cluster_coherence.
         """
         await super().run()
+        logger.info(f"Cluster '{self.name}': Starting clustering...")
 
         # get input data
         if self.inputs:
@@ -286,6 +337,7 @@ class Cluster(DAGNode):
         # flatten if BatchList
         if isinstance(input_data, BatchList):
             raw_items = input_data.flatten_all()
+            logger.info(f"Flattened BatchList to {len(raw_items)} items")
         elif isinstance(input_data, list):
             raw_items = input_data
         else:
@@ -302,11 +354,12 @@ class Cluster(DAGNode):
             self.output = BatchList(batches=[], group_field="cluster", group_keys=[])
             return self.output
 
-        logger.debug(
+        logger.info(
             f"Cluster '{self.name}': {len(raw_items)} raw items -> {len(items)} items after unwrap"
         )
 
         # extract texts for embedding
+        logger.info(f"Extracting text from {len(items)} items...")
         texts = [self._extract_text(item) for item in items]
 
         # deduplicate texts for embedding efficiency
@@ -318,6 +371,7 @@ class Cluster(DAGNode):
         )
 
         # get embeddings with progress bar
+        logger.info(f"Computing embeddings for {len(unique_texts)} texts...")
         if self.dag.config.show_progress:
             desc = f"Cluster: {self.name}".ljust(35)
             with tqdm(
@@ -338,15 +392,20 @@ class Cluster(DAGNode):
                 model=self.dag.config.embedding_model,
             )
         unique_embeddings = np.array(embeddings_list)
+        logger.info("Embeddings computed.")
 
         # map back to full set
+        logger.debug(f"Mapping {len(unique_texts)} unique embeddings back to {len(texts)} items...")
         full_embeddings = np.array([unique_embeddings[text_to_idx[t]] for t in texts])
 
         # run clustering
+        logger.info(f"Running HDBSCAN clustering on {len(full_embeddings)} embeddings...")
         cluster_indices = self.method.cluster(full_embeddings)
+        logger.info(f"Clustering complete: {len(cluster_indices)} clusters found.")
 
         # build output: one TrackedItem per cluster
         # this allows Map to process each cluster as a single item
+        logger.info(f"Building {len(cluster_indices)} cluster output items...")
         cluster_items_output = []
 
         for cluster_idx, indices in enumerate(cluster_indices):

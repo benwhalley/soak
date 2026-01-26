@@ -879,7 +879,7 @@ def create_transport_sankey(
             y=1 - y_a[i],
             xref="paper",
             yref="paper",
-            text=f"{wrap_text(name, 35)} (A{i+1})",
+            text=f"{wrap_text(name, 50)} (A{i+1})",
             showarrow=False,
             xanchor="right",
             yanchor="middle",
@@ -893,7 +893,7 @@ def create_transport_sankey(
             y=1 - y_b[j],
             xref="paper",
             yref="paper",
-            text=f"{wrap_text(name, 35)} (B{j+1})",
+            text=f"{wrap_text(name, 50)} (B{j+1})",
             showarrow=False,
             xanchor="left",
             yanchor="middle",
@@ -908,9 +908,9 @@ def create_transport_sankey(
             family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif",
             size=9,
         ),
-        width=950,
-        height=max(900, 90 * max(n_A, n_B)),
-        margin=dict(l=305 + padding, r=305 + padding, t=padding, b=padding),
+        width=1100,
+        height=max(600, 60 * max(n_A, n_B)),
+        margin=dict(l=380 + padding, r=380 + padding, t=padding, b=padding),
         annotations=annotations,
         paper_bgcolor="white",
         plot_bgcolor="white",
@@ -1053,22 +1053,111 @@ class Base64ImageFile:
         return base64.b64encode(self.buffer.read()).decode("utf-8")
 
 
+def find_elbow_point(
+    k_values: List[float],
+    shared_mass: List[float],
+    *,
+    q: float = 0.25,
+    m: int = 3,
+    n_interp: int = 100,
+    eps: float = 1e-12,
+) -> tuple[int, float]:
+    """Find the elbow point using diminishing returns on the shared_mass curve.
+
+    Interpolates to a uniform grid in log(K) space before analysis, ensuring
+    consistent treatment regardless of how the original K values are spaced.
+
+    Looks for where the slope drops below a threshold (q * initial_slope) for
+    m consecutive points, indicating diminishing returns from increasing K.
+
+    Uses shared_mass (monotone increasing) rather than unmatched_mass (decreasing)
+    as the increasing curve is more stable for knee detection.
+
+    Note: K=0 is problematic as log(0) is undefined. Either exclude K=0 from the
+    search or use log(K + eps) with eps tiny. This implementation uses the latter.
+
+    Args:
+        k_values: K parameter values (should be positive; uses log(K+eps) for safety)
+        shared_mass: Corresponding shared mass values (should increase with K)
+        q: Relative threshold -- slope must drop below q * initial_slope (default: 0.25)
+        m: Number of consecutive points below threshold to trigger (default: 3)
+        n_interp: Number of points for uniform log(K) grid (default: 100)
+        eps: Small constant to handle log(0) edge case (default: 1e-12)
+
+    Returns:
+        Tuple of (index, k_value) for the elbow point (index into original k_values)
+    """
+    import numpy as np
+
+    K = np.asarray(k_values, float)
+    s = np.asarray(shared_mass, float)
+
+    # work on log(K) scale to stop the tail dominating
+    logK = np.log(K + eps)
+
+    # interpolate to uniform grid in log(K) space
+    logK_uniform = np.linspace(logK.min(), logK.max(), n_interp)
+    s_uniform = np.interp(logK_uniform, logK, s)
+
+    # light smoothing with window=3 (simple moving average)
+    if len(s_uniform) >= 3:
+        kernel = np.ones(3) / 3
+        s_padded = np.pad(s_uniform, (1, 1), mode="edge")
+        s_uniform = np.convolve(s_padded, kernel, mode="valid")
+
+    # compute slope on uniform grid (constant spacing so just use diff)
+    slope = np.diff(s_uniform)
+
+    # relative threshold based on initial slope
+    thr = q * slope[0] if len(slope) > 0 and slope[0] > 0 else 0
+    below = slope < thr
+
+    # look for m consecutive points below threshold
+    run = 0
+    elbow_logK = None
+    for i, flag in enumerate(below, start=1):
+        run = run + 1 if flag else 0
+        if run >= m:
+            j = i - m + 1
+            elbow_logK = logK_uniform[j]
+            break
+
+    # fallback: smallest K achieving 50% of max shared mass
+    if elbow_logK is None:
+        target = s_uniform.min() + 0.5 * (s_uniform.max() - s_uniform.min())
+        j = int(np.argmax(s_uniform >= target))
+        elbow_logK = logK_uniform[j]
+
+    # map back to nearest original K value
+    elbow_K = np.exp(elbow_logK)
+    orig_idx = int(np.argmin(np.abs(K - elbow_K)))
+    return orig_idx, K[orig_idx]
+
+
 def create_unmatched_mass_scree_plot(
     ot_by_k: Dict[float, Dict],
     k_values: List[float],
     analysis_name_a: str = "A",
     analysis_name_b: str = "B",
-) -> "Base64ImageFile":
+    default_k: float = 0.25,
+) -> Dict[str, Any]:
     """Create scree plot showing unmatched mass across different K values.
+
+    Identifies the elbow point (maximum curvature) which may be the optimal K
+    for balancing matched vs unmatched mass.
 
     Args:
         ot_by_k: Dictionary mapping K values to OT results
         k_values: List of K values used
         analysis_name_a: Name of analysis A
         analysis_name_b: Name of analysis B
+        default_k: The default K value to highlight
 
     Returns:
-        Base64ImageFile containing the scree plot
+        Dictionary with:
+        - image: Base64ImageFile containing the scree plot
+        - elbow_k: K value at the point of diminishing returns
+        - elbow_idx: Index of the elbow point
     """
     import matplotlib
     matplotlib.use("Agg")
@@ -1078,6 +1167,17 @@ def create_unmatched_mass_scree_plot(
     # extract unmatched mass for each K
     unmatched_masses = [ot_by_k[k]["ot"]["unmatched_mass"] * 100 for k in k_values]
     shared_masses = [ot_by_k[k]["ot"]["shared_mass"] * 100 for k in k_values]
+
+    # find elbow point using diminishing returns on shared_mass curve
+    # (the increasing, concave form yields more stable finite-difference slopes than
+    #  the decreasing unmatched_mass curve, which is prone to noise and floor effects
+    #  near zero under smoothing and interpolation)    
+    elbow_idx, elbow_k = find_elbow_point(k_values, shared_masses)
+    elbow_unmatched = unmatched_masses[elbow_idx]
+    elbow_shared = shared_masses[elbow_idx]
+
+    # find default K index for highlighting
+    default_idx = k_values.index(default_k) if default_k in k_values else None
 
     plt.close("all")
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
@@ -1093,9 +1193,24 @@ def create_unmatched_mass_scree_plot(
     ax1.grid(True, alpha=0.3)
     ax1.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
 
-    # annotate selected points to avoid clutter
+    # highlight point of diminishing returns
+    ax1.scatter([elbow_k], [elbow_unmatched], color='#9b59b6', s=150, zorder=5,
+                marker='D', edgecolors='white', linewidths=2, label=f'Diminishing returns (K={elbow_k})')
+    ax1.axvline(x=elbow_k, color='#9b59b6', linestyle=':', alpha=0.7)
+
+    # highlight default K if different from diminishing returns point
+    if default_idx is not None and default_k != elbow_k:
+        default_unmatched = unmatched_masses[default_idx]
+        ax1.scatter([default_k], [default_unmatched], color='#3498db', s=150, zorder=5,
+                    marker='s', edgecolors='white', linewidths=2, label=f'Default (K={default_k})')
+        ax1.axvline(x=default_k, color='#3498db', linestyle=':', alpha=0.7)
+
+    ax1.legend(loc='upper right', fontsize=9)
+
+    # annotate selected points to avoid clutter (skip elbow and default)
     for i, (k, um) in enumerate(zip(k_values, unmatched_masses)):
-        # only annotate every few points to avoid overlap
+        if i == elbow_idx or (default_idx is not None and i == default_idx):
+            continue
         if i == 0 or i == len(k_values) - 1 or i % 3 == 0:
             ax1.annotate(f'{um:.1f}%', (k, um), textcoords="offset points",
                          xytext=(0, 10), ha='center', fontsize=8)
@@ -1111,9 +1226,24 @@ def create_unmatched_mass_scree_plot(
     ax2.grid(True, alpha=0.3)
     ax2.axhline(y=100, color='gray', linestyle='--', alpha=0.5)
 
-    # annotate selected points to avoid clutter
+    # highlight point of diminishing returns
+    ax2.scatter([elbow_k], [elbow_shared], color='#9b59b6', s=150, zorder=5,
+                marker='D', edgecolors='white', linewidths=2, label=f'Diminishing returns (K={elbow_k})')
+    ax2.axvline(x=elbow_k, color='#9b59b6', linestyle=':', alpha=0.7)
+
+    # highlight default K if different from diminishing returns point
+    if default_idx is not None and default_k != elbow_k:
+        default_shared = shared_masses[default_idx]
+        ax2.scatter([default_k], [default_shared], color='#3498db', s=150, zorder=5,
+                    marker='s', edgecolors='white', linewidths=2, label=f'Default (K={default_k})')
+        ax2.axvline(x=default_k, color='#3498db', linestyle=':', alpha=0.7)
+
+    ax2.legend(loc='lower right', fontsize=9)
+
+    # annotate selected points to avoid clutter (skip elbow and default)
     for i, (k, sm) in enumerate(zip(k_values, shared_masses)):
-        # only annotate every few points to avoid overlap
+        if i == elbow_idx or (default_idx is not None and i == default_idx):
+            continue
         if i == 0 or i == len(k_values) - 1 or i % 3 == 0:
             ax2.annotate(f'{sm:.1f}%', (k, sm), textcoords="offset points",
                          xytext=(0, -15), ha='center', fontsize=8)
@@ -1125,7 +1255,11 @@ def create_unmatched_mass_scree_plot(
     plt.close(fig)
     buffer.seek(0)
 
-    return Base64ImageFile(buffer, name="unmatched_mass_scree.png")
+    return {
+        "image": Base64ImageFile(buffer, name="unmatched_mass_scree.png"),
+        "elbow_k": elbow_k,
+        "elbow_idx": elbow_idx,
+    }
 
 
 def compare_result_similarity(
@@ -1137,6 +1271,7 @@ def compare_result_similarity(
     k: float = 1.0,
     reg_m: float = 0.2,
     n_null_samples: int = 100,
+    distance: str = "angular",
 ) -> Dict[str, Any]:
     """
     Compare two sets of theme embeddings.
@@ -1169,6 +1304,11 @@ def compare_result_similarity(
                comparability. Lower = more selective matching.
         n_null_samples: Number of word-salad samples for null baseline (default: 100).
                        Split evenly between both directions (50 each by default).
+        distance: Distance metric to use (default: "angular"). Options:
+                 - "angular": Angular similarity (1 - arccos(cos)/pi). Preferred as it
+                   satisfies the triangle inequality and avoids high-similarity compression.
+                 - "cosine": Raw cosine similarity. Not a proper metric.
+                 - "shepard": Shepard similarity with exponential decay controlled by k.
 
     Returns:
         Dictionary with similarity metrics including:
@@ -1286,12 +1426,17 @@ def compare_result_similarity(
     shepard_z = (shepard_sim - mu) / (sigma + 1e-9)
 
     # === HUNGARIAN MATCHING (optimal 1-to-1 assignment) ===
-    # Use Angular similarity: proper metric (satisfies triangle inequality), valid to average,
-    # and scale is similar to cosine (0-1) so threshold 0.6 is sensible
-    hungarian_results = hungarian_matching(angle_sim, threshold=threshold)
+    # Select similarity matrix based on distance metric
+    distance_matrices = {
+        "angular": angle_sim,
+        "cosine": sim_matrix,
+        "shepard": shepard_sim,
+    }
+    selected_sim = distance_matrices.get(distance, angle_sim)
+    hungarian_results = hungarian_matching(selected_sim, threshold=threshold)
 
     # log Hungarian results
-    logger.info(f"\n=== Hungarian Matching (1-to-1, Angular similarity) ===")
+    logger.info(f"\n=== Hungarian Matching (1-to-1, {distance} similarity) ===")
     logger.info(f"Optimal assignment: {hungarian_results['distribution']['n_pairs']}/{min(len(emb_A), len(emb_B))} pairs above threshold")
     logger.info(f"Coverage: {hungarian_results['thresholded_metrics']['coverage_a']:.1%} of A, {hungarian_results['thresholded_metrics']['coverage_b']:.1%} of B")
     logger.info(f"True Jaccard: {hungarian_results['thresholded_metrics']['true_jaccard']:.3f}")
@@ -1302,8 +1447,8 @@ def compare_result_similarity(
         logger.info(f"Similarity distribution: median={dist['median']:.3f} (Q1={dist['q1']:.3f}, Q3={dist['q3']:.3f}, range: {dist['min']:.3f}-{dist['max']:.3f})")
 
     # === UNBALANCED OPTIMAL TRANSPORT (many-to-many alignment) ===
-    # use cosine distance as cost matrix
-    cost_matrix = 1 - sim_matrix
+    # use selected distance metric for cost matrix
+    cost_matrix = 1 - selected_sim
     logger.info("\n=== Computing Unbalanced Optimal Transport Metrics ===")
 
     # === SYMMETRIC WORD-SALAD NULL BASELINE ===
@@ -1338,8 +1483,21 @@ def compare_result_similarity(
     emb_B_salads = all_salad_embeddings[:n_B_total].reshape(n_samples_per_direction, len(B_texts), -1)
     emb_A_salads = all_salad_embeddings[n_B_total:].reshape(n_samples_per_direction, len(A_texts), -1)
 
-    null_cost_matrices_B = [1 - cosine_similarity(emb_A, emb) for emb in emb_B_salads]
-    null_cost_matrices_A = [1 - cosine_similarity(emb, emb_B) for emb in emb_A_salads]
+    # helper to compute similarity using the selected distance metric
+    def compute_similarity(emb_a, emb_b, metric, k_val):
+        cos_sim = cosine_similarity(emb_a, emb_b)
+        if metric == "cosine":
+            return cos_sim
+        elif metric == "angular":
+            angle_mat = np.degrees(np.arccos(np.clip(cos_sim, -1.0, 1.0)))
+            return 1 - angle_mat / 180.0
+        elif metric == "shepard":
+            theta = np.arccos(np.clip(cos_sim, -1.0, 1.0))
+            return (np.exp(-k_val * theta) - np.exp(-k_val * np.pi)) / (1 - np.exp(-k_val * np.pi))
+        return cos_sim
+
+    null_cost_matrices_B = [1 - compute_similarity(emb_A, emb, distance, k) for emb in emb_B_salads]
+    null_cost_matrices_A = [1 - compute_similarity(emb, emb_B, distance, k) for emb in emb_A_salads]
 
     # Combine both directions for symmetric null
     null_cost_matrices = null_cost_matrices_B + null_cost_matrices_A
@@ -1356,11 +1514,11 @@ def compare_result_similarity(
     # K values: finer granularity at low end where behavior changes most
     # 0.01-0.5: steps of 0.05 | 0.5-1.0: steps of 0.1 | 1.0-2.0: steps of 0.25
     K_VALUES = [
-        0.01, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50,
+        0.025, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50,
         0.6, 0.7, 0.8, 0.9, 1.0,
         1.25, 1.5, 1.75, 2.0
     ]
-    DEFAULT_K = 0.2
+    DEFAULT_K = 0.25
 
     ot_by_k = {}
     for k_val in tqdm(K_VALUES, desc="Computing OT for K values", file=sys.stderr):
@@ -1419,13 +1577,19 @@ def compare_result_similarity(
     transport_sankey = ot_by_k[DEFAULT_K]["transport_sankey"]
     transport_heatmap = ot_by_k[DEFAULT_K]["transport_heatmap"]
 
-    # generate scree plot showing unmatched mass vs K
-    unmatched_mass_scree = create_unmatched_mass_scree_plot(
+    # generate scree plot showing unmatched mass vs K (with elbow detection)
+    scree_result = create_unmatched_mass_scree_plot(
         ot_by_k,
         K_VALUES,
         analysis_name_a=analysis_name_A,
         analysis_name_b=analysis_name_B,
+        default_k=DEFAULT_K,
     )
+    unmatched_mass_scree = scree_result["image"]
+    elbow_k = scree_result["elbow_k"]
+
+    logger.info(f"\n=== Diminishing Returns Analysis ===")
+    logger.info(f"Point of diminishing returns: K={elbow_k}")
 
     # log default K results
     logger.info(f"\n=== Default K={DEFAULT_K} Results ===")
@@ -1578,6 +1742,7 @@ def compare_result_similarity(
         "ot_by_k": ot_by_k,
         "k_values": K_VALUES,
         "default_k": DEFAULT_K,
+        "elbow_k": elbow_k,
         # Scree plot of unmatched mass vs K
         "unmatched_mass_scree": unmatched_mass_scree,
         # best matches
@@ -1960,6 +2125,7 @@ class SimilarityComparator:
         embedding_model = config.get("embedding_model", "text-embedding-3-large")
         k = config.get("k", 1.0)
         reg_m = config.get("reg_m", 0.2)
+        distance = config.get("distance", "angular")
 
         # Set labels on all themes once at the beginning
         for result in pipeline_results:
@@ -1993,6 +2159,7 @@ class SimilarityComparator:
                 embedding_model=embedding_model,
                 k=k,
                 reg_m=reg_m,
+                distance=distance,
             )
             for i, j in result_combinations
         ]
@@ -2017,8 +2184,11 @@ class SimilarityComparator:
                 for (a, b), sim_result in zip(result_combinations, similarity_results)
             ]
 
-        # keep legacy cosine heatmaps for backward compatibility
-        heatmaps = heatmaps_by_metric["cosine"]
+        # use the selected distance metric for primary heatmaps
+        # map distance names to metric_type names (angular -> angle)
+        distance_to_metric = {"angular": "angle", "cosine": "cosine", "shepard": "shepard"}
+        primary_metric = distance_to_metric.get(distance, "angle")
+        heatmaps = heatmaps_by_metric[primary_metric]
 
         # thresholded heatmaps (only meaningful for cosine similarity)
         thresholded_heatmaps = [

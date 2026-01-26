@@ -199,7 +199,7 @@
         {% endif %}
 
         {% for node_name in pipeline.config.report_texts %}
-        {% if node_name in pipeline.nodes_dict %}
+        {% if node_name in pipeline.nodes_dict and pipeline.nodes_dict[node_name].output %}
         <h2>{{ node_name|title|replace('_', ' ') }}</h2>
         <div class="narrative-section">
         {% markdown %}

@@ -10,7 +10,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import anyio
-import nltk
 import numpy as np
 import pandas as pd
 from pydantic import Field, PrivateAttr
@@ -34,6 +33,64 @@ from soak.models.text_utils import (ELLIPSIS_RE, create_document_boundaries,
 from .base import CompletionDAGNode
 
 logger = logging.getLogger(__name__)
+
+# fast regex tokenizer for BM25 (replaces slow nltk.word_tokenize)
+_WORD_RE = re.compile(r"\w+")
+
+
+def _fast_tokenize(text: str) -> List[str]:
+    r"""Fast regex tokenizer for BM25.
+
+    Uses \w+ pattern which:
+    - Strips all punctuation (appropriate for BM25)
+    - Splits contractions: "don't" -> ["don", "t"]
+    - Splits hyphenated: "well-known" -> ["well", "known"]
+    """
+    return _WORD_RE.findall(text.lower())
+
+
+def _build_token_index(tokenized: List[List[str]]) -> Dict[str, set]:
+    """Build inverted index: token -> set of window indices.
+
+    Args:
+        tokenized: List of tokenized windows (each window is a list of tokens)
+
+    Returns:
+        Dict mapping each token to set of window indices containing it
+    """
+    from collections import defaultdict
+
+    index: Dict[str, set] = defaultdict(set)
+    for idx, tokens in enumerate(tokenized):
+        for token in set(tokens):  # dedupe tokens per window
+            index[token].add(idx)
+    return dict(index)
+
+
+def _find_candidate_windows(
+    query_tokens: List[str],
+    token_index: Dict[str, set],
+    num_windows: int,
+) -> List[int]:
+    """Find windows containing any query token (union).
+
+    Args:
+        query_tokens: Tokenized query
+        token_index: Inverted index from _build_token_index
+        num_windows: Total number of windows (fallback if no matches)
+
+    Returns:
+        Sorted list of candidate window indices
+    """
+    if not query_tokens:
+        return list(range(num_windows))  # fallback to all
+
+    candidates: set = set()
+    for token in query_tokens:
+        if token in token_index:
+            candidates.update(token_index[token])
+
+    return sorted(candidates) if candidates else list(range(num_windows))
 
 
 # verification result models
@@ -298,6 +355,7 @@ def verify_quotes_bm25_first(
     trim_method: Literal["fuzzy", "sliding_bm25", "hybrid"] = "hybrid",
     min_fuzzy_ratio: float = 0.6,
     expand_window_neighbors: int = 1,
+    show_progress: bool = True,
 ) -> List[Dict[str, Any]]:
     """Verify quotes using BM25-first matching with ellipsis support.
 
@@ -313,29 +371,57 @@ def verify_quotes_bm25_first(
         original_text: Full concatenated source text
         doc_boundaries: List of (doc_name, start_pos, end_pos) for document tracking
         doc_content_map: Dict mapping doc_name to full document content
+        show_progress: Whether to show progress bars
     """
 
     if not extracted_quotes:
         return []
 
-    # Extract window texts and build BM25 index
+    # Extract window texts and build BM25 index with inverted index for fast pre-filtering
+    logger.info(f"Tokenizing {len(original_windows)} windows...")
     window_texts = [w[0] for w in original_windows]
-    tokenized = [nltk.word_tokenize(w.lower()) for w in window_texts]
+    tokenized = [_fast_tokenize(w) for w in window_texts]
+
+    logger.info(f"Building BM25 index from {len(original_windows)} windows...")
     bm25 = BM25Okapi(tokenized, k1=bm25_k1, b=bm25_b)
 
-    results = []
+    # Build inverted index for candidate pre-filtering (major performance win)
+    token_index = _build_token_index(tokenized)
+    logger.info(f"Built BM25 index and inverted index ({len(token_index)} unique tokens)")
 
-    for quote_obj in extracted_quotes:
+    # Phase 1: BM25 matching (no embeddings yet)
+    # Collect intermediate results with texts that need embedding
+    logger.info(f"Phase 1: BM25 matching for {len(extracted_quotes)} quotes...")
+    intermediate_results = []
+    num_quotes = len(extracted_quotes)
+
+    for i, quote_obj in enumerate(extracted_quotes):
+        if i > 0 and i % 1000 == 0:
+            logger.info(f"  Processed {i}/{num_quotes} quotes...")
         quote = quote_obj.text
         has_ellipsis = bool(ELLIPSIS_RE.search(quote))
 
         if not has_ellipsis:
-            # Simple case: single BM25 match
-            query_tokens = nltk.word_tokenize(quote.lower())
-            scores = bm25.get_scores(query_tokens)
-            top1, top2, ratio = _calculate_bm25_ratio(scores)
+            # Simple case: single BM25 match with candidate pre-filtering
+            query_tokens = _fast_tokenize(quote)
+            candidate_indices = _find_candidate_windows(
+                query_tokens, token_index, len(original_windows)
+            )
 
-            best_idx = int(np.argmax(scores))
+            # Score only candidate windows (major performance win)
+            if len(candidate_indices) < len(original_windows):
+                candidate_scores = bm25.get_batch_scores(query_tokens, candidate_indices)
+                best_local_idx = int(np.argmax(candidate_scores))
+                best_idx = candidate_indices[best_local_idx]
+                # Build full scores array for ratio calculation
+                scores = np.zeros(len(original_windows))
+                for i, idx in enumerate(candidate_indices):
+                    scores[idx] = candidate_scores[i]
+            else:
+                scores = bm25.get_scores(query_tokens)
+                best_idx = int(np.argmax(scores))
+
+            top1, top2, ratio = _calculate_bm25_ratio(scores)
             bm25_score = top1
 
             # Extract span with optional expansion
@@ -345,7 +431,7 @@ def verify_quotes_bm25_first(
             trim_target = quote
 
         else:
-            # Ellipsis case: match head and tail
+            # Ellipsis case: match head and tail with candidate pre-filtering
             parts = [p.strip() for p in ELLIPSIS_RE.split(quote) if p.strip()]
             if len(parts) < 2:
                 parts = [quote.replace("...", "").replace("…", "").strip()]
@@ -353,15 +439,38 @@ def verify_quotes_bm25_first(
             head = parts[0]
             tail = parts[-1]
 
-            # BM25 for head and tail
-            head_tokens = nltk.word_tokenize(head.lower())
-            head_scores = bm25.get_scores(head_tokens)
-            head_idx = int(np.argmax(head_scores))
+            # BM25 for head with candidate pre-filtering
+            head_tokens = _fast_tokenize(head)
+            head_candidates = _find_candidate_windows(
+                head_tokens, token_index, len(original_windows)
+            )
+            if len(head_candidates) < len(original_windows):
+                head_candidate_scores = bm25.get_batch_scores(head_tokens, head_candidates)
+                head_local_idx = int(np.argmax(head_candidate_scores))
+                head_idx = head_candidates[head_local_idx]
+                head_scores = np.zeros(len(original_windows))
+                for i, idx in enumerate(head_candidates):
+                    head_scores[idx] = head_candidate_scores[i]
+            else:
+                head_scores = bm25.get_scores(head_tokens)
+                head_idx = int(np.argmax(head_scores))
             head_score = float(head_scores[head_idx])
 
-            tail_tokens = nltk.word_tokenize(tail.lower())
-            tail_scores = bm25.get_scores(tail_tokens)
-            tail_idx = int(np.argmax(tail_scores))
+            # BM25 for tail with candidate pre-filtering
+            tail_tokens = _fast_tokenize(tail)
+            tail_candidates = _find_candidate_windows(
+                tail_tokens, token_index, len(original_windows)
+            )
+            if len(tail_candidates) < len(original_windows):
+                tail_candidate_scores = bm25.get_batch_scores(tail_tokens, tail_candidates)
+                tail_local_idx = int(np.argmax(tail_candidate_scores))
+                tail_idx = tail_candidates[tail_local_idx]
+                tail_scores = np.zeros(len(original_windows))
+                for i, idx in enumerate(tail_candidates):
+                    tail_scores[idx] = tail_candidate_scores[i]
+            else:
+                tail_scores = bm25.get_scores(tail_tokens)
+                tail_idx = int(np.argmax(tail_scores))
             tail_score = float(tail_scores[tail_idx])
 
             # Ensure head comes before tail
@@ -424,23 +533,12 @@ def verify_quotes_bm25_first(
             global_start, doc_boundaries, doc_content_map
         )
 
-        # Compute embedding similarity between original quote and identified span
-        # For long spans (e.g., ellipsis quotes spanning multiple windows), we need to
-        # avoid exceeding the embedding model's context window (8192 tokens).
-        # Strategy: embed comparable-length excerpts - use 2x quote length (bounded by 2000 chars)
-        # to allow for context while staying within limits
+        # Compute truncated texts for embedding (but don't embed yet)
         max_embed_chars = min(max(len(quote) * 2, 500), 4000)
         quote_truncated = quote[:max_embed_chars]
-
-        # For very long spans, take start portion (where quote likely appears)
-        # rather than truncating the quote comparison unfairly
         span_truncated = span_text[:max_embed_chars]
 
-        quote_emb = np.array(get_embedding([quote_truncated]))
-        span_emb = np.array(get_embedding([span_truncated]))
-        cosine_sim = float(cosine_similarity(quote_emb, span_emb)[0][0])
-
-        results.append(
+        intermediate_results.append(
             {
                 "quote": quote,
                 "quote_hash": quote_obj.hash(),
@@ -452,10 +550,57 @@ def verify_quotes_bm25_first(
                 "global_start": int(global_start),
                 "global_end": int(global_end),
                 "match_ratio": float(match_ratio) if match_ratio is not None else None,
-                "cosine_similarity": float(cosine_sim),
+                # texts for embedding (will be removed after embedding)
+                "_quote_truncated": quote_truncated,
+                "_span_truncated": span_truncated,
             }
         )
 
+    logger.info(f"BM25 matching complete. {len(intermediate_results)} matches found.")
+
+    # Phase 2: Batch embed all unique texts
+    # Collect all unique texts needing embeddings
+    texts_to_embed = set()
+    for r in intermediate_results:
+        texts_to_embed.add(r["_quote_truncated"])
+        texts_to_embed.add(r["_span_truncated"])
+
+    unique_texts = list(texts_to_embed)
+    logger.info(f"Phase 2: Computing embeddings for {len(unique_texts)} unique texts...")
+
+    # Batch embed all at once
+    if show_progress:
+        desc = "VerifyQuotes: embeddings".ljust(35)
+        with tqdm(
+            total=len(unique_texts),
+            desc=desc,
+            unit="text",
+            file=sys.stderr,
+            ncols=120,
+        ) as pbar:
+            embeddings_list = get_embedding(unique_texts)
+            pbar.update(len(unique_texts))
+    else:
+        embeddings_list = get_embedding(unique_texts)
+
+    # Build lookup from text -> embedding
+    text_to_embedding = {text: emb for text, emb in zip(unique_texts, embeddings_list)}
+    logger.info("Embeddings computed.")
+
+    # Phase 3: Compute cosine similarities using cached embeddings
+    logger.info("Phase 3: Computing cosine similarities...")
+    results = []
+    for r in intermediate_results:
+        quote_emb = np.array([text_to_embedding[r["_quote_truncated"]]])
+        span_emb = np.array([text_to_embedding[r["_span_truncated"]]])
+        cosine_sim = float(cosine_similarity(quote_emb, span_emb)[0][0])
+
+        # Remove internal fields and add cosine similarity
+        result = {k: v for k, v in r.items() if not k.startswith("_")}
+        result["cosine_similarity"] = cosine_sim
+        results.append(result)
+
+    logger.info(f"Verification complete: {len(results)} quotes verified.")
     return results
 
 
@@ -833,12 +978,16 @@ class VerifyQuotes(CompletionDAGNode):
         await super().run()
 
         # Get search corpus (documents or custom node output)
+        logger.info(f"VerifyQuotes '{self.name}': Loading search corpus...")
         search_corpus = self.get_search_corpus()
+        logger.info(f"Search corpus loaded: {len(search_corpus)} chars")
 
         # Create document boundaries for tracking source documents
+        logger.info("Creating document boundaries...")
         doc_boundaries, doc_content_map = create_document_boundaries(
             self.dag.config.documents
         )
+        logger.info(f"Document boundaries created: {len(doc_boundaries)} documents")
 
         # Backward compatibility: support both old inputs[0] and new quotes_from
         source_node = self.quotes_from or (self.inputs[0] if self.inputs else None)
@@ -850,6 +999,7 @@ class VerifyQuotes(CompletionDAGNode):
             raise ValueError(f"No output from node '{source_node}'")
 
         # Extract quotes with context (handles Code and Themes)
+        logger.info(f"Extracting quotes from '{source_node}'...")
         quotes_with_context = self.extract_quotes_and_context(input_data)
 
         logger.info(
@@ -863,18 +1013,15 @@ class VerifyQuotes(CompletionDAGNode):
         quotes_to_verify = [item["quote"] for item in quotes_with_context]
 
         # Stage 1: Verify quote existence using BM25 + embeddings
-        logger.info(
-            f"Running BM25 + embedding verification on {len(quotes_to_verify)} quotes"
-        )
-
         quote_texts = [q.text for q in quotes_to_verify]
+        logger.info(f"Creating search windows (window_size={self.window_size})...")
         windows = make_windows(
             search_corpus,
             window_size=self.window_size,
             overlap=self.overlap,
             extracted_sentences=quote_texts,
         )
-
+        logger.info(f"Created {len(windows)} search windows")
         matches = verify_quotes_bm25_first(
             quotes_to_verify,
             windows,
@@ -889,10 +1036,13 @@ class VerifyQuotes(CompletionDAGNode):
             trim_method=self.trim_method,
             min_fuzzy_ratio=self.min_fuzzy_ratio,
             expand_window_neighbors=self.expand_window_neighbors,
+            show_progress=self.dag.config.show_progress,
         )
 
         if not matches:
             raise ValueError("No quotes found during existence verification")
+
+        logger.info(f"BM25+embedding verification complete: {len(matches)} matches")
 
         # Store windows and extracted sentences for compatibility
         self.original_sentences = [w[0] for w in windows]
@@ -912,10 +1062,12 @@ class VerifyQuotes(CompletionDAGNode):
 
         # Stage 1.5: LLM-based existence verification for poor matches
         # ratio < 2 means second match is >50% as 'good' (ambiguous)
+        logger.info("Identifying poor matches for LLM verification...")
         poor_match_mask = ((df["bm25_score"] < 30) & (df["bm25_ratio"] < 2)) | (
             (df["bm25_score"] < 20) & (df["cosine_similarity"] < 0.7)
         )
         poor_matches = df[poor_match_mask]
+        logger.info(f"Found {len(poor_matches)}/{len(df)} poor matches needing LLM verification")
 
         if len(poor_matches) > 0:
             logger.info(
@@ -984,6 +1136,7 @@ class VerifyQuotes(CompletionDAGNode):
                     )
 
             pbar.close()
+            logger.info(f"LLM existence verification complete for {len(poor_matches)} quotes")
 
         # Stage 2: Fairness verification for themes (optional)
         if self.check_fairness and self.verification_type == "theme":
@@ -1099,6 +1252,7 @@ class VerifyQuotes(CompletionDAGNode):
                         tg.start_soon(check_fairness, idx, context_item, match_result)
 
             pbar_fairness.close()
+            logger.info(f"Fairness verification complete for {len(df)} quotes")
         else:
             logger.info(
                 f"Skipping fairness verification (check_fairness={self.check_fairness}, verification_type={self.verification_type})"
@@ -1107,6 +1261,7 @@ class VerifyQuotes(CompletionDAGNode):
         self.sentence_matches = df.to_dict(orient="records")
 
         # Compute statistics
+        logger.info("Computing verification statistics...")
         n_quotes = len(df)
         n_with_ellipses = df["quote"].apply(lambda q: bool(ELLIPSIS_RE.search(q))).sum()
 
@@ -1168,6 +1323,12 @@ class VerifyQuotes(CompletionDAGNode):
 
         # Store output for downstream nodes to access via context
         self.output = self.sentence_matches
+
+        logger.info(
+            f"VerifyQuotes '{self.name}' complete: {n_quotes} quotes, "
+            f"mean_bm25={self.stats['mean_bm25_score']:.1f}, "
+            f"mean_cosine={self.stats['mean_cosine']:.3f}"
+        )
         return matches
 
     def result(self) -> Dict[str, Any]:

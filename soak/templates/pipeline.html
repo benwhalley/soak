@@ -194,7 +194,7 @@
             <h3>Report Summary</h3>
         </div>
         {% for node_name in pipeline.config.report_texts %}
-        {% if node_name in pipeline.nodes_dict %}
+        {% if node_name in pipeline.nodes_dict and pipeline.nodes_dict[node_name].output %}
         <div class="row">
             <div class="col-12">
                 <div class="card mb-3">

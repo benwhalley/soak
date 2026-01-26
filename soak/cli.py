@@ -778,6 +778,13 @@ def compare(
         envvar="SOAK_REG_M",
         help="OT mass penalty (K). Fixed value for cross-analysis comparability. Lower = more selective matching.",
     ),
+    distance: str = typer.Option(
+        "angular",
+        "--distance",
+        "-d",
+        envvar="SOAK_DISTANCE",
+        help="Distance metric for similarity: angular (default), cosine, shepard. Angular is preferred as it satisfies the triangle inequality and avoids the high-similarity compression of cosine.",
+    ),
 ):
     """Compare multiple analysis results and generate comparison report."""
 
@@ -834,6 +841,7 @@ def compare(
             "embedding_model": embedding_model,
             "k": k,
             "reg_m": reg_m,
+            "distance": distance,
         },
     )
 
