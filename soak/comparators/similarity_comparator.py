@@ -1,6 +1,8 @@
 """Theme and code similarity comparison using embeddings."""
 
 import base64
+import csv
+import io
 import itertools
 import logging
 import sys
@@ -14,6 +16,40 @@ from soak.models import QualitativeAnalysis, QualitativeAnalysisComparison
 from soak.models.base import get_embedding, memory
 
 logger = logging.getLogger(__name__)
+
+
+def create_embeddings_csv_base64(embeddings_a: dict, embeddings_b: dict, name_a: str, name_b: str) -> str:
+    """Create a base64-encoded CSV of embeddings for download.
+
+    Args:
+        embeddings_a: Dict with 'labels', 'texts', 'vectors' for set A
+        embeddings_b: Dict with 'labels', 'texts', 'vectors' for set B
+        name_a: Name of analysis A
+        name_b: Name of analysis B
+
+    Returns:
+        Base64-encoded CSV string
+    """
+    output = io.StringIO()
+    writer = csv.writer(output)
+
+    # determine embedding dimension
+    dim = len(embeddings_a["vectors"][0]) if embeddings_a["vectors"] else 0
+
+    # header row
+    header = ["analysis", "label", "text"] + [f"dim_{i}" for i in range(dim)]
+    writer.writerow(header)
+
+    # write A embeddings
+    for label, text, vec in zip(embeddings_a["labels"], embeddings_a["texts"], embeddings_a["vectors"]):
+        writer.writerow([name_a, label, text] + vec)
+
+    # write B embeddings
+    for label, text, vec in zip(embeddings_b["labels"], embeddings_b["texts"], embeddings_b["vectors"]):
+        writer.writerow([name_b, label, text] + vec)
+
+    csv_content = output.getvalue()
+    return base64.b64encode(csv_content.encode("utf-8")).decode("utf-8")
 
 
 def format_similarity_matrix(
@@ -1638,8 +1674,10 @@ def compare_result_similarity(
     logger.info("\n=== Z-Score Normalized Shepard ===\n" + format_similarity_matrix(
         shepard_z, theme_names_A, theme_names_B, set_a_name=analysis_name_A, set_b_name=analysis_name_B, show_legend=False
     ))
-    
-    match_matrix = sim_matrix >= threshold
+
+    # === COVERAGE AND FIDELITY use selected_sim for consistency ===
+    # All metrics now use the same similarity metric (angular by default)
+    match_matrix = selected_sim >= threshold
 
     # === COVERAGE METRICS (hit rates) ===
     # Hit Rate A: % of A themes with at least one match in B above threshold
@@ -1657,10 +1695,10 @@ def compare_result_similarity(
 
     # === FIDELITY METRICS (mean best-match similarity) ===
     # Mean max similarity A→B: for each A theme, find best match in B, then average
-    mean_max_sim_a_to_b = sim_matrix.max(axis=1).mean().round(3) if len(emb_A) > 0 else 0
+    mean_max_sim_a_to_b = selected_sim.max(axis=1).mean().round(3) if len(emb_A) > 0 else 0
 
     # Mean max similarity B→A: for each B theme, find best match in A, then average
-    mean_max_sim_b_to_a = sim_matrix.max(axis=0).mean().round(3) if len(emb_B) > 0 else 0
+    mean_max_sim_b_to_a = selected_sim.max(axis=0).mean().round(3) if len(emb_B) > 0 else 0
 
     # Fidelity: harmonic mean of the two directional fidelity scores
     fidelity = (
@@ -1675,8 +1713,8 @@ def compare_result_similarity(
     best_matches_a_to_b = []
     if len(emb_A) > 0 and len(emb_B) > 0:
         for i in range(len(emb_A)):
-            best_b_idx = sim_matrix[i, :].argmax()
-            best_similarity = sim_matrix[i, best_b_idx]
+            best_b_idx = selected_sim[i, :].argmax()
+            best_similarity = selected_sim[i, best_b_idx]
             best_matches_a_to_b.append(
                 {
                     "theme_a_index": i,
@@ -1691,8 +1729,8 @@ def compare_result_similarity(
     best_matches_b_to_a = []
     if len(emb_A) > 0 and len(emb_B) > 0:
         for j in range(len(emb_B)):
-            best_a_idx = sim_matrix[:, j].argmax()
-            best_similarity = sim_matrix[best_a_idx, j]
+            best_a_idx = selected_sim[:, j].argmax()
+            best_similarity = selected_sim[best_a_idx, j]
             best_matches_b_to_a.append(
                 {
                     "theme_b_index": j,
@@ -1708,6 +1746,9 @@ def compare_result_similarity(
     ot_serialisable["transport_plan"] = np.round(ot_results["transport_plan"], 4).tolist()
 
     return {
+        # similarity metric used for coverage, fidelity, OT (for display purposes)
+        "similarity_metric": distance,
+        "selected_similarity_matrix": np.round(selected_sim, 3),
         # coverage metrics (hit rates)
         "hit_rate_a": hit_rate_a,
         "hit_rate_b": hit_rate_b,
@@ -1717,7 +1758,7 @@ def compare_result_similarity(
         "mean_max_sim_a_to_b": mean_max_sim_a_to_b,
         "mean_max_sim_b_to_a": mean_max_sim_b_to_a,
         "fidelity": fidelity,
-        # continuous similarity metrics
+        # continuous similarity metrics (all three always computed for reference)
         "similarity_matrix": np.round(sim_matrix, 3),
         "angle_similarity_matrix": np.round(angle_sim, 3),
         "shepard_similarity_matrix": np.round(shepard_sim, 3),
@@ -1753,6 +1794,17 @@ def compare_result_similarity(
         "mean_embedding_words_b": mean_embedding_len_B,
         # all word salad samples used in null baseline
         "word_salad_samples": word_salad_samples,
+        # raw embeddings for export (with labels)
+        "embeddings_a": {
+            "labels": theme_names_A,
+            "texts": A_texts,
+            "vectors": emb_A.tolist() if hasattr(emb_A, 'tolist') else list(emb_A),
+        },
+        "embeddings_b": {
+            "labels": theme_names_B,
+            "texts": B_texts,
+            "vectors": emb_B.tolist() if hasattr(emb_B, 'tolist') else list(emb_B),
+        },
     }
 
 
@@ -2249,6 +2301,18 @@ class SimilarityComparator:
             for k, v in zip(result_combinations_dict.keys(), similarity_results)
         }
 
+        # create embeddings CSV for each comparison pair
+        embeddings_csv_dict = {}
+        for (a, b), sim_result in zip(result_combinations, similarity_results):
+            key = f"{a.name}_{b.name}"
+            if "embeddings_a" in sim_result and "embeddings_b" in sim_result:
+                embeddings_csv_dict[key] = create_embeddings_csv_base64(
+                    sim_result["embeddings_a"],
+                    sim_result["embeddings_b"],
+                    a.name,
+                    b.name,
+                )
+
         return QualitativeAnalysisComparison(
             results=pipeline_results,
             combinations=result_combinations_dict,
@@ -2265,6 +2329,8 @@ class SimilarityComparator:
                 # transport visualisations from unbalanced OT
                 "transport_sankey": transport_sankey_dict,
                 "transport_heatmap": transport_heatmap_dict,
+                # embeddings CSV for download
+                "embeddings_csv": embeddings_csv_dict,
             },
             additional_plots={
                 "network_plot": network_plot,

@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 _pdb_on_exception = False
 
 PIPELINE_DIR = Path(__file__).parent / "pipelines"
-COMMANDS = {"run", "export", "dump", "compare", "show", "tui", "compare-strings", "coverage"}
+COMMANDS = {"run", "export", "dump", "compare", "show", "tui", "coverage"}
 
 
 @app.callback()
@@ -725,17 +725,274 @@ def resolve_analysis_path(input_path: str) -> Path:
     raise typer.BadParameter(f"Path does not exist: {path}")
 
 
+def _print_comparison_stats(
+    result: dict,
+    name_a: str,
+    name_b: str,
+    list_a: list,
+    list_b: list,
+    threshold: float,
+    embedding_model: str,
+    shepard_k: float,
+    ot_k_values: list,
+    similarity: str = "angular",
+) -> str:
+    """Generate text output for comparison statistics.
+
+    Returns the formatted text output as a string.
+    """
+    import numpy as np
+
+    # get similarity metric from result if available (canonical source)
+    sim_metric = result.get("similarity_metric", similarity)
+
+    lines = []
+
+    lines.append("")
+    lines.append("=" * 70)
+    lines.append(f"Comparison: {name_a} vs {name_b}")
+    lines.append("=" * 70)
+    lines.append(f"Similarity: {sim_metric}  |  Threshold: {threshold}  |  Shepard k: {shepard_k}")
+    lines.append(f"Embedding: {embedding_model}")
+    lines.append(f"Items: {len(list_a)} ({name_a}) x {len(list_b)} ({name_b})")
+
+    # coverage / hit rates
+    lines.append("")
+    lines.append("─" * 70)
+    lines.append("COVERAGE (Hit Rates)")
+    lines.append("─" * 70)
+    lines.append(f"  Hit Rate {name_a}: {result['hit_rate_a']:.1%}  (items with ≥1 match above threshold)")
+    lines.append(f"  Hit Rate {name_b}: {result['hit_rate_b']:.1%}")
+    lines.append(f"  Jaccard:         {result['jaccard']:.3f}  (proportion of pairs above threshold)")
+
+    # fidelity
+    lines.append("")
+    lines.append("─" * 70)
+    lines.append("FIDELITY (Mean Best-Match Similarity)")
+    lines.append("─" * 70)
+    lines.append(f"  {name_a} → {name_b}: {result['mean_max_sim_a_to_b']:.3f}")
+    lines.append(f"  {name_b} → {name_a}: {result['mean_max_sim_b_to_a']:.3f}")
+    lines.append(f"  Fidelity:        {result['fidelity']:.3f}  (harmonic mean)")
+
+    # hungarian matching
+    lines.append("")
+    lines.append("─" * 70)
+    lines.append("HUNGARIAN MATCHING (Optimal 1-to-1 Assignment)")
+    lines.append("─" * 70)
+    hungarian = result.get("hungarian", {})
+    thresh_metrics = hungarian.get("thresholded_metrics", {})
+    lines.append(f"  Coverage {name_a}: {thresh_metrics.get('coverage_a', 0):.1%}")
+    lines.append(f"  Coverage {name_b}: {thresh_metrics.get('coverage_b', 0):.1%}")
+    lines.append(f"  1-to-1 Jaccard:  {thresh_metrics.get('true_jaccard', 0):.3f}  "
+                 "(matched pairs / total unique items)")
+
+    # optimal transport
+    lines.append("")
+    lines.append("─" * 70)
+    lines.append("OPTIMAL TRANSPORT (Many-to-Many Alignment)")
+    lines.append("─" * 70)
+
+    # if multiple K values requested, show stats for each
+    ot_by_k = result.get("ot_by_k", {})
+    default_k = result.get("default_k", 0.25)
+    elbow_k = result.get("elbow_k")
+
+    # determine which K values to show
+    if ot_k_values:
+        display_k_values = ot_k_values
+    else:
+        # show default and elbow
+        display_k_values = sorted(set([default_k] + ([elbow_k] if elbow_k else [])))
+
+    for k_val in display_k_values:
+        if k_val in ot_by_k:
+            ot_data = ot_by_k[k_val]["ot"]
+            marker = ""
+            if k_val == default_k:
+                marker = " (default)"
+            if k_val == elbow_k:
+                marker = " (knee/diminishing returns)"
+            if k_val == default_k == elbow_k:
+                marker = " (default, knee)"
+
+            lines.append(f"")
+            lines.append(f"  K = {k_val}{marker}")
+            lines.append(f"    Shared Mass:     {ot_data.get('shared_mass', 0):.3f}  (mass transported)")
+            rel = ot_data.get("shared_mass_relative", 0)
+            lines.append(f"    Shared Mass Rel: {rel:.3f}  (0=random, 1=perfect)")
+            lines.append(f"    Avg Cost:        {ot_data.get('avg_cost', 0):.3f}  (lower = better)")
+            lines.append(f"    Unmatched Mass:  {ot_data.get('unmatched_mass', 0):.3f}")
+
+    if elbow_k:
+        lines.append(f"")
+        lines.append(f"  Knee detected at K = {elbow_k} (point of diminishing returns)")
+
+    # text sankey diagram
+    lines.append("")
+    lines.append("─" * 70)
+    lines.append(f"TRANSPORT FLOWS (cost labels: low <K, med K-2K, high >2K where K={default_k})")
+    lines.append("─" * 70)
+
+    # use default K for sankey
+    if default_k in ot_by_k:
+        transport_plan = np.array(ot_by_k[default_k]["ot"]["transport_plan"])
+        # use selected similarity for cost (same as OT uses internally)
+        selected_sim = result.get("selected_similarity_matrix", result.get("angle_similarity_matrix", []))
+        cost_matrix = 1 - np.array(selected_sim)
+        total_mass = transport_plan.sum()
+
+        # threshold for showing a flow (1% of max flow)
+        flow_threshold = 0.01 * transport_plan.max() if transport_plan.max() > 0 else 0
+
+        # cost thresholds relative to K (the OT mass penalty)
+        # low: cost < K (cheaper than unmatching penalty, OT favours transport)
+        # med: cost K to 2K (borderline)
+        # high: cost > 2K (expensive, OT may prefer unmatching)
+        k_threshold = default_k
+
+        for i, item_a in enumerate(list_a):
+            # find all B items this A item sends mass to
+            flows = []
+            for j, item_b in enumerate(list_b):
+                flow = transport_plan[i, j]
+                if flow > flow_threshold:
+                    cost = cost_matrix[i, j] if len(cost_matrix) > 0 else 0
+                    pct = (flow / total_mass * 100) if total_mass > 0 else 0
+                    # qualitative cost label relative to K
+                    if cost < k_threshold:
+                        cost_label = "low"
+                    elif cost < 2 * k_threshold:
+                        cost_label = "med"
+                    else:
+                        cost_label = "high"
+                    flows.append((item_b, pct, cost_label))
+
+            # truncate item name for display
+            item_a_display = item_a[:25] + "..." if len(str(item_a)) > 28 else str(item_a)
+
+            if flows:
+                flows.sort(key=lambda x: -x[1])  # sort by % descending
+                flow_strs = [f"{b[:20]}({cost},{pct:.0f}%)" for b, pct, cost in flows[:3]]
+                extra = f" +{len(flows)-3} more" if len(flows) > 3 else ""
+                lines.append(f"  {item_a_display:28s} --> {', '.join(flow_strs)}{extra}")
+            else:
+                lines.append(f"  {item_a_display:28s} --> (unmatched)")
+
+    # transport mass matrix
+    lines.append("")
+    lines.append("─" * 70)
+    lines.append("TRANSPORT MASS MATRIX (%)")
+    lines.append("─" * 70)
+
+    if default_k in ot_by_k:
+        transport_plan = np.array(ot_by_k[default_k]["ot"]["transport_plan"])
+        total_mass = transport_plan.sum()
+        if total_mass > 0:
+            pct_matrix = transport_plan / total_mass * 100
+        else:
+            pct_matrix = transport_plan
+
+        # print compact matrix
+        _print_compact_matrix(lines, pct_matrix, list_a, list_b, fmt="{:5.1f}", name_a=name_a, name_b=name_b)
+
+    # selected similarity matrix (used for all metrics)
+    lines.append("")
+    lines.append("─" * 70)
+    lines.append(f"SIMILARITY MATRIX ({sim_metric.upper()} -- used for all metrics)")
+    lines.append("─" * 70)
+
+    if "selected_similarity_matrix" in result:
+        _print_compact_matrix(lines, np.array(result["selected_similarity_matrix"]), list_a, list_b,
+                              fmt="{:5.2f}", name_a=name_a, name_b=name_b)
+    elif "angle_similarity_matrix" in result:
+        # fallback for older results
+        _print_compact_matrix(lines, np.array(result["angle_similarity_matrix"]), list_a, list_b,
+                              fmt="{:5.2f}", name_a=name_a, name_b=name_b)
+
+    lines.append("")
+    lines.append("=" * 70)
+
+    return "\n".join(lines)
+
+
+def _print_compact_matrix(
+    lines: list,
+    matrix,
+    list_a: list,
+    list_b: list,
+    fmt: str = "{:5.2f}",
+    name_a: str = "A",
+    name_b: str = "B",
+    max_label_len: int = 12,
+):
+    """Append compact matrix representation to lines list."""
+    import numpy as np
+
+    n_a, n_b = matrix.shape
+
+    # truncate labels
+    def trunc(s, max_len):
+        s = str(s)
+        return s[:max_len-1] + "…" if len(s) > max_len else s
+
+    labels_a = [trunc(s, max_label_len) for s in list_a]
+    labels_b = [trunc(s, max_label_len) for s in list_b]
+
+    # if matrix is too large, show summary
+    if n_a > 15 or n_b > 10:
+        lines.append(f"  (Matrix {n_a}x{n_b} -- showing top 5 pairs by value)")
+        flat_indices = np.argsort(matrix.ravel())[::-1][:5]
+        for idx in flat_indices:
+            i, j = np.unravel_index(idx, matrix.shape)
+            lines.append(f"    {labels_a[i]:12s} <-> {labels_b[j]:12s}: {fmt.format(matrix[i, j])}")
+        return
+
+    # header row
+    header = " " * (max_label_len + 2) + "│"
+    for label in labels_b:
+        header += f" {label:>{max_label_len}}"
+    lines.append(f"  {header}")
+
+    # separator
+    sep = "─" * (max_label_len + 1) + "┼" + "─" * (len(labels_b) * (max_label_len + 1))
+    lines.append(f"  {sep}")
+
+    # data rows
+    for i, label_a in enumerate(labels_a):
+        row = f"{label_a:>{max_label_len}} │"
+        for j in range(n_b):
+            val = fmt.format(matrix[i, j])
+            row += f" {val:>{max_label_len}}"
+        lines.append(f"  {row}")
+
+
 @app.command()
 def compare(
     input_files: list[str] = typer.Argument(
-        ...,
-        help="JSON files or directories containing QualitativeAnalysis results to compare (minimum 2)",
+        None,
+        help="JSON files or directories containing QualitativeAnalysis results to compare (minimum 2). Not needed if using --strings.",
+    ),
+    strings: str = typer.Option(
+        None,
+        "--strings",
+        "-s",
+        help="Path to XLSX file with two columns of strings to compare (alternative to JSON files)",
+    ),
+    col_a: str = typer.Option(
+        "A",
+        "--col-a",
+        help="Column name/letter for first list when using --strings (default: A)",
+    ),
+    col_b: str = typer.Option(
+        "B",
+        "--col-b",
+        help="Column name/letter for second list when using --strings (default: B)",
     ),
     output: str = typer.Option(
-        "comparison.html",
+        None,
         "--output",
         "-o",
-        help="Output HTML file path",
+        help="Output file path (.html for full report, .txt for text stats only)",
     ),
     threshold: float = typer.Option(
         0.6,
@@ -756,11 +1013,11 @@ def compare(
         help="Python format string for theme labels in visualizations. Available: {name}, {description}",
     ),
     embedding_template: str = typer.Option(
-        "{name}: {description}",
+        None,
         "--embedding-template",
         "-e",
         envvar="SOAK_EMBEDDING_TEMPLATE",
-        help="Python format string for generating theme embeddings. Available: {name}, {description}.",
+        help="Python format string for generating theme embeddings. Default: '{name}' for strings, '{name}: {description}' for JSON.",
     ),
     embedding_model: str = typer.Option(
         "text-embedding-3-large",
@@ -768,112 +1025,284 @@ def compare(
         envvar="SOAK_EMBEDDING_MODEL",
         help="Embedding model (use 'local/model-name' for sentence-transformers, e.g., 'local/all-MiniLM-L6-v2')",
     ),
-    k: float = typer.Option(
+    shepard_k: float = typer.Option(
         1.0,
-        "--k",
-        "-k",
-        envvar="SOAK_K",
+        "--shepard-k",
+        envvar="SOAK_SHEPARD_K",
         help="Shepard similarity decay parameter (default: 1.0, higher = steeper decay)",
     ),
-    reg_m: float = typer.Option(
-        0.2,
-        "--reg-m",
-        "-K",
-        envvar="SOAK_REG_M",
-        help="OT mass penalty (K). Fixed value for cross-analysis comparability. Lower = more selective matching.",
+    ot_k: float = typer.Option(
+        0.25,
+        "--ot-k",
+        envvar="SOAK_OT_K",
+        help="Default K for optimal transport mass penalty. Lower = more selective matching.",
     ),
-    distance: str = typer.Option(
+    ot_k_values: str = typer.Option(
+        None,
+        "--ot-k-values",
+        help="Comma-separated K values for OT analysis (e.g., '0.1,0.25,0.5'). Shows stats for each.",
+    ),
+    similarity: str = typer.Option(
         "angular",
-        "--distance",
-        "-d",
-        envvar="SOAK_DISTANCE",
-        help="Distance metric for similarity: angular (default), cosine, shepard. Angular is preferred as it satisfies the triangle inequality and avoids the high-similarity compression of cosine.",
+        "--similarity",
+        "-S",
+        envvar="SOAK_SIMILARITY",
+        help="Similarity metric: angular (default), cosine, shepard. Angular is preferred as it satisfies the triangle inequality. Used consistently for coverage, fidelity, and OT.",
     ),
 ):
-    """Compare multiple analysis results and generate comparison report."""
+    """Compare analyses or string lists and generate comparison statistics.
+
+    Two modes:
+
+    1. JSON mode (default): Compare two or more QualitativeAnalysis JSON files
+       soak compare results1.json results2.json
+
+    2. Strings mode: Compare two columns from an XLSX file
+       soak compare --strings data.xlsx --col-a "List1" --col-b "List2"
+
+    Statistics are always printed to stdout. Use --output to save HTML report or text file.
+    """
+    import pandas as pd
     from jinja2 import Environment, FileSystemLoader
 
-    from .comparators.similarity_comparator import SimilarityComparator
+    from .comparators.similarity_comparator import SimilarityComparator, compare_result_similarity
     from .helpers import format_exception_concise
-    from .models import QualitativeAnalysis, QualitativeAnalysisPipeline
+    from .models import QualitativeAnalysis, QualitativeAnalysisPipeline, Theme
 
-    if len(input_files) < 2:
-        logger.error("At least 2 JSON files required for comparison")
-        raise typer.Exit(1)
-        
-    logger.info(f"Loading {len(input_files)} analyses...")
-    analyses = []
-
-    for input_arg in input_files:
-        input_path = resolve_analysis_path(input_arg)
-
-        with open(input_path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
+    # parse ot_k_values if provided
+    parsed_ot_k_values = None
+    if ot_k_values:
         try:
-            # Load as pipeline and extract result
-            if "nodes" in data:
-                # This is a pipeline
-                pipeline = QualitativeAnalysisPipeline.model_validate(data)
-                analysis = pipeline.result()
-                # Set name from filename (more useful for comparisons)
-                analysis.name = input_path.stem
+            parsed_ot_k_values = [float(v.strip()) for v in ot_k_values.split(",")]
+        except ValueError:
+            logger.error(f"Invalid --ot-k-values format: {ot_k_values}. Use comma-separated floats.")
+            raise typer.Exit(1)
+
+    # determine mode: strings or JSON
+    if strings:
+        # STRINGS MODE: compare two columns from XLSX
+        xlsx_path = Path(strings)
+        if not xlsx_path.exists():
+            # try package soak-data directory
+            package_data_path = Path(__file__).parent / strings
+            if package_data_path.exists():
+                xlsx_path = package_data_path
             else:
-                # This is already a QualitativeAnalysis
+                logger.error(f"File not found: {strings}")
+                raise typer.Exit(1)
 
-                analysis = QualitativeAnalysis.model_validate(data)
-                if not analysis.name or analysis.name == analysis.sha256()[:8]:
-                    analysis.name = input_path.stem
-
-            analyses.append(analysis)
+        logger.info(f"Reading {xlsx_path}...")
+        try:
+            df = pd.read_excel(xlsx_path)
         except Exception as e:
-            if _pdb_on_exception:
-                traceback.print_exc()
-                pdb.post_mortem()
-            error_msg = format_exception_concise(e)
-            raise typer.BadParameter(f"Error loading {input_path}:\n{error_msg}")
-        logger.info(
-            f"  Loaded: {analysis.name} ({len(analysis.themes)} themes, {len(analysis.codes)} codes)"
+            logger.error(f"Error reading XLSX file: {e}")
+            raise typer.Exit(1)
+
+        # extract columns
+        try:
+            list_a = df[col_a].dropna().astype(str).tolist()
+            list_b = df[col_b].dropna().astype(str).tolist()
+        except KeyError as e:
+            logger.error(f"Column not found: {e}")
+            logger.info(f"Available columns: {', '.join(df.columns)}")
+            raise typer.Exit(1)
+
+        if not list_a or not list_b:
+            logger.error("One or both columns are empty")
+            raise typer.Exit(1)
+
+        logger.info(f"Column {col_a}: {len(list_a)} items")
+        logger.info(f"Column {col_b}: {len(list_b)} items")
+
+        # check credentials
+        if not embedding_model.startswith("local/"):
+            check_and_prompt_credentials(Path.cwd())
+
+        # create QualitativeAnalysis objects from strings
+        themes_a = [Theme(name=s, description=s, code_slugs=[]) for s in list_a]
+        themes_b = [Theme(name=s, description=s, code_slugs=[]) for s in list_b]
+        analysis_a = QualitativeAnalysis(name=col_a, themes=themes_a)
+        analysis_b = QualitativeAnalysis(name=col_b, themes=themes_b)
+
+        # default embedding template for strings mode
+        effective_embedding_template = embedding_template or "{name}"
+
+        logger.info("Computing similarity...")
+        result = compare_result_similarity(
+            analysis_a,
+            analysis_b,
+            threshold=threshold,
+            embedding_template=effective_embedding_template,
+            embedding_model=embedding_model,
+            k=shepard_k,
+            reg_m=ot_k,
+            distance=similarity,
         )
 
-    logger.info("Comparing analyses...")
-    comparator = SimilarityComparator()
-    comparison = comparator.compare(
-        analyses,
-        config={
-            "threshold": threshold,
-            "method": method,
-            "n_neighbors": 5,
-            "min_dist": 0.01,
-            "label_template": label,
-            "embedding_template": embedding_template,
-            "embedding_model": embedding_model,
-            "k": k,
-            "reg_m": reg_m,
-            "distance": distance,
-        },
-    )
-
-    logger.info("Generating HTML report...")
-    template_dir = Path(__file__).parent / "templates"
-    env = Environment(loader=FileSystemLoader(template_dir))
-    env.globals["enumerate"] = enumerate
-    template = env.get_template("comparison.html")
-    html_content = template.render(comparison=comparison)
-
-    logger.info(f"Writing to {output}...")
-    with open(output, "w", encoding="utf-8") as f:
-        f.write(html_content)
-
-    logger.info(f"✓ Comparison report saved to: {output}")
-
-    # Print summary statistics
-    logger.debug("\nSummary:")
-    for key, comp in comparison.by_comparisons().items():
-        logger.debug(f"  {key}:")
-        logger.debug(
-            f"    Hit Rate A: {comp['stats']['hit_rate_a']:.1%}, Hit Rate B: {comp['stats']['hit_rate_b']:.1%}, Fidelity: {comp['stats']['fidelity']:.3f}"
+        # print statistics to stdout
+        stats_text = _print_comparison_stats(
+            result,
+            name_a=col_a,
+            name_b=col_b,
+            list_a=list_a,
+            list_b=list_b,
+            threshold=threshold,
+            embedding_model=embedding_model,
+            shepard_k=shepard_k,
+            ot_k_values=parsed_ot_k_values,
+            similarity=similarity,
         )
+        print(stats_text, file=sys.stdout)
+
+        # save output if requested
+        if output:
+            output_path = Path(output)
+            if output_path.suffix == ".txt":
+                with open(output_path, "w", encoding="utf-8") as f:
+                    f.write(stats_text)
+                logger.info(f"✓ Statistics saved to: {output}")
+            else:
+                # for HTML output, we need to use the comparator for full report
+                comparator = SimilarityComparator()
+                comparison = comparator.compare(
+                    [analysis_a, analysis_b],
+                    config={
+                        "threshold": threshold,
+                        "method": method,
+                        "n_neighbors": 5,
+                        "min_dist": 0.01,
+                        "label_template": label,
+                        "embedding_template": effective_embedding_template,
+                        "embedding_model": embedding_model,
+                        "k": shepard_k,
+                        "reg_m": ot_k,
+                        "distance": similarity,
+                    },
+                )
+                template_dir = Path(__file__).parent / "templates"
+                env = Environment(loader=FileSystemLoader(template_dir))
+                env.globals["enumerate"] = enumerate
+                template = env.get_template("comparison.html")
+                html_content = template.render(comparison=comparison)
+                with open(output_path, "w", encoding="utf-8") as f:
+                    f.write(html_content)
+                logger.info(f"✓ HTML report saved to: {output}")
+
+    else:
+        # JSON MODE: compare analysis files
+        if not input_files or len(input_files) < 2:
+            logger.error("At least 2 JSON files required for comparison (or use --strings)")
+            raise typer.Exit(1)
+
+        logger.info(f"Loading {len(input_files)} analyses...")
+        analyses = []
+
+        for input_arg in input_files:
+            input_path = resolve_analysis_path(input_arg)
+
+            with open(input_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+
+            try:
+                if "nodes" in data:
+                    pipeline = QualitativeAnalysisPipeline.model_validate(data)
+                    analysis = pipeline.result()
+                    analysis.name = input_path.stem
+                else:
+                    analysis = QualitativeAnalysis.model_validate(data)
+                    if not analysis.name or analysis.name == analysis.sha256()[:8]:
+                        analysis.name = input_path.stem
+
+                analyses.append(analysis)
+            except Exception as e:
+                if _pdb_on_exception:
+                    traceback.print_exc()
+                    pdb.post_mortem()
+                error_msg = format_exception_concise(e)
+                raise typer.BadParameter(f"Error loading {input_path}:\n{error_msg}")
+            logger.info(
+                f"  Loaded: {analysis.name} ({len(analysis.themes)} themes, {len(analysis.codes)} codes)"
+            )
+
+        # default embedding template for JSON mode
+        effective_embedding_template = embedding_template or "{name}: {description}"
+
+        logger.info("Comparing analyses...")
+        comparator = SimilarityComparator()
+        comparison = comparator.compare(
+            analyses,
+            config={
+                "threshold": threshold,
+                "method": method,
+                "n_neighbors": 5,
+                "min_dist": 0.01,
+                "label_template": label,
+                "embedding_template": effective_embedding_template,
+                "embedding_model": embedding_model,
+                "k": shepard_k,
+                "reg_m": ot_k,
+                "distance": similarity,
+            },
+        )
+
+        # print statistics to stdout for each pairwise comparison
+        for key, comp in comparison.by_comparisons().items():
+            stats = comp["stats"]
+            analysis_a, analysis_b = comp["analyses"]
+            list_a = [t.name for t in analysis_a.themes]
+            list_b = [t.name for t in analysis_b.themes]
+
+            stats_text = _print_comparison_stats(
+                stats,
+                name_a=analysis_a.name,
+                name_b=analysis_b.name,
+                list_a=list_a,
+                list_b=list_b,
+                threshold=threshold,
+                embedding_model=embedding_model,
+                shepard_k=shepard_k,
+                ot_k_values=parsed_ot_k_values,
+                similarity=similarity,
+            )
+            print(stats_text, file=sys.stdout)
+
+        # save output
+        output_path = Path(output) if output else Path("comparison.html")
+        if output_path.suffix == ".txt":
+            # text output: save all stats
+            all_stats = []
+            for key, comp in comparison.by_comparisons().items():
+                stats = comp["stats"]
+                analysis_a, analysis_b = comp["analyses"]
+                list_a = [t.name for t in analysis_a.themes]
+                list_b = [t.name for t in analysis_b.themes]
+                all_stats.append(_print_comparison_stats(
+                    stats,
+                    name_a=analysis_a.name,
+                    name_b=analysis_b.name,
+                    list_a=list_a,
+                    list_b=list_b,
+                    threshold=threshold,
+                    embedding_model=embedding_model,
+                    shepard_k=shepard_k,
+                    ot_k_values=parsed_ot_k_values,
+                    similarity=similarity,
+                ))
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write("\n\n".join(all_stats))
+            logger.info(f"✓ Statistics saved to: {output_path}")
+        else:
+            # HTML output
+            logger.info("Generating HTML report...")
+            template_dir = Path(__file__).parent / "templates"
+            env = Environment(loader=FileSystemLoader(template_dir))
+            env.globals["enumerate"] = enumerate
+            template = env.get_template("comparison.html")
+            html_content = template.render(comparison=comparison)
+
+            with open(output_path, "w", encoding="utf-8") as f:
+                f.write(html_content)
+            logger.info(f"✓ HTML report saved to: {output_path}")
 
 
 @app.command()
@@ -957,184 +1386,6 @@ def show(
 
     # Print contents to stdout
     print(item_path.read_text(), file=sys.stdout)
-
-
-@app.command()
-def compare_strings(
-    xlsx_file: str = typer.Argument(
-        ..., help="Path to XLSX file with strings to compare"
-    ),
-    col_a: str = typer.Option(
-        "A", "--col-a", help="First column name or letter (default: A)"
-    ),
-    col_b: str = typer.Option(
-        "B", "--col-b", help="Second column name or letter (default: B)"
-    ),
-    threshold: float = typer.Option(
-        0.6,
-        "--threshold",
-        envvar="SOAK_THRESHOLD",
-        help="Similarity threshold for matching",
-    ),
-    embedding_model: str = typer.Option(
-        "text-embedding-3-large",
-        "--embedding-model",
-        envvar="SOAK_EMBEDDING_MODEL",
-        help="Embedding model (use 'local/model-name' for sentence-transformers, e.g., 'local/all-MiniLM-L6-v2')",
-    ),
-    k: float = typer.Option(
-        1.0,
-        "--k",
-        envvar="SOAK_K",
-        help="Shepard similarity decay parameter (default: 1.0, higher = steeper decay)",
-    ),
-):
-    """Compare similarity of two lists of strings from an XLSX file.
-
-    Reads column A and column B from the specified XLSX file and computes
-    similarity metrics between the two lists using embeddings.
-
-    Example:
-        soak compare-strings data.xlsx --threshold 0.7
-        soak compare-strings data.xlsx --col-a "List1" --col-b "List2"
-    """
-    import pandas as pd
-    import numpy as np
-
-    from .comparators.similarity_comparator import compare_result_similarity
-    from .models import QualitativeAnalysis, Theme
-
-    # Read the xlsx file - check current dir first, then package soak-data
-    xlsx_path = Path(xlsx_file)
-    if not xlsx_path.exists():
-        # Try resolving relative to package directory
-        package_data_path = Path(__file__).parent / xlsx_file
-        if package_data_path.exists():
-            xlsx_path = package_data_path
-        else:
-            logger.error(f"File not found: {xlsx_file}")
-            raise typer.Exit(1)
-
-    logger.info(f"Reading {xlsx_path}...")
-    try:
-        df = pd.read_excel(xlsx_path)
-    except Exception as e:
-        logger.error(f"Error reading XLSX file: {e}")
-        raise typer.Exit(1)
-
-    # Get the two columns
-    try:
-        list_a = df[col_a].dropna().astype(str).tolist()
-        list_b = df[col_b].dropna().astype(str).tolist()
-    except KeyError as e:
-        logger.error(f"Column not found: {e}")
-        logger.info(f"Available columns: {', '.join(df.columns)}")
-        raise typer.Exit(1)
-
-    if not list_a or not list_b:
-        logger.error("One or both columns are empty")
-        raise typer.Exit(1)
-
-    logger.info(f"Column {col_a}: {len(list_a)} items")
-    logger.info(f"Column {col_b}: {len(list_b)} items")
-
-    # Check for API credentials if using api backend
-    if not embedding_model.startswith("local/"):
-        check_and_prompt_credentials(Path.cwd())
-
-    # Create minimal QualitativeAnalysis objects with themes from the string lists
-    themes_a = [Theme(name=s, description=s, code_slugs=[]) for s in list_a]
-    themes_b = [Theme(name=s, description=s, code_slugs=[]) for s in list_b]
-
-    analysis_a = QualitativeAnalysis(name=col_a, themes=themes_a)
-    analysis_b = QualitativeAnalysis(name=col_b, themes=themes_b)
-
-    logger.info("Computing similarity...")
-
-    # Compare using existing function
-    result = compare_result_similarity(
-        analysis_a,
-        analysis_b,
-        threshold=threshold,
-        embedding_template="{name}",
-        embedding_model=embedding_model,
-        k=k,
-    )
-
-    # Print results to stdout
-    print("\n" + "=" * 60)
-    print(f"Similarity Comparison: {col_a} vs {col_b}")
-    print("=" * 60)
-    print(f"\nThreshold: {threshold}")
-    print(f"Embedding: {embedding_model}")
-    print(f"Shepard k: {k}")
-
-    # Print the two lists being compared
-    print(f"\n{col_a} ({len(list_a)} items):")
-    for i, item in enumerate(list_a):
-        print(f"  {i}: {item}")
-
-    print(f"\n{col_b} ({len(list_b)} items):")
-    for i, item in enumerate(list_b):
-        print(f"  {i}: {item}")
-    print(f"\nCoverage (Hit Rates):")
-    print(f"  Hit Rate A: {result['hit_rate_a']:.1%}")
-    print(f"  Hit Rate B: {result['hit_rate_b']:.1%}")
-    print(f"  Jaccard:    {result['jaccard']:.3f}")
-
-    print(f"\nFidelity (Mean Best-Match Similarity):")
-    print(f"  {col_a} → {col_b}: {result['mean_max_sim_a_to_b']:.3f}")
-    print(f"  {col_b} → {col_a}: {result['mean_max_sim_b_to_a']:.3f}")
-    print(f"  Fidelity:          {result['fidelity']:.3f}")
-
-    print(f"\nHungarian Matching (1-to-1):")
-    print(f"  Coverage A:   {result['hungarian']['thresholded_metrics']['coverage_a']:.1%}")
-    print(f"  Coverage B:   {result['hungarian']['thresholded_metrics']['coverage_b']:.1%}")
-    print(f"  True Jaccard: {result['hungarian']['thresholded_metrics']['true_jaccard']:.3f}")
-
-    print(f"\nOptimal Transport (many-to-many):")
-    print(f"  Shared Mass:        {result['ot']['shared_mass']:.3f}")
-    print(f"  Shared Mass Rel:    {result['ot'].get('shared_mass_relative', 0):.3f} (0=random, 1=perfect)")
-    print(f"  Avg Cost:           {result['ot']['avg_cost']:.3f}")
-    print(f"  Unmatched Mass:     {result['ot']['unmatched_mass']:.3f}")
-    print("\n" + "=" * 60)
-
-    # Helper function for printing matrices
-    def print_matrix(matrix, title, list_a, list_b):
-        print(f"\n{title} ({len(list_a)} x {len(list_b)}):")
-        print("-" * 60)
-
-        # Truncate long strings for display
-        def truncate(s, max_len=30):
-            return s if len(s) <= max_len else s[:max_len-3] + "..."
-
-        # Show a summary view if matrix is large
-        if len(list_a) > 10 or len(list_b) > 10:
-            print(f"(Matrix too large to display fully)")
-            print(f"\nTop 5 most similar pairs:")
-            # Find top N pairs
-            flat_indices = np.argsort(matrix.ravel())[::-1][:5]
-            for idx in flat_indices:
-                i, j = np.unravel_index(idx, matrix.shape)
-                print(f"  {truncate(list_a[i])} <-> {truncate(list_b[j])}: {matrix[i, j]:.3f}")
-        else:
-            # Print full matrix for small datasets
-            print(f"\n{' ':30s} | ", end="")
-            for item_b in list_b:
-                print(f"{truncate(item_b, 15):15s} ", end="")
-            print()
-            print("-" * (32 + len(list_b) * 16))
-
-            for i, item_a in enumerate(list_a):
-                print(f"{truncate(item_a, 30):30s} | ", end="")
-                for j in range(len(list_b)):
-                    print(f"{matrix[i, j]:15.3f} ", end="")
-                print()
-
-    # Print all similarity matrices
-    print_matrix(result['similarity_matrix'], "Cosine Similarity Matrix", list_a, list_b)
-    print_matrix(result['angle_similarity_matrix'], "Angular Similarity Matrix", list_a, list_b)
-    print_matrix(result['shepard_similarity_matrix'], f"Shepard Similarity Matrix (k={k})", list_a, list_b)
 
 
 @app.command()
