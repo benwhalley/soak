@@ -1,0 +1,42 @@
+I want you to write a non-technical sketch of 
+- what the problem is (matching themes) and 
+- why jaccard or Hungarian matching is unhelpful. 
+- Also why cosine similarities hard to interpret, even if we do things like apply exponential decay (this helps, but still leaves the scale/metric undetermined. is .3 a big change or small? is .7 similar or not?) maybe talk about how cosine sim is good for ranking and work to validate embedding models focusses on ranking/ordering rather than trying to quantify similarity 
+
+- explain why OT is a nice idea (allows themes to split) but not optimal because mass must be matched, even when theme doesn't exist
+- explain UOT and why it's preferable, but highlight that the loss/penalty parameter is arbitrary and not necessarily aligned with human judgements - e.g of whether two themes are sufficiently similar to be considered together
+
+- talk about how we'd like metrics for how similar/different sets of themes are (e.g. to judge differences between populations, or stability of multiple runs of an analysis)
+
+- then, talk about how we could set K. 
+- One option might be to set it so that themes never split into > 3 (this seems like a reasonable heuristic, but still subjective). 
+- but another way is to try and calibrate K so it corresponds to typical human judgements
+- this introduces the idea of an experiment based on human similarity ratings which can be used to calibrate K
+
+idea 1 is to use STS ratings and calibrate K so that the mid-point of that scale corresponds to a K that allows themes to split if they have a similar cosine distance
+
+idea 2 is to delibeately collect new human judgements about themes and explicitly askl whethe the themes should be split or lumped etc (as we discused above)
+
+The sketch should give details of the two kinds of expeirments and how they could be run to calibrate K, but in general terms. Later we can add a methods section.
+
+
+my feeling is that at the moment I may only have time to use idea 1 with exisitng data, so focus on that and check the existing datasets and think carfull about how they could be used to address the problem of how to calibrate K
+
+
+think about how to generate a dataset for human evaluiation and judgements
+maybe take existing themes from qual papers in a range of domains
+ask chatgpt to either
+
+1- paraphrase keeping meaning the same
+2- amend the theme, to extend it to include a broader concept
+3- amend the theme, to make it more specific, excluding some aspect of the original
+
+Another method might be to compare paraphrases with
+
+4- model given an additional theme or themes (perhaps 1-4) from the original set. the prompt asks for a new theme which encompasses or joins all of them
+
+5- model given two sets of themes from an analysis which only partly overlap, or where two themes have been deliberately combined.
+
+
+
+

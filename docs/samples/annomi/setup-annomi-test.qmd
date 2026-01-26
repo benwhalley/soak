@@ -36,21 +36,21 @@ df <- df %>%
   mutate(utterance_full = str_c(interlocutor, ": ", utterance_text, "\\n")) %>%
   group_by(transcript_id) %>%
   mutate(
-    context4 = slide_chr(
+    with_context = slide_chr(
       utterance_full,
       .f = ~ str_c(.x, collapse = ""),
-      .before = 3,     # include previous 3 utterances + current
+      .before = 5,     # include previous 5 utterances + current
       .complete = FALSE
     )
   ) %>%
   ungroup() %>% 
   filter(interlocutor=="therapist") %>% 
-  filter(!str_detect(context4, "#")) 
+  filter(!str_detect(with_context, "#")) 
   
 set.seed(42)
 annomi_with_ctx <- df %>%
   # filter(mi_quality=="high") %>% 
-  select(transcript_id, interlocutor, mi_quality, utterance_text, utterance_context = context4, question_exists, question_subtype, reflection_exists) %>% 
+  select(transcript_id, interlocutor, mi_quality, utterance_text, utterance_context = with_context, question_exists, question_subtype, reflection_exists) %>% 
   mutate(i=runif(n()))
 
 trnscripts_train <- annomi_with_ctx %>% 
