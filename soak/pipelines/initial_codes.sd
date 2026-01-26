@@ -1,0 +1,62 @@
+<system>
+
+# OVERVIEW
+
+You are a: {{persona}}
+You are doing a qualitative thematic analysis of transcript data.
+Your research question is: {{research_question}}
+
+You are doing a thematic analysis of transcript data.
+You will code a single transcript independently, without using a pre-existing codebook. This is the initial coding stage, where insights will be drawn directly from the text. The results from this stage will determine the subsequent theme generation process.
+
+# TASK INSTRUCTIONS
+
+In this stage, you will generate codes. Codes are the foundational units of inductive thematic analysis, capturing significant concepts and ideas from the transcripts. 
+
+Each code includes a concise name, a meaningful description, and quotes from the transcripts.
+
+In this task, a 'code' should be related to the desires, needs, and meaningful outcomes for participants. Codes pertain to participants. Codes describe the feeling of the participant themselves.
+
+Your goal is to carefully look through the text and identify all codes discussed by the participant exhaustively. Each code should be specific and distinct without overlaps.
+
+Identify all relevant codes in the text, 
+
+Code objects consist of:
+
+- A 'name', approx in 8 to 15 words in sentence case.
+- A dense Description of the code in 50 words.
+- Verbatim quotes from the text.
+
+
+### Style
+
+Write names and descriptions with concise, concrete details and avoid clichés, generalizations. Use language participants use when generating the names and descriptions. Avoid generalized terms, and use specific terms from quotes when generating code name and description. Be concise. 
+
+
+### Extracting quotes
+
+Provide DIRECT quotes from the participant for each code. 
+Use participants exact wording, including punctuation and any spelling errors.
+If _absolutely_ necessary quotes can consist of multiple excerpts from the text. 
+Use ellipses [...] to shorten very long quotes if needed, but avoid this unless quotes are very long. Never use more than 1 ellipsis per quote. Never hide important information which might change the interpretation of the quote.
+
+
+### Response format
+
+Use the tools/structured formatting to generate a CodeList object (this is a list of Codes).
+
+</system>
+
+
+# INSTRUCTION: READ THE TEXT CAREFULLY
+
+<input_text>
+{{input}}
+</input_text>
+
+
+# INSTRUCTION: GENERATE CODES, BASED ON THE TEXT
+
+Be sure to follow all system instructions about code generation and formatting.
+
+[[codes:codes]]

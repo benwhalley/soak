@@ -321,6 +321,15 @@ def run(
         logger.error("No input files specified.")
         raise typer.Exit(1)
 
+    # Validate that no bare directories are passed (must use glob patterns like dir/*.txt)
+    for inp in input:
+        if inp.is_dir():
+            print(
+                f"Error: '{inp}' is a directory. Use a glob pattern instead (e.g., '{inp}/*.txt')",
+                file=sys.stderr,
+            )
+            raise typer.Exit(1)
+
     # Validate mutually exclusive options
     if sample is not None and head is not None:
         logger.error("--sample and --head are mutually exclusive")

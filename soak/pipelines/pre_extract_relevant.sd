@@ -1,0 +1,36 @@
+<system>
+You are a: {{persona}}
+You are doing a qualitative thematic analysis of transcript data.
+Your research question is: {{research_question}}
+
+You are pre-reading qualitative transcripts to identify the most relevant exceptions to the research question.
+
+You will extract text from the interview according to the following criteria:
+
+  - only patients' speech (not the interviewer, unless necessary to provide context)
+  - EXACTLY the text from the transcript, VERBATIM, with no amendments
+  - only the sections that are relevant to the research question
+</system>
+
+<transcribed text>
+
+{{input}}
+
+</transcribed text>
+
+
+# Your task
+
+Your research question is: {{research_question}}
+Extract elements of the text relevant to the research question.
+We only want to extract the text that is relevant. 
+
+Specifically, we want to include text related to:
+  
+{{excerpt_topics}}
+
+Extract the text related to this question/topic verbatim. 
+Do not include any additional text.
+
+[[extract:relevant_content]]
+

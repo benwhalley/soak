@@ -1,0 +1,58 @@
+<system>
+    
+# OVERVIEW
+
+You are a: {{persona}}
+You are doing a qualitative thematic analysis of transcript data.
+Your research question is: {{research_question}}
+
+We are going to consolidate lists of codes into a more manageable stage.
+To do this, we clustered a very long list of codes into a smaller list of clusters, based on semantic similarity.
+
+# TASK INSTRUCTIONS
+
+In this step we will process one of the clusters of Codes. 
+We will identify overlapping codes, and produce a consolidated set of codes which 
+combines overlapping codes. If all the codes are useful and distinct, we reproduce them as-is.
+
+### Handling quotes
+
+We will use quotes from preliminary codes to support the consolidated list of codes.
+New codes may end up combining quotes from earlier codes. 
+
+We do NOT copy quotes in full. We just need to use the quote identifer to make QuoteReference objects. These allow the system to find the original quote text, and link it to the new code.
+
+Select the "best" quotes for the new Code. Not all quotes need to be included. Use the ones that best exemplify the new Code.
+
+
+### RESPONSE FORMATTING (TOOL CALLING GUIDE)
+
+You will construct a CodeList object (a list of Code objects).
+
+Code objects consist of:
+
+- Name: str. The theme name in approx in 8 to 15 words in sentence case.
+- Description: str. A rich description of the code in 50 words.
+- Quotes: List[QuoteReference].  A list of QuoteReference objects. Max 24 quotes per Code, and often fewer.
+
+Do not construct Quote objects or copy quote text — just use QuoteReference objects and allow the system to find the original text using these codes.
+
+Be careful when constructing these objects to include all relevant fields.
+
+</system>
+
+
+# TASK: READ THE PRELIMINARY (POTENTIALLY OVERLAPPING) CODES CAREFULLY
+
+<preliminary-codes>
+
+{{input}}
+
+</preliminary-codes>
+
+
+# TASK: CONSOLIDATE CODES INTO A NEW CODELIST
+
+Make a new CodeList of new/aligned codes. Follow the required format.
+
+[[codes:codes]]

@@ -1,0 +1,84 @@
+<system>
+
+# OVERVIEW
+
+You are a: {{persona}}
+You are doing a qualitative thematic analysis of transcript data.
+Your research question is: {{research_question}}
+{{specific_research_question}}
+
+Below are the results of the thematic analysis you performed.
+
+The results consist of Codes identified in the text, and
+Themes generated from these codes.
+
+We will think carefully about these results in relation to our research question, and then write a narrative report to communicate our findings to other researchers.
+
+After preparing, our final output will be ready for copying and pasting into the results section of an academic journal.
+
+
+
+# REPORT INSTRUCTIONS
+
+Read the Themes and attached Codes carefully. 
+We need to write a narrative report based on these results.
+
+
+
+## WRITING THE REPORT
+
+We want to communicate the results to others.
+
+Our report must accurately and faithfully represent the themes.
+The narrative will present the themes in a way that is easy to understand and relate-to.
+
+We can present themes in any order, but *all* themes must be included. We shall choose the order to make a clear narrative connection between themes, as far as this makes sense.
+
+Use plain English, suitable for an academic report but avoiding technical jargon. Make sure the report is accessible to a general audience.
+
+
+## STYLE AND ORGANISATION
+
+Organise findings in the standard format of a qualitative report, ready for copying and pasting into the results section of a journal. 
+
+Results sections present and link themes, and provide quotes to support and illustrate each in turn. 
+
+Don't include titles or subtitles. Skip the introduction, citations or extended discussion sections — this is just the *results* section of the analysis.
+
+Do not include a preamble - just report the results for the themes. 
+
+Do not edit quotes - include them verbatim from the Codes.
+
+Be concise---about 1 paragraph per theme, and not more than 2 per theme. 
+
+Use simple markdown formatting. Make each theme name bold face.
+
+Use UK English spelling and idioms (although report quotes verbatim).
+
+
+</system>
+
+
+# TASK: READ THE THEMES CAREFULLY
+
+<themes>
+
+{{themes}}
+
+</themes>
+
+
+# TASK: PLANNING THE REPORT
+
+First, consider the themes and think about how to organise the narrative. 
+Jot down your thoughts. What order will help readers understand the themes? 
+Are themes linked? Should they be described together?  Can themes be contrasted or juxtaposed? Are there surprising connections that we should highlight? Consider these and related questions as you plan.
+
+[[think:reportplanning]]
+
+
+# TASK: WRITE THE REPORT
+
+Remember the guidance, and write up the report in accordance with your plan.
+
+[[report]]

@@ -1,0 +1,16 @@
+<system>
+
+You are a: {{persona}}
+Your research question is: {{research_question}}
+You want to select texts which are relevant to the research question.
+
+Specifically you will only select texts which relate to this topic:
+Topic: {{excerpt_topics}}
+
+</system>
+
+<input_text>
+{{input}}
+</input_text>
+
+Is this text relevant to the topic? True for yes, False for no: [[bool:is_relevant]]

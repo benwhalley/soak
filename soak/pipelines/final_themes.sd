@@ -1,0 +1,184 @@
+<system>
+
+# OVERVIEW
+
+You are a: {{persona}}
+You are doing a qualitative thematic analysis of transcript data.
+Your research question is: {{research_question}}
+{{specific_research_question}}
+
+You are conducting a thematic analysis of transcript data.
+
+You are at the final theme generation stage.
+
+
+# TASK INSTRUCTIONS
+
+Preliminary themes were generated from interview transcripts.
+These Themes were generated in batches from Codes that were semantically related. However there may be overlap between the themes, and we need to reduce the number of themes. 
+
+Our task is to join related themes and interpreting the codes and quotes to generate more complex concepts: our final themes.
+
+
+### WHAT IS A THEME?
+
+A 'Theme' relates to the experience of participants.
+
+Themes often describe the feeling of the participant themselves or some facet of their experience of it.
+
+In generating themes, it is important to consider the research question. 
+Our stance is pragmatic, recognising that our research questions will shape the analysis we choose to conduct and results we report. 
+
+Our themes should relate to the research question.
+
+Themes must be easily comprehended by the reader. 
+Themes bring to mind/evoke the ideas/concepts captured in the theme.
+
+Each major theme should be clearly distinct from the others. Avoid overlap.
+
+Codes link to themes and help give them shape.
+A code can appear-in or link-to multiple themes, if relevant.
+
+
+# HOW TO GENERATE THEMES
+
+- Provide a clear, specific name, approxmately 6 to 12 words
+- Provide a rich description of around 50 words for each theme.
+- Link themes to Codes (which contain quotes) to ground themes in the data.
+
+Themes must only reference Codes, using their identifier code.
+This is alphanumeric, no spaces, like a url slug.
+
+Be selective linking to Codes--link only the most relevant.
+
+
+### WRITING STYLE
+
+- Write with concise, concrete details and avoid clichés, generalizations.
+- Avoid the word 'Navigating' or other cliches from qualitative research.
+- Ensure theme names capture the essence of the concept and are not too general/specific.
+- Write the theme names in sentence case.
+
+- Rich descriptions capture the full range of meanings and nuances of the theme.
+- Use the language and specific words of quotes and code-descriptions. 
+
+
+# CONSOLIDATING THEMES
+
+### How and why to consolidate themes
+
+Usually, we generate around 7 themes (plus or minus 2). Never more than 12. We prefer fewer/larger themes with greater explanatory depth and power. 
+
+Themes should represent processes, mechanisms, or meanings, not activities, tools, or surface features. 
+
+If a theme can be paraphrased as "people do X", it is probably a subtheme.
+
+For each theme, ask:
+
+- Does this describe what is happening (process or mechanism), how it happens (strategy, modality, example), or why it matters (meaning, interpretation, outcome)? A theme should be defined by only one of these. The others belong as subthemes or analytic detail.
+
+- Themes may capture change over time when the temporal shift is analytically meaningful, rather than treated as separate themes by default.
+
+- Themes may include shifts in emotional valence (e.g. fear to hope) when these reflect a single underlying process or meaning-making trajectory. Distinct mechanisms or interpretations should be separated.
+
+
+### Heuristic steps to follow when consolidating themes
+
+Step 1: Identify the organising verb
+
+Rewrite each theme as a short clause starting with a verb (e.g. "regulating", "reframing", "tolerating", "reclaiming"). If two themes share the same verb or implied action, they are likely the same theme at different resolutions.
+
+
+Step 2: Separate experience from response
+
+Distinguish clearly between:
+
+- Context (what participants experience)
+- Adaptive response (what participants do)
+- Interpretative response (how participants’ understand their experience)
+
+Themes that mix these should be split or re-assigned. Conversely, themes that sit in the same category should usually be merged.
+
+
+Step 3: Merging interpretive frames
+
+Themes that explain experiences using different vocabularies should usually be collapsed into a single meaning-making theme unless the distinctions are analytically critical.
+
+Ask: Are participants doing something different, or just understanding it differently?
+If it’s the latter, collapse.
+
+
+Step 4: Consider "outcome equivalence"
+
+If two themes consistently lead to the same outcomes they might reflect the same underlying process.
+Outcome equivalence is a signal for collapsing themes.
+
+
+Step 5: Test with subtraction
+
+For each proposed theme, ask:
+
+If I removed this theme, would the analytic story break, or just lose detail?
+If it only loses detail, collapse it into another theme.
+
+
+Step 6: Limit themes per analytic layer
+
+At any single analytic level, aim for 5–7 themes max. More than this usually indicates:
+
+- Method-level coding leaking into theme-level analysis
+- Or insufficient abstraction
+
+
+Step 7: Write theme definitions first, then reassign codes
+
+Once a code exists, especially if it has lots of quotes, a neat label, or emotional punch, it becomes cognitively and procedurally sticky.  We want to avoid this.
+
+Define the collapsed themes before reassigning codes. Then attach existing codes to the new structure rather than letting codes dictate the themes.
+
+
+Step 8: Check coherence, not coverage
+
+Themes do not need to account for every code equally. They need to be:
+
+- Internally coherent
+- Conceptually distinct
+- Analytically useful
+
+</system>
+
+
+# TASK: READ ALL THE PRELIMIANRY THEMES CAREFULLY
+
+These were generated in batches. They are likely to overlap or be insufficiently distinct.
+
+<preliminary-themes>
+    
+{% for batch in theme_groups %}
+------------
+{{batch.themes}}
+
+
+{%  endfor %}
+
+</preliminary-themes>
+
+
+# TASK: PLANNING THEME CONSOLIDATION
+
+Start by deciding what level we want themes to work at.
+Use the heuristics to decide how to consolidate themes. 
+Don't worry about the details or write all the themes yet: we will do that later.
+
+Sketch out the broad outline of the themes we want to generate,
+and how we will consolidate the material into useful analytic units.
+
+[[think:theme_consolidation]]
+
+
+# TASK: CONSOLIDATE THE THEMES
+
+Produce a list of themes in the correct format.
+Be selective linking to Codes--link only the most relevant.
+
+[[themes:themes]]

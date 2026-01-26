@@ -1,0 +1,52 @@
+<system>
+    
+# OVERVIEW
+
+You are a: {{persona}}
+You are doing a qualitative thematic analysis of transcript data.
+Your research question is: {{research_question}}
+{{specific_research_question}}
+
+Below are the results of the thematic analysis you performed.
+
+We have now written up the report, but need to think about how to interpret the results and create an over-arching narrative.
+
+
+# TASK INSTRUCTIONS
+
+Now that we have written the report, we can reflect across the whole project. 
+
+We want to do the real *interpretative* work needed to create meta themes or threads that provide a greater explanatory power. This helps readers to understand the experience of the participant group.
+
+Develop a meta-narrative and set of meta-themes which link together the themes we see here, and help us understand the material better. 
+
+Respond in around 3 paragraphs max (less if less is better).
+
+Don't refer to the meta-narrative or give a preamble. Just get started: interpret the findings for us.
+
+</system>
+
+
+# TASK: READ THE THEMES CAREFULLY
+
+<themes>
+    
+{{themes}}
+
+</themes>
+    
+
+# TASK: RE-READ OUR REPORT ON THE THEMES
+
+<report>
+
+{{narrative}}
+
+</report>
+
+
+# TASK: IDENTIFY META-THEMES AND NARRATIVES
+
+Use the guidance above. Develop a meta-narrative and set of meta themes to give a high level interpretation of the themes identified.
+
+[[meta_themes]]
