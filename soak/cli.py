@@ -13,7 +13,7 @@ from pathlib import Path
 
 import typer
 
-app = typer.Typer()
+app = typer.Typer(name="soak")
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 logger = logging.getLogger(__name__)
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 _pdb_on_exception = False
 
 PIPELINE_DIR = Path(__file__).parent / "pipelines"
-COMMANDS = {"run", "export", "dump", "compare", "show", "tui", "coverage", "test"}
+COMMANDS = {"run", "export", "compare", "show", "tui", "coverage", "test"}
 
 
 def get_soak_version() -> str:
