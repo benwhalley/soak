@@ -1,7 +1,6 @@
 """Command-line interface for running qualitative analysis pipelines."""
 
 import asyncio
-import hashlib
 import json
 import logging
 import os
@@ -9,23 +8,11 @@ import pdb
 import shutil
 import sys
 import traceback
-from datetime import datetime
 from pathlib import Path
 
 import typer
-from jinja2 import Environment, FileSystemLoader
-from struckdown import CostSummary, LLMCredentials
-from trogon.typer import init_tui
-
-from .comparators.similarity_comparator import SimilarityComparator
-from .document_utils import unpack_zip_to_temp_paths_if_needed
-from .helpers import (format_exception_concise, hash_run_config, load_env_file,
-                      resolve_pipeline, sanitize_for_filename, save_env_file)
-from .models import QualitativeAnalysis, QualitativeAnalysisPipeline
-from .specs import load_template_bundle
 
 app = typer.Typer()
-init_tui(app)
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 logger = logging.getLogger(__name__)
@@ -61,7 +48,7 @@ def main(
     setup_logging(verbose)
 
 
-def generate_html_output(pipeline: QualitativeAnalysisPipeline, template: str) -> str:
+def generate_html_output(pipeline: "QualitativeAnalysisPipeline", template: str) -> str:
     """Generate HTML output from a pipeline using specified template.
 
     Args:
@@ -76,7 +63,7 @@ def generate_html_output(pipeline: QualitativeAnalysisPipeline, template: str) -
 
 
 def generate_all_html_outputs(
-    pipeline: QualitativeAnalysisPipeline,
+    pipeline: "QualitativeAnalysisPipeline",
     templates: list[str],
     on_error: str = "raise",
 ) -> dict[str, str]:
@@ -90,6 +77,8 @@ def generate_all_html_outputs(
     Returns:
         Dict mapping template name to rendered HTML content
     """
+    from .helpers import format_exception_concise
+
     html_outputs = {}
     for tmpl in templates:
         try:
@@ -107,7 +96,7 @@ def generate_all_html_outputs(
     return html_outputs
 
 
-def load_pipeline_json(input_json: str) -> QualitativeAnalysisPipeline:
+def load_pipeline_json(input_json: str) -> "QualitativeAnalysisPipeline":
     """Load and validate a pipeline from a JSON file.
 
     Args:
@@ -119,6 +108,9 @@ def load_pipeline_json(input_json: str) -> QualitativeAnalysisPipeline:
     Raises:
         typer.Exit: If file not found or validation fails
     """
+    from .helpers import format_exception_concise
+    from .models import QualitativeAnalysisPipeline
+
     input_path = Path(input_json)
     if not input_path.exists():
         logger.error(f"File not found: {input_json}")
@@ -311,8 +303,11 @@ def run(
     ),
 ):
     """Run a pipeline on input files."""
-    # start new run for cache detection
-    from struckdown import new_run
+    from struckdown import CostSummary, LLMCredentials, new_run
+
+    from .document_utils import unpack_zip_to_temp_paths_if_needed
+    from .helpers import format_exception_concise, hash_run_config, resolve_pipeline
+    from .specs import load_template_bundle
 
     new_run()
 
@@ -796,6 +791,11 @@ def compare(
     ),
 ):
     """Compare multiple analysis results and generate comparison report."""
+    from jinja2 import Environment, FileSystemLoader
+
+    from .comparators.similarity_comparator import SimilarityComparator
+    from .helpers import format_exception_concise
+    from .models import QualitativeAnalysis, QualitativeAnalysisPipeline
 
     if len(input_files) < 2:
         logger.error("At least 2 JSON files required for comparison")
@@ -1004,15 +1004,20 @@ def compare_strings(
     from .comparators.similarity_comparator import compare_result_similarity
     from .models import QualitativeAnalysis, Theme
 
-    # Read the xlsx file
+    # Read the xlsx file - check current dir first, then package soak-data
     xlsx_path = Path(xlsx_file)
     if not xlsx_path.exists():
-        logger.error(f"File not found: {xlsx_file}")
-        raise typer.Exit(1)
+        # Try resolving relative to package directory
+        package_data_path = Path(__file__).parent / xlsx_file
+        if package_data_path.exists():
+            xlsx_path = package_data_path
+        else:
+            logger.error(f"File not found: {xlsx_file}")
+            raise typer.Exit(1)
 
-    logger.info(f"Reading {xlsx_file}...")
+    logger.info(f"Reading {xlsx_path}...")
     try:
-        df = pd.read_excel(xlsx_file)
+        df = pd.read_excel(xlsx_path)
     except Exception as e:
         logger.error(f"Error reading XLSX file: {e}")
         raise typer.Exit(1)
@@ -1219,6 +1224,7 @@ def coverage(
         soak coverage analysis.json --groups metadata.xlsx
     """
     import pandas as pd
+    from jinja2 import Environment, FileSystemLoader
 
     from .coverage import ThemeCoverageAnalyzer
     from .coverage.analyzer import (
@@ -1231,6 +1237,7 @@ def coverage(
         generate_theme_trajectories,
     )
     from .document_utils import unpack_zip_to_temp_paths_if_needed
+    from .helpers import format_exception_concise
 
     # validate format
     valid_formats = {"json", "html", "csv", "all"}
@@ -1491,6 +1498,8 @@ def check_and_prompt_credentials(cwd: Path) -> tuple[str | None, str | None]:
     Returns:
         Tuple of (api_key, base_url)
     """
+    from .helpers import load_env_file, save_env_file
+
     env_path = cwd / ".env"
 
     # First check environment variables
@@ -1543,6 +1552,15 @@ def check_and_prompt_credentials(cwd: Path) -> tuple[str | None, str | None]:
         os.environ["LLM_API_BASE"] = base_url
 
     return api_key, base_url
+
+
+@app.command()
+def tui():
+    """Open the terminal user interface for building commands."""
+    from trogon import Trogon
+    from typer.main import get_group
+
+    Trogon(get_group(app), app_name="soak", command="tui").run()
 
 
 def setup_logging(verbose: int):
