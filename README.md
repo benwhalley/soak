@@ -148,12 +148,6 @@ uv run soak classifier_tabular --sample 50 --output pilot survey.csv
 See [Working with Spreadsheet Data](docs/how-to/working-with-spreadsheet-data.md) for more details.
 
 
-**Common Options:**
-- `--output, -o`: Output filename (generates .json dump file and .html)
-- `--model-name`: LLM model (default: gpt-4o-mini)
-- `-c, --context`: Pipeline context variables (e.g., `-c research_question="Experiences of patients with COVID-19"`)
-
-
 ## Documentation
 
 - [Docs index](docs/index.md)
