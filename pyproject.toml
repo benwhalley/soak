@@ -30,7 +30,7 @@ dependencies = [
     "seaborn>=0.13.2",
     "tiktoken>=0.9.0",
     "typer>=0.16.0",
-    "umap-learn>=0.5.9.post2",
+    "umap-learn",
     "asyncpg>=0.30.0",
     "jinja-markdown>=1.210911",
     "struckdown",
@@ -90,7 +90,7 @@ package = true
 struckdown = { git = "https://github.com/benwhalley/struckdown", rev = "HEAD" }
 irrcac = { git = "https://github.com/benwhalley/irrCAC.git" }
 spacy-transformers = { git = "https://github.com/explosion/spacy-transformers.git", rev = "bf2fe03" }
-
+umap-learn = { git = "https://github.com/lmcinnes/umap", rev = "HEAD" }
 
 
 [tool.pytest.ini_options]
