@@ -860,12 +860,13 @@ def create_transport_sankey(
         link_cost_contribution = flow * cost
         cost_prop = link_cost_contribution / total_cost if total_cost > 0 else 0
 
+        similarity = 1 - cost  # cost is angular distance, so similarity = 1 - cost
         link_hovers.append(
             f"A{src_idx+1} → B{tgt_idx+1}<br>"
+            f"<b>Similarity:</b> {similarity:.3f}<br>"
             f"<b>Mass:</b> {mass_prop_a:.0%} of A{src_idx+1}, "
             f"{mass_prop_b:.0%} of B{tgt_idx+1}<br>"
-            f"<b>Cost contribution:</b> {cost_prop:.1%} of total<br>"
-            f"<b>Unit cost:</b> {cost:.2f} (colour scale)"
+            f"<b>Cost contribution:</b> {cost_prop:.1%} of total"
         )
 
     # empty node labels (full labels in annotations)

@@ -1,6 +1,7 @@
 """Command-line interface for running qualitative analysis pipelines."""
 
 import asyncio
+import importlib.metadata
 import json
 import logging
 import os
@@ -22,6 +23,14 @@ _pdb_on_exception = False
 
 PIPELINE_DIR = Path(__file__).parent / "pipelines"
 COMMANDS = {"run", "export", "dump", "compare", "show", "tui", "coverage"}
+
+
+def get_soak_version() -> str:
+    """Get soak package version."""
+    try:
+        return importlib.metadata.version("soaking")
+    except importlib.metadata.PackageNotFoundError:
+        return "dev"
 
 
 @app.callback()
@@ -976,17 +985,13 @@ def compare(
         None,
         "--strings",
         "-s",
-        help="Path to XLSX file with two columns of strings to compare (alternative to JSON files)",
+        help="Path to XLSX/CSV file with columns of strings to compare (alternative to JSON files)",
     ),
-    col_a: str = typer.Option(
-        "A",
-        "--col-a",
-        help="Column name/letter for first list when using --strings (default: A)",
-    ),
-    col_b: str = typer.Option(
-        "B",
-        "--col-b",
-        help="Column name/letter for second list when using --strings (default: B)",
+    cols: str = typer.Option(
+        None,
+        "--cols",
+        "-c",
+        help="Comma-separated column names to compare (e.g., 'A,B,C'). Compares all pairwise combinations. Default: 'A,B'",
     ),
     output: str = typer.Option(
         None,
@@ -1055,11 +1060,13 @@ def compare(
     Two modes:
 
     1. JSON mode (default): Compare two or more QualitativeAnalysis JSON files
-       soak compare results1.json results2.json
+       soak compare results1.json results2.json results3.json
 
-    2. Strings mode: Compare two columns from an XLSX file
-       soak compare --strings data.xlsx --col-a "List1" --col-b "List2"
+    2. Strings mode: Compare columns from an XLSX/CSV file
+       soak compare --strings data.xlsx --cols "A,B"
+       soak compare --strings data.xlsx --cols "Method1,Method2,Method3"
 
+    When comparing 3+ items, all pairwise combinations are computed.
     Statistics are always printed to stdout. Use --output to save HTML report or text file.
     """
     import pandas as pd
@@ -1080,7 +1087,7 @@ def compare(
 
     # determine mode: strings or JSON
     if strings:
-        # STRINGS MODE: compare two columns from XLSX
+        # STRINGS MODE: compare columns from XLSX/CSV
         xlsx_path = Path(strings)
         if not xlsx_path.exists():
             # try package soak-data directory
@@ -1093,97 +1100,118 @@ def compare(
 
         logger.info(f"Reading {xlsx_path}...")
         try:
-            df = pd.read_excel(xlsx_path)
+            if xlsx_path.suffix == ".csv":
+                df = pd.read_csv(xlsx_path)
+            else:
+                df = pd.read_excel(xlsx_path)
         except Exception as e:
-            logger.error(f"Error reading XLSX file: {e}")
+            logger.error(f"Error reading file: {e}")
             raise typer.Exit(1)
 
-        # extract columns
-        try:
-            list_a = df[col_a].dropna().astype(str).tolist()
-            list_b = df[col_b].dropna().astype(str).tolist()
-        except KeyError as e:
-            logger.error(f"Column not found: {e}")
-            logger.info(f"Available columns: {', '.join(df.columns)}")
+        # warn if file has more columns than being compared
+        if not cols and len(df.columns) > 2:
+            logger.warning(
+                f"File has {len(df.columns)} columns ({', '.join(df.columns)}) but only comparing A and B. "
+                f"Use --cols to compare more, e.g. --cols {','.join(df.columns)}"
+            )
+
+        # parse column names (default to A,B)
+        col_names = [c.strip() for c in (cols or "A,B").split(",")]
+        if len(col_names) < 2:
+            logger.error("At least 2 columns required for comparison")
             raise typer.Exit(1)
 
-        if not list_a or not list_b:
-            logger.error("One or both columns are empty")
-            raise typer.Exit(1)
-
-        logger.info(f"Column {col_a}: {len(list_a)} items")
-        logger.info(f"Column {col_b}: {len(list_b)} items")
+        # extract each column
+        column_data = {}
+        for col_name in col_names:
+            try:
+                items = df[col_name].dropna().astype(str).tolist()
+                if not items:
+                    logger.error(f"Column '{col_name}' is empty")
+                    raise typer.Exit(1)
+                column_data[col_name] = items
+                logger.info(f"  Column {col_name}: {len(items)} items")
+            except KeyError:
+                logger.error(f"Column not found: {col_name}")
+                logger.info(f"Available columns: {', '.join(df.columns)}")
+                raise typer.Exit(1)
 
         # check credentials
         if not embedding_model.startswith("local/"):
             check_and_prompt_credentials(Path.cwd())
 
-        # create QualitativeAnalysis objects from strings
-        themes_a = [Theme(name=s, description=s, code_slugs=[]) for s in list_a]
-        themes_b = [Theme(name=s, description=s, code_slugs=[]) for s in list_b]
-        analysis_a = QualitativeAnalysis(name=col_a, themes=themes_a)
-        analysis_b = QualitativeAnalysis(name=col_b, themes=themes_b)
+        # create QualitativeAnalysis objects for each column
+        analyses = []
+        for col_name, items in column_data.items():
+            themes = [Theme(name=s, description=s, code_slugs=[]) for s in items]
+            analysis = QualitativeAnalysis(name=col_name, themes=themes)
+            analyses.append(analysis)
 
         # default embedding template for strings mode
         effective_embedding_template = embedding_template or "{name}"
 
-        logger.info("Computing similarity...")
-        result = compare_result_similarity(
-            analysis_a,
-            analysis_b,
-            threshold=threshold,
-            embedding_template=effective_embedding_template,
-            embedding_model=embedding_model,
-            k=shepard_k,
-            reg_m=ot_k,
-            distance=similarity,
+        logger.info(f"Comparing {len(analyses)} sets ({len(analyses) * (len(analyses) - 1) // 2} pairwise comparisons)...")
+
+        # use comparator for all pairwise combinations
+        comparator = SimilarityComparator()
+        comparison = comparator.compare(
+            analyses,
+            config={
+                "threshold": threshold,
+                "method": method,
+                "n_neighbors": 5,
+                "min_dist": 0.01,
+                "label_template": label,
+                "embedding_template": effective_embedding_template,
+                "embedding_model": embedding_model,
+                "k": shepard_k,
+                "reg_m": ot_k,
+                "distance": similarity,
+            },
         )
 
-        # print statistics to stdout
-        stats_text = _print_comparison_stats(
-            result,
-            name_a=col_a,
-            name_b=col_b,
-            list_a=list_a,
-            list_b=list_b,
-            threshold=threshold,
-            embedding_model=embedding_model,
-            shepard_k=shepard_k,
-            ot_k_values=parsed_ot_k_values,
-            similarity=similarity,
-        )
-        print(stats_text, file=sys.stdout)
+        # determine if we should print stats to console
+        # only print if: no output specified, or output is .txt
+        output_path = Path(output) if output else None
+        print_to_console = not output or (output_path and output_path.suffix == ".txt")
+
+        # generate statistics for each pairwise comparison
+        all_stats_text = []
+        for key, comp in comparison.by_comparisons().items():
+            stats = comp["stats"]
+            analysis_a, analysis_b = comp["a"], comp["b"]
+            list_a = [t.name for t in analysis_a.themes]
+            list_b = [t.name for t in analysis_b.themes]
+
+            stats_text = _print_comparison_stats(
+                stats,
+                name_a=analysis_a.name,
+                name_b=analysis_b.name,
+                list_a=list_a,
+                list_b=list_b,
+                threshold=threshold,
+                embedding_model=embedding_model,
+                shepard_k=shepard_k,
+                ot_k_values=parsed_ot_k_values,
+                similarity=similarity,
+            )
+            all_stats_text.append(stats_text)
+            if print_to_console:
+                print(stats_text, file=sys.stdout)
 
         # save output if requested
         if output:
-            output_path = Path(output)
             if output_path.suffix == ".txt":
                 with open(output_path, "w", encoding="utf-8") as f:
-                    f.write(stats_text)
+                    f.write("\n\n".join(all_stats_text))
                 logger.info(f"✓ Statistics saved to: {output}")
             else:
-                # for HTML output, we need to use the comparator for full report
-                comparator = SimilarityComparator()
-                comparison = comparator.compare(
-                    [analysis_a, analysis_b],
-                    config={
-                        "threshold": threshold,
-                        "method": method,
-                        "n_neighbors": 5,
-                        "min_dist": 0.01,
-                        "label_template": label,
-                        "embedding_template": effective_embedding_template,
-                        "embedding_model": embedding_model,
-                        "k": shepard_k,
-                        "reg_m": ot_k,
-                        "distance": similarity,
-                    },
-                )
+                # HTML output
                 template_dir = Path(__file__).parent / "templates"
                 env = Environment(loader=FileSystemLoader(template_dir))
                 env.globals["enumerate"] = enumerate
                 template = env.get_template("comparison.html")
-                html_content = template.render(comparison=comparison)
+                html_content = template.render(comparison=comparison, soak_version=get_soak_version())
                 with open(output_path, "w", encoding="utf-8") as f:
                     f.write(html_content)
                 logger.info(f"✓ HTML report saved to: {output}")
@@ -1245,10 +1273,16 @@ def compare(
             },
         )
 
-        # print statistics to stdout for each pairwise comparison
+        # determine if we should print stats to console
+        # only print if: no output specified, or output is .txt
+        output_path = Path(output) if output else Path("comparison.html")
+        print_to_console = not output or output_path.suffix == ".txt"
+
+        # generate statistics for each pairwise comparison
+        all_stats_text = []
         for key, comp in comparison.by_comparisons().items():
             stats = comp["stats"]
-            analysis_a, analysis_b = comp["analyses"]
+            analysis_a, analysis_b = comp["a"], comp["b"]
             list_a = [t.name for t in analysis_a.themes]
             list_b = [t.name for t in analysis_b.themes]
 
@@ -1264,32 +1298,14 @@ def compare(
                 ot_k_values=parsed_ot_k_values,
                 similarity=similarity,
             )
-            print(stats_text, file=sys.stdout)
+            all_stats_text.append(stats_text)
+            if print_to_console:
+                print(stats_text, file=sys.stdout)
 
         # save output
-        output_path = Path(output) if output else Path("comparison.html")
         if output_path.suffix == ".txt":
-            # text output: save all stats
-            all_stats = []
-            for key, comp in comparison.by_comparisons().items():
-                stats = comp["stats"]
-                analysis_a, analysis_b = comp["analyses"]
-                list_a = [t.name for t in analysis_a.themes]
-                list_b = [t.name for t in analysis_b.themes]
-                all_stats.append(_print_comparison_stats(
-                    stats,
-                    name_a=analysis_a.name,
-                    name_b=analysis_b.name,
-                    list_a=list_a,
-                    list_b=list_b,
-                    threshold=threshold,
-                    embedding_model=embedding_model,
-                    shepard_k=shepard_k,
-                    ot_k_values=parsed_ot_k_values,
-                    similarity=similarity,
-                ))
             with open(output_path, "w", encoding="utf-8") as f:
-                f.write("\n\n".join(all_stats))
+                f.write("\n\n".join(all_stats_text))
             logger.info(f"✓ Statistics saved to: {output_path}")
         else:
             # HTML output
@@ -1298,7 +1314,7 @@ def compare(
             env = Environment(loader=FileSystemLoader(template_dir))
             env.globals["enumerate"] = enumerate
             template = env.get_template("comparison.html")
-            html_content = template.render(comparison=comparison)
+            html_content = template.render(comparison=comparison, soak_version=get_soak_version())
 
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(html_content)

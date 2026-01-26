@@ -88,7 +88,7 @@ open cfs-simple-1_simple.html
 soak zs -o cfs-simple-2 --model-name="openai/gpt-4o" soak/data/cfs/*.txt
 
 # Compare results
-soak compare cfs-simple-2.json --output comparison.html cfs-simple-1.json
+soak compare cfs-simple-1.json cfs-simple-2.json -o comparison.html
 ```
 
 

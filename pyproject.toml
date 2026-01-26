@@ -4,8 +4,8 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "soaking"
-version = "0.3.4"
-description = "soak: graph-based pipelines for LLM-assisted qualitative text analysis"
+version = "0.3.5"
+description = "soak: graph-based pipelines and tools for LLM-assisted qualitative text analysis"
 authors = [
   { name = "Ben Whalley", email = "ben.whalley@plymouth.ac.uk" }
 ]

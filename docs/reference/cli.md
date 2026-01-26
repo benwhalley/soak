@@ -18,10 +18,9 @@ These options apply to all commands:
 | Command | Description |
 |---------|-------------|
 | `run` | Run a pipeline on input files |
-| `compare` | Compare multiple analysis results and generate comparison report |
+| `compare` | Compare analyses or string lists and generate comparison statistics |
 | `show` | Show the contents of a built-in pipeline or template |
 | `dump` | Dump detailed DAG execution to folder structure for inspection |
-| `compare-strings` | Compare similarity of two lists of strings from an XLSX file |
 | `coverage` | Analyse how well themes from an analysis are represented across documents |
 
 ### run
@@ -132,55 +131,52 @@ With `--output results`:
 
 ### compare
 
-Compare multiple analysis results and generate comparison report.
+Compare analyses or string lists and generate comparison statistics.
+
+Two modes:
+1. **JSON mode**: Compare QualitativeAnalysis JSON files from pipeline runs
+2. **Strings mode**: Compare columns of strings from XLSX/CSV files (useful for comparing theme lists)
 
 ```bash
-uv run soak compare [OPTIONS] INPUT_FILES...
+# JSON mode
+uv run soak compare results1.json results2.json -o comparison.html
+
+# Strings mode
+uv run soak compare --strings themes.xlsx --cols "A,B,C" -o comparison.html
 ```
 
-**Arguments:**
-
-- `INPUT_FILES` - Two or more JSON files or directories containing QualitativeAnalysis results to compare
-
-**Options:**
+**Key Options:**
 
 | Option | Short | Description |
 |--------|-------|-------------|
-| `--output PATH` | `-o` | Output HTML file (default: `comparison.html`) |
-| `--threshold FLOAT` | | Similarity threshold for matching themes (default: 0.6) |
-| `--method METHOD` | | Dimensionality reduction: `umap`, `mds`, `pca` (default: `umap`) |
-| `--label TEMPLATE` | `-l` | Format string for labels: `{name}`, `{description}` (default: `{name}`) |
-| `--embedding-template TEMPLATE` | `-e` | Format string for generating theme embeddings (default: `{name}: {description}`) |
-| `--embedding-model` | | Embedding model (default: `text-embedding-3-large`). Use `local/model-name` for sentence-transformers (e.g., `local/all-MiniLM-L6-v2`) |
-| `--k` | `-k` | Shepard similarity decay parameter (default: 1.0, higher = steeper decay) |
-| `--reg-m` | `-K` | OT mass penalty (K). Fixed value for cross-analysis comparability. Lower = more selective matching (default: 0.2) |
+| `--output PATH` | `-o` | Output file (.html for report, .txt for text stats) |
+| `--strings PATH` | `-s` | XLSX/CSV file with columns to compare (enables strings mode) |
+| `--cols NAMES` | `-c` | Comma-separated column names (default: `A,B`). All pairwise combinations computed. |
+| `--threshold FLOAT` | | Similarity threshold for binary matching (default: 0.6) |
+| `--similarity METRIC` | `-S` | Similarity metric: `angular` (default), `cosine`, `shepard` |
+| `--ot-k FLOAT` | | Optimal transport mass penalty K (default: 0.25). Lower = more selective. |
+| `--embedding-model` | | Embedding model (default: `text-embedding-3-large`). Use `local/model-name` for local models. |
 
 **Examples:**
 
 ```bash
-# Compare two analyses
+# Compare two pipeline results
 uv run soak compare results1.json results2.json -o comparison.html
 
-# Compare with custom similarity threshold
-uv run soak compare run1.json run2.json run3.json --threshold 0.7
+# Compare three sets of themes from spreadsheet columns
+uv run soak compare --strings themes.xlsx --cols "Method1,Method2,Method3" -o comparison.html
 
-# Use different visualisation method
-uv run soak compare --method pca -o comparison.html *.json
-
-# Custom label template
-uv run soak compare -l "{name}: {description}" -o comparison.html *.json
-
-# Use local embeddings instead of API
+# Use local embeddings (no API key needed)
 uv run soak compare --embedding-model local/all-MiniLM-L6-v2 *.json
 
-# Adjust optimal transport parameters
-uv run soak compare --k 2.0 --reg-m 0.1 *.json
+# Text output only (no HTML)
+uv run soak compare --strings data.xlsx -o stats.txt
 ```
 
 **Output:**
 
-- HTML report with similarity heatmaps, network plots, and statistics
-- Inter-rater agreement metrics (Gwet's AC1, Krippendorff's Alpha)
+- HTML report with similarity heatmaps, optimal transport visualisations, and matching statistics
+- Console output shows key metrics (suppressed when outputting to HTML)
 
 ### show
 
