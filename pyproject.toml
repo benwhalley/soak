@@ -86,8 +86,8 @@ package = true
 
 [tool.uv.sources]
 # Local development version
-struckdown = { path = "/Users/benwhalley/dev/struckdown", editable = true }
-# struckdown = { git = "https://github.com/benwhalley/struckdown", rev = "HEAD" }
+# struckdown = { path = "/Users/benwhalley/dev/struckdown", editable = true }
+struckdown = { git = "https://github.com/benwhalley/struckdown", rev = "HEAD" }
 irrcac = { git = "https://github.com/benwhalley/irrCAC.git" }
 spacy-transformers = { git = "https://github.com/explosion/spacy-transformers.git", rev = "bf2fe03" }
 
