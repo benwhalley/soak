@@ -72,7 +72,7 @@ scrub = [
 
 
 [tool.setuptools.package-data]
-soak = ["templates/*.html", "templates/*.md", "templates/**/*.html", "templates/**/*.md", "templates/**/*.sd", "pipelines/*.soak", "data/**/*"]
+soak = ["templates/*.html", "templates/*.md", "templates/**/*.html", "templates/**/*.md", "templates/**/*.sd", "pipelines/*.soak", "soak-data/**/*"]
 
 [tool.setuptools.packages.find]
 where = ["."]
