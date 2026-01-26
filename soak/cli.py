@@ -259,7 +259,7 @@ def run(
         False, "--force", "-f", help="Overwrite existing output files/folders"
     ),
     template: list[str] = typer.Option(
-        ["pipeline.html"],
+        ["simple.html"],
         "--template",
         "-t",
         envvar="SOAK_TEMPLATE",
@@ -1779,14 +1779,13 @@ def test():
     Examples:
         soak test
     """
-    import subprocess
+    from struckdown.sd_cli import test as sd_test
 
     # check and prompt for credentials first (soak-specific)
     check_and_prompt_credentials(Path.cwd())
 
-    # delegate to struckdown's test command
-    result = subprocess.run(["sd", "test"])
-    raise typer.Exit(result.returncode)
+    # delegate to struckdown's test command directly
+    sd_test()
 
 
 def setup_logging(verbose: int):

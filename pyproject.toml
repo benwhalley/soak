@@ -49,8 +49,6 @@ dependencies = [
     "mkdocs-material>=9.5.0",
     "pymdown-extensions>=10.11.0",
     "graphviz>=0.20.0",
-    "transformers>=4.51.0",
-    "sentence-transformers>=2.5.1",
     "pot>=0.9.6.post1",
     "pyphen>=0.16.0",
     "plotly>=5.18.0",
@@ -59,6 +57,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+local = [
+    "transformers>=4.51.0",
+    "sentence-transformers>=2.5.1",
+]
 scrub = [
   "scrubadub>=2.0.0",
   "scrubadub-spacy>=2.0.0",

@@ -27,11 +27,10 @@ warnings.filterwarnings(
 scrubadub_memory = Memory(Path(".scrubadub_cache"), verbose=0)
 
 
-import spacy
-from spacy.cli import download as spacy_download
-
-
 def download_model(model_name):
+    import spacy
+    from spacy.cli import download as spacy_download
+
     try:
         nlp = spacy.load(model_name)
     except OSError:
@@ -70,6 +69,7 @@ def _cached_detect_filth(
         List of filth detection dicts with positions and types
     """
     import scrubadub
+    import spacy
 
     logger.debug(
         f"Cache miss for text hash {hashlib.md5(text.encode()).hexdigest()[:8]}... running detector"

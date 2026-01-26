@@ -38,3 +38,6 @@ __all__ = [
     "Ungroup",
     "VerifyQuotes",
 ]
+
+# Rebuild models with forward references now that all types are imported
+Split.model_rebuild()

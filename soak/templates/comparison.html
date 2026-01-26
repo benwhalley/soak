@@ -596,31 +596,35 @@
                                     </div>
                                     <div class="card-body">
                                         <div class="row">
-                                            <div class="col-6 text-center">
-                                                {% if ot_k.ot.shared_mass_relative is defined %}
-                                                <h2 class="text-primary">{{ "%.2f"|format(ot_k.ot.shared_mass_relative) }}</h2>
-                                                <p class="small text-muted mb-0">Relative Score</p>
-                                                <p class="small"><em>0 = random, 1 = perfect</em></p>
-                                                {% else %}
-                                                <h2 class="text-primary">{{ "%.1f"|format(ot_k.ot.shared_mass * 100) }}%</h2>
+                                            {% if ot_k.ot.shared_mass_relative is defined %}
+                                            <div class="col-4 text-center border-end">
+                                                <h2 class="text-success mb-0">{{ "%.1f"|format(ot_k.ot.shared_mass * 100) }}%</h2>
                                                 <p class="small text-muted mb-0">Shared Mass</p>
-                                                {% endif %}
                                             </div>
-                                            <div class="col-6">
-                                                <ul class="list-unstyled small">
-                                                    <li><strong>Observed:</strong> {{ "%.3f"|format(ot_k.ot.shared_mass) }}</li>
-                                                    {% if ot_k.ot.null_shared_mass_mean is defined %}
-                                                    <li><strong>Null mean:</strong> {{ "%.3f"|format(ot_k.ot.null_shared_mass_mean) }}</li>
-                                                    <li><strong>Excess:</strong> +{{ "%.3f"|format(ot_k.ot.shared_mass_excess) }}</li>
+                                            <div class="col-4 text-center border-end">
+                                                <h2 class="text-primary mb-0">{{ "%.2f"|format(ot_k.ot.shared_mass_relative) }}</h2>
+                                                <p class="small text-muted mb-0">Relative</p>
+                                                <p class="small mb-0"><em>0=random, 1=perfect</em></p>
+                                            </div>
+                                            <div class="col-4">
+                                                <ul class="list-unstyled small mb-0">
+                                                    <li><strong>Null:</strong> {{ "%.1f"|format(ot_k.ot.null_shared_mass_mean * 100) }}%</li>
+                                                    <li><strong>Excess:</strong> +{{ "%.1f"|format(ot_k.ot.shared_mass_excess * 100) }}%</li>
                                                     <li><strong>Effect:</strong> {{ "%.1f"|format(ot_k.ot.shared_mass_effect) }}σ</li>
-                                                    {% endif %}
                                                 </ul>
                                             </div>
+                                            {% else %}
+                                            <div class="col-6 text-center">
+                                                <h2 class="text-primary">{{ "%.1f"|format(ot_k.ot.shared_mass * 100) }}%</h2>
+                                                <p class="small text-muted mb-0">Shared Mass</p>
+                                            </div>
+                                            <div class="col-6">
+                                                <p class="small text-muted mb-0"><em>Null baseline not computed for this K value.</em></p>
+                                            </div>
+                                            {% endif %}
                                         </div>
                                         {% if ot_k.ot.shared_mass_relative is defined %}
                                         <p class="small mt-2 mb-0"><strong>Interpretation:</strong> Of the possible improvement beyond random alignment, what fraction did we achieve? Values > 0.3 suggest meaningful structure; > 0.5 is good; > 0.7 is strong.</p>
-                                        {% else %}
-                                        <p class="small mt-2 mb-0 text-muted"><em>Null baseline comparison only computed for default K={{ "%.1f"|format(comp.stats.default_k) }}. See Scree tab for cross-K comparison.</em></p>
                                         {% endif %}
                                     </div>
                                 </div>
@@ -870,9 +874,9 @@
                 <hr>
 
                 <h4 id="best-matches-{{ loop.index }}">Best Matches (many:many)</h4>
-                <p class="text-muted small">Shows best match for each theme, allowing multiple themes to match the same target.</p>
+                <p class="text-muted small">Shows best match for each theme, allowing multiple themes to match the same target. OT columns show mass flow from optimal transport (default K={{ "%.2f"|format(comp.stats.default_k) }}).</p>
                 <div class="row mb-4">
-                    <div class="col-6">
+                    <div class="col-12">
                         <div class="card">
                             <div class="card-header">
                                 <strong>{{ comp.a.name }} → {{ comp.b.name }}</strong>
@@ -882,9 +886,12 @@
                                 <table class="table table-sm table-striped">
                                     <thead>
                                         <tr>
-                                            <th width=40%>Theme in {{ comp.a.name }}</th>
-                                            <th width=40%>Best Match in {{ comp.b.name }}</th>
-                                            <th>Similarity</th>
+                                            <th width=30%>Theme in {{ comp.a.name }}</th>
+                                            <th width=30%>Best Match in {{ comp.b.name }}</th>
+                                            <th title="Embedding similarity">Sim</th>
+                                            <th title="Mass transferred to this match (OT)">Mass</th>
+                                            <th title="% of theme's total mass going to this match">%</th>
+                                            <th title="Total mass transferred from this theme (coverage)">Coverage</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -900,7 +907,10 @@
                                                 <em><strong>{{ theme_b.theme_name }}</strong></em><br>
                                                 {{ theme_b.embedded_string }}
                                             </td>
-                                            <td class="small">{{ "%.3f"|format(match.similarity) }}</td>
+                                            <td class="small">{{ "%.2f"|format(match.similarity) }}</td>
+                                            <td class="small">{{ "%.3f"|format(match.mass_transferred) }}</td>
+                                            <td class="small">{{ "%.0f"|format(match.mass_pct) }}%</td>
+                                            <td class="small">{{ "%.1f"|format(match.mass_total * 100) }}%</td>
                                         </tr>
                                         {% endfor %}
                                     </tbody>
@@ -908,8 +918,10 @@
                             </div>
                         </div>
                     </div>
+                </div>
 
-                    <div class="col-6">
+                <div class="row mb-4">
+                    <div class="col-12">
                         <div class="card">
                             <div class="card-header">
                                 <strong>{{ comp.b.name }} → {{ comp.a.name }}</strong>
@@ -919,9 +931,12 @@
                                 <table class="table table-sm table-striped">
                                     <thead>
                                         <tr>
-                                            <th>Theme in {{ comp.b.name }}</th>
-                                            <th>Best Match in {{ comp.a.name }}</th>
-                                            <th>Similarity</th>
+                                            <th width=30%>Theme in {{ comp.b.name }}</th>
+                                            <th width=30%>Best Match in {{ comp.a.name }}</th>
+                                            <th title="Embedding similarity">Sim</th>
+                                            <th title="Mass transferred to this match (OT)">Mass</th>
+                                            <th title="% of theme's total received mass from this match">%</th>
+                                            <th title="Total mass received by this theme (coverage)">Coverage</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -937,7 +952,10 @@
                                                 <em>{{ theme_a.theme_name }}</em><br>
                                                 {{ theme_a.embedded_string }}
                                             </td>
-                                            <td class="small">{{ "%.3f"|format(match.similarity) }}</td>
+                                            <td class="small">{{ "%.2f"|format(match.similarity) }}</td>
+                                            <td class="small">{{ "%.3f"|format(match.mass_transferred) }}</td>
+                                            <td class="small">{{ "%.0f"|format(match.mass_pct) }}%</td>
+                                            <td class="small">{{ "%.1f"|format(match.mass_total * 100) }}%</td>
                                         </tr>
                                         {% endfor %}
                                     </tbody>

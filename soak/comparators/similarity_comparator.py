@@ -1561,13 +1561,10 @@ def compare_result_similarity(
     for k_val in tqdm(K_VALUES, desc="Computing OT for K values", file=sys.stderr):
         logger.debug(f"\n--- Computing OT with K={k_val} ---")
 
-        # OPTIMIZATION: Only compute null baseline for default K
-        # Other K values only need absolute metrics for scree comparison
-        use_null = null_cost_matrices if k_val == DEFAULT_K else None
-
+        # compute null baseline for all K values to enable relative metrics comparison
         ot_result = compute_ot(
             cost_matrix,
-            null_cost_matrices=use_null,
+            null_cost_matrices=null_cost_matrices,
             mode="unbalanced",
             reg_m=k_val,
         )
@@ -1711,36 +1708,67 @@ def compare_result_similarity(
     )
 
     # For each theme in A, find the best matching theme in B
+    # Include OT statistics: mass transferred and cost
+    P = ot_results["transport_plan"]
+
+    def round_match(d, decimals={"similarity": 3, "mass_transferred": 4, "mass_total": 4, "mass_pct": 1, "cost": 3}):
+        """Round numeric values in a match dict."""
+        return {k: round(v, decimals.get(k, 3)) if isinstance(v, float) else v for k, v in d.items()}
+
     best_matches_a_to_b = []
     if len(emb_A) > 0 and len(emb_B) > 0:
         for i in range(len(emb_A)):
-            best_b_idx = selected_sim[i, :].argmax()
-            best_similarity = selected_sim[i, best_b_idx]
-            best_matches_a_to_b.append(
-                {
-                    "theme_a_index": i,
-                    "theme_b_index": int(best_b_idx),
-                    "similarity": float(np.round(best_similarity, 3)),
-                }
-            )
-        # sort by similarity descending
+            best_b_idx = int(selected_sim[i, :].argmax())
+            mass_total_out = P[i, :].sum()
+            best_matches_a_to_b.append(round_match({
+                "theme_a_index": i,
+                "theme_b_index": best_b_idx,
+                "similarity": float(selected_sim[i, best_b_idx]),
+                "mass_transferred": float(P[i, best_b_idx]),
+                "mass_total": float(mass_total_out),
+                "mass_pct": float(P[i, best_b_idx] / mass_total_out * 100) if mass_total_out > 0 else 0.0,
+                "cost": float(cost_matrix[i, best_b_idx]),
+            }))
         best_matches_a_to_b.sort(key=lambda x: x["similarity"], reverse=True)
 
     # For each theme in B, find the best matching theme in A
     best_matches_b_to_a = []
     if len(emb_A) > 0 and len(emb_B) > 0:
         for j in range(len(emb_B)):
-            best_a_idx = selected_sim[:, j].argmax()
-            best_similarity = selected_sim[best_a_idx, j]
-            best_matches_b_to_a.append(
-                {
-                    "theme_b_index": j,
-                    "theme_a_index": int(best_a_idx),
-                    "similarity": float(np.round(best_similarity, 3)),
-                }
-            )
-        # sort by similarity descending
+            best_a_idx = int(selected_sim[:, j].argmax())
+            mass_total_in = P[:, j].sum()
+            best_matches_b_to_a.append(round_match({
+                "theme_b_index": j,
+                "theme_a_index": best_a_idx,
+                "similarity": float(selected_sim[best_a_idx, j]),
+                "mass_transferred": float(P[best_a_idx, j]),
+                "mass_total": float(mass_total_in),
+                "mass_pct": float(P[best_a_idx, j] / mass_total_in * 100) if mass_total_in > 0 else 0.0,
+                "cost": float(cost_matrix[best_a_idx, j]),
+            }))
         best_matches_b_to_a.sort(key=lambda x: x["similarity"], reverse=True)
+
+    # log best matches with OT statistics
+    logger.info(f"\n=== Best Matches (many:many) with OT Statistics (K={DEFAULT_K}) ===")
+    logger.info(f"\n{analysis_name_A} → {analysis_name_B}:")
+    logger.info(f"{'Theme A':<30} {'Best Match B':<30} {'Sim':>6} {'Mass':>8} {'%':>6} {'Cov':>6}")
+    logger.info("-" * 90)
+    for m in best_matches_a_to_b[:10]:  # top 10
+        name_a = theme_names_A[m["theme_a_index"]][:28]
+        name_b = theme_names_B[m["theme_b_index"]][:28]
+        logger.info(f"{name_a:<30} {name_b:<30} {m['similarity']:>6.2f} {m['mass_transferred']:>8.4f} {m['mass_pct']:>5.0f}% {m['mass_total']*100:>5.1f}%")
+    if len(best_matches_a_to_b) > 10:
+        logger.info(f"... and {len(best_matches_a_to_b) - 10} more")
+
+    logger.info(f"\n{analysis_name_B} → {analysis_name_A}:")
+    logger.info(f"{'Theme B':<30} {'Best Match A':<30} {'Sim':>6} {'Mass':>8} {'%':>6} {'Cov':>6}")
+    logger.info("-" * 90)
+    for m in best_matches_b_to_a[:10]:  # top 10
+        name_b = theme_names_B[m["theme_b_index"]][:28]
+        name_a = theme_names_A[m["theme_a_index"]][:28]
+        logger.info(f"{name_b:<30} {name_a:<30} {m['similarity']:>6.2f} {m['mass_transferred']:>8.4f} {m['mass_pct']:>5.0f}% {m['mass_total']*100:>5.1f}%")
+    if len(best_matches_b_to_a) > 10:
+        logger.info(f"... and {len(best_matches_b_to_a) - 10} more")
 
     # prepare OT results for serialisation (remove numpy array)
     ot_serialisable = {key: v for key, v in ot_results.items() if key != "transport_plan"}
