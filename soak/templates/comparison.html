@@ -125,13 +125,12 @@
 
             <div class="nav-section">Within Active Pair</div>
             <nav class="nav flex-column">
-                <a class="nav-link" href="#" onclick="scrollToActiveSection('cosine')">Cosine Similarity</a>
-                <a class="nav-link" href="#" onclick="scrollToActiveSection('summary')">Summary Stats</a>
                 <a class="nav-link" href="#" onclick="scrollToActiveSection('angular')">Angular Similarity</a>
+                <a class="nav-link" href="#" onclick="scrollToActiveSection('summary')">Summary Stats</a>
                 <a class="nav-link" href="#" onclick="scrollToActiveSection('hungarian')">Best Matches (1:1)</a>
                 <a class="nav-link" href="#" onclick="scrollToActiveSection('ot')">Optimal Transport</a>
                 <a class="nav-link" href="#" onclick="scrollToActiveSection('best-matches')">Best Matches (many:many)</a>
-                <a class="nav-link" href="#" onclick="scrollToActiveSection('additional')">Additional Metrics</a>
+                <a class="nav-link" href="#" onclick="scrollToActiveSection('additional')">Additional Distance Metrics</a>
             </nav>
 
             <div class="nav-section">Config</div>
@@ -195,7 +194,7 @@
             <div class="d-flex flex-wrap gap-4">
                 {% for result in comparison.results %}
                 <div class="flex-fill">
-                    <h5>{{ result.name }}</h5>
+                    <h5 class="mt-2">{{ result.name }}</h5>
                     <p class="text-muted small mb-1">{{ result.themes|length }} themes</p>
                     <ul class="small mb-0">
                         {% for t in result.themes %}
@@ -231,13 +230,14 @@
                             <tbody>
                                 {% for item in comparison.embedded_strings.get(result.name, []) %}
                                 <tr>
-                                    <td><code class="small">{{ item.theme_name }}</code></td>
+                                    <td><span class="small"><b>{{ item.theme_name }}</b></span></td>
                                     <td><span class="small">{{ item.label }}</span></td>
-                                    <td><span class="small text-primary"><strong>{{ item.embedded_string }}</strong></span></td>
+                                    <td><span class="small quiet">{{ item.embedded_string }}</span></td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
                         </table>
+                        <hr>
                     </div>
                 </div>
             </div>
@@ -294,16 +294,16 @@
                 </h3>
 
                 <!-- ============================================== -->
-                <!-- SECTION 1: COSINE SIMILARITY (most familiar)   -->
+                <!-- SECTION 1: ANGULAR DISTANCE                    -->
                 <!-- ============================================== -->
-                <h4 id="cosine-{{ loop.index }}">Cosine Similarity</h4>
-                <p class="text-muted">Cosine similarity measures the angle between theme embedding vectors. Values range from 0 to 1 for text embeddings, with 1 indicating identical direction.</p>
+                <h4 id="angular-{{ loop.index }}">Angular Similarity</h4>
+                <p class="text-muted">Angular distance uses the angle between embedding vectors (arccos of cosine), normalised to [0,1]. Unlike cosine, it satisfies the triangle inequality, making it a proper metric for averaging and comparison.</p>
                 <div class="row mb-4">
                     <div class="col-md-6">
                         <div class="card">
                             <div class="card-header bg-primary text-white">Continuous Values</div>
                             <div class="card-body">
-                                <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comp.plots.heatmaps_cosine.base64 }}" alt="Cosine similarity heatmap">
+                                <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comp.plots.heatmaps_angle.base64 }}" alt="Angular distance heatmap">
                             </div>
                         </div>
                     </div>
@@ -366,20 +366,7 @@
                 <hr>
 
                 <!-- ============================================== -->
-                <!-- SECTION 3: ANGULAR SIMILARITY                  -->
-                <!-- ============================================== -->
-                <h4 id="angular-{{ loop.index }}">Angular Similarity</h4>
-                <p class="text-muted">Angular similarity uses the angular distance between vectors (arccos of cosine), normalized to [0,1]. Unlike cosine, it's a proper metric that satisfies the triangle inequality, making it mathematically rigorous for averaging.</p>
-                <div class="row mb-4">
-                    <div class="col-md-12">
-                        <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comp.plots.heatmaps_angle.base64 }}" alt="Angular similarity heatmap">
-                    </div>
-                </div>
-
-                <hr>
-
-                <!-- ============================================== -->
-                <!-- SECTION 4: HUNGARIAN MATCHING                  -->
+                <!-- SECTION 3: HUNGARIAN MATCHING                  -->
                 <!-- ============================================== -->
                 <h4 id="hungarian-{{ loop.index }}">Best Matches (1:1)</h4>
                 <p class="text-muted">The Hungarian algorithm finds the optimal one-to-one pairing that maximizes total similarity. Each theme maps to at most one theme in the other set -- no reuse allowed.</p>
@@ -968,10 +955,10 @@
                 <hr>
 
                 <!-- ============================================== -->
-                <!-- SECTION 6: ADDITIONAL METRICS                  -->
+                <!-- SECTION 5: ADDITIONAL DISTANCE METRICS         -->
                 <!-- ============================================== -->
-                <h4 id="additional-{{ loop.index }}">Additional Similarity Metrics</h4>
-                <p class="text-muted small">Alternative similarity functions for specialized analyses.</p>
+                <h4 id="additional-{{ loop.index }}">Additional Distance Metrics</h4>
+                <p class="text-muted small">Alternative distance functions for specialised analyses.</p>
 
                 <div class="row">
                     <!-- Shepard Similarity -->

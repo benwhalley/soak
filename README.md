@@ -4,6 +4,10 @@
 
 **`soak` is a tool to enable qualitative researchers to rapidly define and run llm-assisted text analysis pipelines and thematic analysis.**
 
+
+
+## What does it do?
+
 The easiest way to see what `soak` does is to see sample outputs from the system.
 
 The Zero-shot pipeline diagram shows the various stages the analysis involves:
