@@ -2,6 +2,7 @@
 
 import base64
 import csv
+import hashlib
 import io
 import itertools
 import logging
@@ -10,12 +11,204 @@ import textwrap
 from collections import OrderedDict
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
+
+import numpy as np
 
 from soak.models import QualitativeAnalysis, QualitativeAnalysisComparison
 from soak.models.base import get_embedding, memory
 
 logger = logging.getLogger(__name__)
+
+
+def _hash_array(arr: np.ndarray) -> str:
+    """Create a stable hash of a numpy array for cache keys."""
+    return hashlib.sha256(arr.tobytes()).hexdigest()[:16]
+
+
+def _hash_array_list(arrays: List[np.ndarray]) -> str:
+    """Create a stable hash of a list of numpy arrays."""
+    combined = "".join(_hash_array(np.asarray(a)) for a in arrays)
+    return hashlib.sha256(combined.encode()).hexdigest()[:16]
+
+
+@memory.cache
+def _compute_ot_cached(
+    cost_matrix_hash: str,
+    cost_matrix_tuple: Tuple[Tuple[float, ...], ...],
+    null_hashes: Optional[str],
+    null_matrices_tuple: Optional[Tuple[Tuple[Tuple[float, ...], ...], ...]],
+    mode: str,
+    reg: float,
+    reg_m: float,
+) -> Dict[str, Any]:
+    """Cached OT computation. Inputs are hashable tuples.
+
+    This is the cached inner function. The wrapper compute_ot() handles
+    numpy array conversion.
+    """
+    import ot
+
+    # convert tuples back to numpy arrays
+    cost_matrix = np.array(cost_matrix_tuple, dtype=np.float64)
+    null_cost_matrices = None
+    if null_matrices_tuple is not None:
+        null_cost_matrices = [np.array(m, dtype=np.float64) for m in null_matrices_tuple]
+
+    n_A, n_B = cost_matrix.shape
+
+    if n_A == 0 or n_B == 0:
+        return {
+            "shared_mass": 0.0,
+            "avg_cost": float("nan"),
+            "unmatched_mass": 1.0,
+            "transport_plan": [],
+            "coverage_a": [],
+            "coverage_b": [],
+            "null_shared_mass_mean": 0.0,
+            "null_shared_mass_95pct": 0.0,
+            "null_avg_cost_mean": 0.0,
+            "null_avg_cost_5pct": 0.0,
+            "mode": mode,
+        }
+
+    # uniform mass distribution
+    a = np.ones(n_A) / n_A
+    b = np.ones(n_B) / n_B
+
+    # ensure cost matrix is non-negative
+    M = np.clip(cost_matrix, 0, None)
+
+    # ensure minimum regularisation for numerical stability
+    reg = max(reg, 1e-6)
+    reg_m = max(reg_m, 1e-6)
+
+    def run_ot(cost, a_dist, b_dist, mode_inner):
+        """Run OT with given cost matrix and mode."""
+        if mode_inner == "balanced":
+            P = ot.emd(a_dist, b_dist, cost)
+        else:
+            P = ot.unbalanced.sinkhorn_unbalanced(
+                a_dist, b_dist, cost,
+                reg=reg,
+                reg_m=reg_m,
+                numItermax=1000,
+                stopThr=1e-9,
+            )
+        return P
+
+    # compute optimal transport coupling
+    P = run_ot(M, a, b, mode)
+
+    # interpretable quantities
+    shared_mass = float(P.sum())
+    if shared_mass > 1e-9:
+        avg_cost = float((P * M).sum() / shared_mass)
+    else:
+        avg_cost = float("nan")
+    unmatched_mass = 1.0 - shared_mass
+
+    # coverage -- how much of each theme's mass maps to the other set
+    coverage_a = P.sum(axis=1).tolist()
+    coverage_b = P.sum(axis=0).tolist()
+
+    result = {
+        "shared_mass": shared_mass,
+        "avg_cost": avg_cost,
+        "unmatched_mass": unmatched_mass,
+        "transport_plan": P.tolist(),  # convert to list for caching
+        "coverage_a": coverage_a,
+        "coverage_b": coverage_b,
+        "reg": reg,
+        "reg_m": reg_m,
+        "mode": mode,
+    }
+
+    # compute null baseline from pre-computed null cost matrices (word-salad)
+    if null_cost_matrices is not None and len(null_cost_matrices) > 0:
+        null_shared_masses = []
+        null_avg_costs = []
+
+        for M_null in null_cost_matrices:
+            M_null = np.asarray(M_null, dtype=np.float64)
+            M_null = np.clip(M_null, 0, None)
+
+            # null may have different n_B, so recompute b distribution
+            n_B_null = M_null.shape[1]
+            b_null = np.ones(n_B_null) / n_B_null
+
+            P_null = run_ot(M_null, a, b_null, mode)
+
+            null_shared = float(P_null.sum())
+            null_shared_masses.append(null_shared)
+
+            if null_shared > 1e-9:
+                null_avg = float((P_null * M_null).sum() / null_shared)
+            else:
+                null_avg = float("nan")
+            null_avg_costs.append(null_avg)
+
+        null_shared_arr = np.array(null_shared_masses)
+        null_avg_arr = np.array([x for x in null_avg_costs if not np.isnan(x)])
+
+        result["null_shared_mass_mean"] = float(null_shared_arr.mean())
+        result["null_shared_mass_95pct"] = float(np.percentile(null_shared_arr, 95))
+        result["null_shared_mass_distribution"] = null_shared_arr.tolist()
+
+        if len(null_avg_arr) > 0:
+            result["null_avg_cost_mean"] = float(null_avg_arr.mean())
+            result["null_avg_cost_5pct"] = float(np.percentile(null_avg_arr, 5))
+            result["null_avg_cost_distribution"] = null_avg_arr.tolist()
+        else:
+            result["null_avg_cost_mean"] = float("nan")
+            result["null_avg_cost_5pct"] = float("nan")
+            result["null_avg_cost_distribution"] = []
+
+        # === INTERPRETABLE RELATIVE METRICS ===
+
+        # shared_mass_excess: raw difference above null
+        null_mean = result["null_shared_mass_mean"]
+        result["shared_mass_excess"] = float(shared_mass - null_mean)
+
+        # shared_mass_relative: 0 = same as random, 1 = perfect transport
+        if null_mean < 1.0:
+            result["shared_mass_relative"] = float(
+                (shared_mass - null_mean) / (1.0 - null_mean)
+            )
+        else:
+            result["shared_mass_relative"] = 0.0
+
+        # shared_mass_effect: robust effect size using MAD
+        null_median = np.median(null_shared_arr)
+        null_mad = np.median(np.abs(null_shared_arr - null_median))
+        result["shared_mass_effect"] = float(
+            (shared_mass - null_mean) / (null_mad + 1e-9)
+        )
+        result["null_shared_mass_mad"] = float(null_mad)
+
+        # avg_cost metrics (lower is better)
+        if len(null_avg_arr) > 0 and not np.isnan(avg_cost):
+            null_cost_mean = result["null_avg_cost_mean"]
+            result["avg_cost_improvement"] = float(null_cost_mean - avg_cost)
+            if null_cost_mean > 0:
+                result["avg_cost_relative"] = float(
+                    (null_cost_mean - avg_cost) / null_cost_mean
+                )
+            else:
+                result["avg_cost_relative"] = 0.0
+            null_cost_median = np.median(null_avg_arr)
+            null_cost_mad = np.median(np.abs(null_avg_arr - null_cost_median))
+            result["avg_cost_effect"] = float(
+                (null_cost_mean - avg_cost) / (null_cost_mad + 1e-9)
+            )
+            result["null_avg_cost_mad"] = float(null_cost_mad)
+        else:
+            result["avg_cost_improvement"] = 0.0
+            result["avg_cost_relative"] = 0.0
+            result["avg_cost_effect"] = 0.0
+            result["null_avg_cost_mad"] = 0.0
+
+    return result
 
 
 def create_embeddings_csv_base64(embeddings_a: dict, embeddings_b: dict, name_a: str, name_b: str) -> str:
@@ -248,6 +441,8 @@ def compute_ot(
     themes rather than forcing all themes to align. The reg_m parameter (K)
     controls when themes are treated as unmatched rather than forced to align.
 
+    Results are cached based on input hashes for performance.
+
     Args:
         cost_matrix: (n_A x n_B) numpy array of costs (1 - similarity)
         null_cost_matrices: Pre-computed null cost matrices (e.g., from word-salad).
@@ -260,169 +455,31 @@ def compute_ot(
     Returns:
         Dictionary with OT metrics including shared_mass, avg_cost, unmatched_mass
     """
-    import numpy as np
-    import ot
+    # convert to numpy and ensure float64
+    cost_arr = np.asarray(cost_matrix, dtype=np.float64)
 
-    n_A, n_B = cost_matrix.shape
+    # create hashable tuples for caching
+    cost_hash = _hash_array(cost_arr)
+    cost_tuple = tuple(tuple(row) for row in cost_arr)
 
-    if n_A == 0 or n_B == 0:
-        return {
-            "shared_mass": 0.0,
-            "avg_cost": float("nan"),
-            "unmatched_mass": 1.0,
-            "transport_plan": np.zeros((0, 0)),
-            "coverage_a": [],
-            "coverage_b": [],
-            "null_shared_mass_mean": 0.0,
-            "null_shared_mass_95pct": 0.0,
-            "null_avg_cost_mean": 0.0,
-            "null_avg_cost_5pct": 0.0,
-            "mode": mode,
-        }
-
-    # uniform mass distribution
-    a = np.ones(n_A) / n_A
-    b = np.ones(n_B) / n_B
-
-    # ensure cost matrix is float64 and non-negative
-    M = np.asarray(cost_matrix, dtype=np.float64)
-    M = np.clip(M, 0, None)
-
-    # ensure minimum regularisation for numerical stability
-    reg = max(reg, 1e-6)
-    reg_m = max(reg_m, 1e-6)
-
-    def run_ot(cost, a_dist, b_dist, mode_inner):
-        """Run OT with given cost matrix and mode."""
-        if mode_inner == "balanced":
-            P = ot.emd(a_dist, b_dist, cost)
-        else:
-            P = ot.unbalanced.sinkhorn_unbalanced(
-                a_dist, b_dist, cost,
-                reg=reg,
-                reg_m=reg_m,
-                numItermax=1000,
-                stopThr=1e-9,
-            )
-        return P
-
-    # compute optimal transport coupling
-    P = run_ot(M, a, b, mode)
-
-    # interpretable quantities
-    shared_mass = float(P.sum())
-    if shared_mass > 1e-9:
-        avg_cost = float((P * M).sum() / shared_mass)
-    else:
-        avg_cost = float("nan")
-    unmatched_mass = 1.0 - shared_mass
-
-    # coverage -- how much of each theme's mass maps to the other set
-    coverage_a = P.sum(axis=1).tolist()
-    coverage_b = P.sum(axis=0).tolist()
-
-    result = {
-        "shared_mass": shared_mass,
-        "avg_cost": avg_cost,
-        "unmatched_mass": unmatched_mass,
-        "transport_plan": P,
-        "coverage_a": coverage_a,
-        "coverage_b": coverage_b,
-        "reg": reg,
-        "reg_m": reg_m,
-        "mode": mode,
-    }
-
-    # compute null baseline from pre-computed null cost matrices (word-salad)
+    null_hashes = None
+    null_tuple = None
     if null_cost_matrices is not None and len(null_cost_matrices) > 0:
-        logger.debug(f"Computing null distribution from {len(null_cost_matrices)} word-salad samples")
-        null_shared_masses = []
-        null_avg_costs = []
+        null_arrays = [np.asarray(m, dtype=np.float64) for m in null_cost_matrices]
+        null_hashes = _hash_array_list(null_arrays)
+        null_tuple = tuple(tuple(tuple(row) for row in m) for m in null_arrays)
 
-        for M_null in null_cost_matrices:
-            M_null = np.asarray(M_null, dtype=np.float64)
-            M_null = np.clip(M_null, 0, None)
+    # call cached function
+    result = _compute_ot_cached(
+        cost_hash, cost_tuple, null_hashes, null_tuple, mode, reg, reg_m
+    )
 
-            # null may have different n_B, so recompute b distribution
-            n_B_null = M_null.shape[1]
-            b_null = np.ones(n_B_null) / n_B_null
-
-            P_null = run_ot(M_null, a, b_null, mode)
-
-            null_shared = float(P_null.sum())
-            null_shared_masses.append(null_shared)
-
-            if null_shared > 1e-9:
-                null_avg = float((P_null * M_null).sum() / null_shared)
-            else:
-                null_avg = float("nan")
-            null_avg_costs.append(null_avg)
-
-        null_shared_arr = np.array(null_shared_masses)
-        null_avg_arr = np.array([x for x in null_avg_costs if not np.isnan(x)])
-
-        result["null_shared_mass_mean"] = float(null_shared_arr.mean())
-        result["null_shared_mass_95pct"] = float(np.percentile(null_shared_arr, 95))
-        result["null_shared_mass_distribution"] = null_shared_arr.tolist()
-
-        if len(null_avg_arr) > 0:
-            result["null_avg_cost_mean"] = float(null_avg_arr.mean())
-            result["null_avg_cost_5pct"] = float(np.percentile(null_avg_arr, 5))
-            result["null_avg_cost_distribution"] = null_avg_arr.tolist()
-        else:
-            result["null_avg_cost_mean"] = float("nan")
-            result["null_avg_cost_5pct"] = float("nan")
-            result["null_avg_cost_distribution"] = []
-
-        # === INTERPRETABLE RELATIVE METRICS ===
-
-        # shared_mass_excess: raw difference above null (how much MORE mass transported)
-        null_mean = result["null_shared_mass_mean"]
-        result["shared_mass_excess"] = float(shared_mass - null_mean)
-
-        # shared_mass_relative: 0 = same as random, 1 = perfect transport
-        # formula: (observed - null) / (1 - null)
-        # answers: "of the improvement possible beyond random, what fraction did we achieve?"
-        if null_mean < 1.0:
-            result["shared_mass_relative"] = float(
-                (shared_mass - null_mean) / (1.0 - null_mean)
-            )
-        else:
-            result["shared_mass_relative"] = 0.0
-
-        # shared_mass_effect: robust effect size using MAD (median absolute deviation)
-        # MAD is less sensitive to variance collapse from longer embeddings
-        null_median = np.median(null_shared_arr)
-        null_mad = np.median(np.abs(null_shared_arr - null_median))
-        result["shared_mass_effect"] = float(
-            (shared_mass - null_mean) / (null_mad + 1e-9)
-        )
-        result["null_shared_mass_mad"] = float(null_mad)
-
-        # avg_cost metrics (lower is better, so we measure improvement)
-        if len(null_avg_arr) > 0 and not np.isnan(avg_cost):
-            null_cost_mean = result["null_avg_cost_mean"]
-            # avg_cost_improvement: positive = better than null
-            result["avg_cost_improvement"] = float(null_cost_mean - avg_cost)
-            # avg_cost_relative: 0 = same as random, 1 = perfect (zero cost)
-            if null_cost_mean > 0:
-                result["avg_cost_relative"] = float(
-                    (null_cost_mean - avg_cost) / null_cost_mean
-                )
-            else:
-                result["avg_cost_relative"] = 0.0
-            # avg_cost_effect: robust effect size using MAD
-            null_cost_median = np.median(null_avg_arr)
-            null_cost_mad = np.median(np.abs(null_avg_arr - null_cost_median))
-            result["avg_cost_effect"] = float(
-                (null_cost_mean - avg_cost) / (null_cost_mad + 1e-9)
-            )
-            result["null_avg_cost_mad"] = float(null_cost_mad)
-        else:
-            result["avg_cost_improvement"] = 0.0
-            result["avg_cost_relative"] = 0.0
-            result["avg_cost_effect"] = 0.0
-            result["null_avg_cost_mad"] = 0.0
+    # convert transport_plan back to numpy array
+    result = dict(result)  # make a copy since cached result shouldn't be modified
+    if result["transport_plan"]:
+        result["transport_plan"] = np.array(result["transport_plan"])
+    else:
+        result["transport_plan"] = np.zeros((0, 0))
 
     return result
 
@@ -623,12 +680,24 @@ _SANKEY_HOVER_CSS = """
 </style>
 """
 
-# Plotly config to hide modebar and logo
+# Plotly config with export buttons
 _SANKEY_PLOTLY_CONFIG = {
-    'displayModeBar': False,
+    'displayModeBar': True,
     'displaylogo': False,
     'staticPlot': False,
+    'modeBarButtonsToRemove': ['zoom2d', 'pan2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d'],
+    'modeBarButtonsToAdd': [],
+    'toImageButtonOptions': {
+        'format': 'svg',  # default to SVG for print quality
+        'filename': 'sankey_diagram',
+        'height': None,
+        'width': None,
+        'scale': 2,
+    },
 }
+
+# Print-safe font stack (Helvetica/Arial based, widely available)
+_PRINT_FONT_STACK = "Helvetica Neue, Helvetica, Arial, sans-serif"
 
 
 class SankeyHTML:
@@ -660,11 +729,13 @@ def create_transport_sankey(
     analysis_name_b: str = "B",
     threshold_ratio: float = 0.01,
     link_opacity: float = 0.6,
+    cost_min: Optional[float] = None,
+    cost_max: Optional[float] = None,
 ) -> "SankeyHTML":
     """Create interactive Sankey diagram visualising optimal transport flow.
 
     Features:
-    - PiYG colour scale for alignment quality (green = good, pink = poor)
+    - Green-amber-red colour scale for alignment quality (green = good, red = poor)
     - Labels outside plot area with text wrapping and hyphenation
     - A nodes in fixed alphabetical order, B nodes positioned to minimise crossings
     - Hover text showing mass proportions, cost contribution, and unit cost
@@ -679,6 +750,8 @@ def create_transport_sankey(
         analysis_name_b: Name of analysis B
         threshold_ratio: Drop links below this fraction of max flow
         link_opacity: Opacity of link colours (0-1)
+        cost_min: Minimum cost for color scale (green). If None, computed from links.
+        cost_max: Maximum cost for color scale (red). If None, computed from links.
 
     Returns:
         SankeyHTML object with .html and .base64 properties
@@ -805,17 +878,29 @@ def create_transport_sankey(
                 if M_sorted is not None:
                     link_costs.append(M_sorted[i, j])
 
-    # normalise unit costs for colour scale
+    # map costs to colours using the provided or computed min/max range
+    # this ensures colors are comparable across different K values when using shared scale
     if link_costs:
-        cost_min, cost_max = min(link_costs), max(link_costs)
+        # determine color scale range
+        if cost_min is None:
+            cost_min = min(link_costs)
+        if cost_max is None:
+            cost_max = max(link_costs)
         cost_range = cost_max - cost_min
+        if cost_range < 1e-9:
+            cost_range = 1.0  # avoid division by zero if all costs identical
+
         colors = []
         for cost in link_costs:
-            norm_cost = (cost - cost_min) / cost_range if cost_range > 0 else 0.5
+            # normalise cost to [0, 1] within the min/max range
+            # cost_min → 0 (green), cost_max → 1 (red)
+            norm_cost = (cost - cost_min) / cost_range
+            norm_cost = max(0.0, min(1.0, norm_cost))  # clamp to [0, 1]
             colors.append(_cost_to_color(norm_cost, link_opacity))
     else:
         colors = [f"rgba(100, 150, 200, {link_opacity})"] * len(sources)
         link_costs = [0.5] * len(sources)  # default for hover text
+        cost_min, cost_max = 0.0, 1.0  # defaults for colorbar
 
     # A positions: fixed top to bottom
     y_a = np.linspace(0.02, 0.98, n_A).tolist() if n_A > 1 else [0.5]
@@ -876,7 +961,7 @@ def create_transport_sankey(
         bgcolor="white",
         bordercolor="#ccc",
         font=dict(
-            family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+            family=_PRINT_FONT_STACK,
             size=12,
             color="black",
         ),
@@ -939,23 +1024,76 @@ def create_transport_sankey(
         ))
 
     padding = 48  # 3em
+
+    # add continuous colorbar showing similarity scale based on actual cost range
+    # cost_min → green (high similarity), cost_max → red (low similarity)
+    if link_costs:
+        # convert cost range to similarity range
+        sim_max = 1 - cost_min  # green end (highest similarity in this analysis)
+        sim_min = 1 - cost_max  # red end (lowest similarity in this analysis)
+
+        # Similarity colorscale: low similarity (red) → high similarity (green)
+        colorscale = [
+            [0.0, '#e74c3c'],   # red (low similarity)
+            [0.5, '#f39c12'],   # amber (medium similarity)
+            [1.0, '#27ae60'],   # green (high similarity)
+        ]
+
+        # generate tick values spread across the similarity range
+        sim_range = sim_max - sim_min
+        tick_vals = [sim_min + sim_range * i / 4 for i in range(5)]
+
+        # add invisible scatter trace just for the colorbar
+        fig.add_trace(go.Scatter(
+            x=[None],
+            y=[None],
+            mode='markers',
+            marker=dict(
+                colorscale=colorscale,
+                cmin=sim_min,
+                cmax=sim_max,
+                color=[(sim_min + sim_max) / 2],
+                colorbar=dict(
+                    title=dict(
+                        text="Similarity",
+                        side="top",
+                        font=dict(size=13),
+                    ),
+                    orientation="h",
+                    x=0.5,
+                    y=-0.08,
+                    xanchor="center",
+                    yanchor="top",
+                    len=0.4,
+                    thickness=15,
+                    tickfont=dict(size=11),
+                    tickformat=".2f",
+                    tickvals=tick_vals,
+                ),
+            ),
+            hoverinfo='skip',
+            showlegend=False,
+        ))
+
     fig.update_layout(
         title_text="",
         font=dict(
-            family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif",
+            family=_PRINT_FONT_STACK,
             size=9,
         ),
         width=1100,
         height=max(600, 60 * max(n_A, n_B)),
-        margin=dict(l=380 + padding, r=380 + padding, t=padding, b=padding),
+        margin=dict(l=380 + padding, r=380 + padding, t=padding, b=padding + 80),
         annotations=annotations,
         paper_bgcolor="white",
         plot_bgcolor="white",
+        xaxis=dict(visible=False),
+        yaxis=dict(visible=False),
         hoverlabel=dict(
             bgcolor="rgba(255, 255, 255, 1)",
             bordercolor="rgba(200, 200, 200, 1)",
             font=dict(
-                family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
+                family=_PRINT_FONT_STACK,
                 size=12,
                 color="rgba(0, 0, 0, 1)",
             ),
@@ -966,6 +1104,42 @@ def create_transport_sankey(
     # generate HTML with CSS injection (use CDN to reduce size)
     html_str = fig.to_html(config=_SANKEY_PLOTLY_CONFIG, include_plotlyjs='cdn', full_html=True)
     html_str = html_str.replace("<head>", f"<head>{_SANKEY_HOVER_CSS}")
+
+    # add download buttons below the chart
+    download_buttons_html = """
+<div style="text-align: center; margin: 20px 0; font-family: Helvetica Neue, Helvetica, Arial, sans-serif;">
+    <span style="margin-right: 10px; color: #666; font-size: 13px;">Download:</span>
+    <button onclick="downloadSankey('svg')" style="
+        padding: 8px 16px; margin: 0 5px; cursor: pointer;
+        background: #3498db; color: white; border: none; border-radius: 4px;
+        font-size: 13px; font-family: inherit;
+    ">SVG (vector)</button>
+    <button onclick="downloadSankey('png')" style="
+        padding: 8px 16px; margin: 0 5px; cursor: pointer;
+        background: #27ae60; color: white; border: none; border-radius: 4px;
+        font-size: 13px; font-family: inherit;
+    ">PNG (2x)</button>
+    <button onclick="downloadSankey('pdf')" style="
+        padding: 8px 16px; margin: 0 5px; cursor: pointer;
+        background: #9b59b6; color: white; border: none; border-radius: 4px;
+        font-size: 13px; font-family: inherit;
+    ">PDF</button>
+</div>
+<script>
+function downloadSankey(format) {
+    var gd = document.querySelector('.plotly-graph-div');
+    var filename = 'sankey_diagram';
+    if (format === 'pdf') {
+        // For PDF, download as SVG and note that user can convert
+        Plotly.downloadImage(gd, {format: 'svg', filename: filename + '_for_pdf', scale: 2});
+        alert('SVG downloaded. Open in Inkscape, Illustrator, or use an online converter to save as PDF.');
+    } else {
+        Plotly.downloadImage(gd, {format: format, filename: filename, scale: 2});
+    }
+}
+</script>
+"""
+    html_str = html_str.replace("</body>", download_buttons_html + "</body>")
 
     # generate PNG for fallback
     try:
@@ -1090,39 +1264,30 @@ class Base64ImageFile:
         return base64.b64encode(self.buffer.read()).decode("utf-8")
 
 
-def find_elbow_point(
+def find_elbow_points(
     k_values: List[float],
     shared_mass: List[float],
     *,
-    q: float = 0.25,
-    m: int = 3,
     n_interp: int = 100,
     eps: float = 1e-12,
-) -> tuple[int, float]:
-    """Find the elbow point using diminishing returns on the shared_mass curve.
+    plateau_threshold: float = 0.20,
+) -> dict:
+    """Find elbow points using both chord-based and diminishing returns methods.
 
-    Interpolates to a uniform grid in log(K) space before analysis, ensuring
-    consistent treatment regardless of how the original K values are spaced.
-
-    Looks for where the slope drops below a threshold (q * initial_slope) for
-    m consecutive points, indicating diminishing returns from increasing K.
-
-    Uses shared_mass (monotone increasing) rather than unmatched_mass (decreasing)
-    as the increasing curve is more stable for knee detection.
-
-    Note: K=0 is problematic as log(0) is undefined. Either exclude K=0 from the
-    search or use log(K + eps) with eps tiny. This implementation uses the latter.
+    Interpolates to a uniform grid in log(K) space for analysis.
 
     Args:
         k_values: K parameter values (should be positive; uses log(K+eps) for safety)
         shared_mass: Corresponding shared mass values (should increase with K)
-        q: Relative threshold -- slope must drop below q * initial_slope (default: 0.25)
-        m: Number of consecutive points below threshold to trigger (default: 3)
         n_interp: Number of points for uniform log(K) grid (default: 100)
         eps: Small constant to handle log(0) edge case (default: 1e-12)
+        plateau_threshold: Threshold for diminishing returns (default: 0.20)
 
     Returns:
-        Tuple of (index, k_value) for the elbow point (index into original k_values)
+        Dictionary with:
+        - chord_idx, chord_k: Index and K value for chord-based elbow
+        - diminishing_idx, diminishing_k: Index and K value for diminishing returns point
+        - plateau_reached: Whether curve has clearly asymptoted
     """
     import numpy as np
 
@@ -1142,46 +1307,111 @@ def find_elbow_point(
         s_padded = np.pad(s_uniform, (1, 1), mode="edge")
         s_uniform = np.convolve(s_padded, kernel, mode="valid")
 
-    # compute slope on uniform grid (constant spacing so just use diff)
+    # compute slopes for diminishing returns detection
     slope = np.diff(s_uniform)
+    n_window = min(5, len(slope) // 4) if len(slope) > 4 else 1
+    initial_slope = np.mean(np.abs(slope[:n_window])) if len(slope) >= n_window else 0
+    final_slope = np.mean(np.abs(slope[-n_window:])) if len(slope) >= n_window else 0
 
-    # relative threshold based on initial slope
-    thr = q * slope[0] if len(slope) > 0 and slope[0] > 0 else 0
-    below = slope < thr
+    # === PLATEAU DETECTION ===
+    # criterion 1: relative slope -- final slope < 25% of initial
+    relative_plateau = (initial_slope <= 0) or (final_slope / (initial_slope + 1e-12) < 0.25)
+    # criterion 2: absolute change in last 20% of curve < 4 points
+    n_tail = max(1, len(s_uniform) // 5)
+    tail_range = s_uniform[-1] - s_uniform[-n_tail]
+    absolute_plateau = abs(tail_range) < 4.0
+    # criterion 3: high value (already near maximum)
+    high_value_plateau = s_uniform[-1] > 85.0
+    # criterion 4: consistent deceleration -- curve is flattening even if not flat
+    if len(slope) >= 4:
+        mid = len(slope) // 2
+        first_half_slope = np.mean(np.abs(slope[:mid]))
+        second_half_slope = np.mean(np.abs(slope[mid:]))
+        decelerating = second_half_slope < 0.5 * first_half_slope
+    else:
+        decelerating = False
+    plateau_reached = relative_plateau or absolute_plateau or high_value_plateau or decelerating
 
-    # look for m consecutive points below threshold
+    # === CHORD-BASED ELBOW (Kneedle-style) ===
+    x_min, x_max = logK_uniform.min(), logK_uniform.max()
+    y_min, y_max = s_uniform.min(), s_uniform.max()
+    x_range = x_max - x_min if x_max != x_min else 1.0
+    y_range = y_max - y_min if y_max != y_min else 1.0
+
+    x_norm = (logK_uniform - x_min) / x_range
+    y_norm = (s_uniform - y_min) / y_range
+
+    x0, y0 = x_norm[0], y_norm[0]
+    x1, y1 = x_norm[-1], y_norm[-1]
+
+    chord_y = y0 + (y1 - y0) * (x_norm - x0) / (x1 - x0 + eps)
+    distances = y_norm - chord_y
+
+    chord_interp_idx = int(np.argmax(distances))
+    chord_logK = logK_uniform[chord_interp_idx]
+    chord_K = np.exp(chord_logK)
+    chord_orig_idx = int(np.argmin(np.abs(K - chord_K)))
+
+    # === DIMINISHING RETURNS (slope < 20% of initial) ===
+    # Compute in ORIGINAL K space (not log space) for intuitive results
+    # Use the raw k_values and shared_mass, not the interpolated log-space data
+    k_arr = np.asarray(k_values, float)
+    sm_arr = np.asarray(shared_mass, float)
+
+    # compute actual slopes: change in shared_mass per unit change in K
+    dk = np.diff(k_arr)
+    dsm = np.diff(sm_arr)
+    slopes_original = dsm / (dk + 1e-12)  # shared_mass change per K unit
+
+    # initial slope is average of first few points
+    n_init = min(3, len(slopes_original))
+    initial_slope_orig = np.mean(slopes_original[:n_init]) if n_init > 0 else 0
+
+    # find where slope drops below 20% of initial
+    thr_orig = plateau_threshold * initial_slope_orig if initial_slope_orig > 0 else 0
+    diminishing_orig_idx = None
+
+    # look for 2 consecutive points below threshold
     run = 0
-    elbow_logK = None
-    for i, flag in enumerate(below, start=1):
-        run = run + 1 if flag else 0
-        if run >= m:
-            j = i - m + 1
-            elbow_logK = logK_uniform[j]
-            break
+    for i, slope_val in enumerate(slopes_original):
+        if slope_val < thr_orig:
+            run += 1
+            if run >= 2:
+                diminishing_orig_idx = i - 1  # index of first point below threshold
+                break
+        else:
+            run = 0
 
-    # fallback: smallest K achieving 50% of max shared mass
-    if elbow_logK is None:
-        target = s_uniform.min() + 0.5 * (s_uniform.max() - s_uniform.min())
-        j = int(np.argmax(s_uniform >= target))
-        elbow_logK = logK_uniform[j]
+    if diminishing_orig_idx is None:
+        # fallback: find last point where slope >= threshold
+        above_thr = np.where(slopes_original >= thr_orig)[0]
+        if len(above_thr) > 0:
+            diminishing_orig_idx = above_thr[-1] + 1
+        else:
+            diminishing_orig_idx = len(k_arr) - 1
 
-    # map back to nearest original K value
-    elbow_K = np.exp(elbow_logK)
-    orig_idx = int(np.argmin(np.abs(K - elbow_K)))
-    return orig_idx, K[orig_idx]
+    diminishing_orig_idx = min(diminishing_orig_idx, len(k_arr) - 1)
+    diminishing_K = k_arr[diminishing_orig_idx]
+
+    return {
+        "chord_idx": chord_orig_idx,
+        "chord_k": K[chord_orig_idx],
+        "diminishing_idx": diminishing_orig_idx,
+        "diminishing_k": K[diminishing_orig_idx],
+        "plateau_reached": plateau_reached,
+    }
 
 
-def create_unmatched_mass_scree_plot(
+def create_shared_mass_scree_plot(
     ot_by_k: Dict[float, Dict],
     k_values: List[float],
     analysis_name_a: str = "A",
     analysis_name_b: str = "B",
     default_k: float = 0.25,
 ) -> Dict[str, Any]:
-    """Create scree plot showing unmatched mass across different K values.
+    """Create scree plot showing shared mass across different K values.
 
-    Identifies the elbow point (maximum curvature) which may be the optimal K
-    for balancing matched vs unmatched mass.
+    Shows both chord-based elbow and diminishing returns points for K selection.
 
     Args:
         ot_by_k: Dictionary mapping K values to OT results
@@ -1193,97 +1423,91 @@ def create_unmatched_mass_scree_plot(
     Returns:
         Dictionary with:
         - image: Base64ImageFile containing the scree plot
-        - elbow_k: K value at the point of diminishing returns
-        - elbow_idx: Index of the elbow point
+        - chord_k: K value at chord-based elbow
+        - diminishing_k: K value at diminishing returns point
+        - plateau_reached: Whether the curve has clearly asymptoted
     """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import numpy as np
 
-    # extract unmatched mass for each K
-    unmatched_masses = [ot_by_k[k]["ot"]["unmatched_mass"] * 100 for k in k_values]
+    # extract shared mass for each K
     shared_masses = [ot_by_k[k]["ot"]["shared_mass"] * 100 for k in k_values]
 
-    # find elbow point using diminishing returns on shared_mass curve
-    # (the increasing, concave form yields more stable finite-difference slopes than
-    #  the decreasing unmatched_mass curve, which is prone to noise and floor effects
-    #  near zero under smoothing and interpolation)    
-    elbow_idx, elbow_k = find_elbow_point(k_values, shared_masses)
-    elbow_unmatched = unmatched_masses[elbow_idx]
-    elbow_shared = shared_masses[elbow_idx]
+    # find both elbow points
+    elbow_points = find_elbow_points(k_values, shared_masses)
+    chord_idx = elbow_points["chord_idx"]
+    chord_k = elbow_points["chord_k"]
+    diminishing_idx = elbow_points["diminishing_idx"]
+    diminishing_k = elbow_points["diminishing_k"]
+    plateau_reached = elbow_points["plateau_reached"]
+
+    chord_shared = shared_masses[chord_idx]
+    diminishing_shared = shared_masses[diminishing_idx]
 
     # find default K index for highlighting
     default_idx = k_values.index(default_k) if default_k in k_values else None
 
     plt.close("all")
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+    fig, ax = plt.subplots(1, 1, figsize=(8, 5))
 
-    # plot 1: unmatched mass
-    ax1.plot(k_values, unmatched_masses, 'o-', color='#e74c3c', linewidth=2, markersize=6)
-    ax1.fill_between(k_values, unmatched_masses, alpha=0.2, color='#e74c3c')
-    ax1.set_xlabel('K (Mass Penalty)', fontsize=11)
-    ax1.set_ylabel('Unmatched Mass (%)', fontsize=11)
-    ax1.set_title(f'Unmatched Mass vs K\n{analysis_name_a} ↔ {analysis_name_b}', fontsize=12)
-    ax1.set_xlim(-0.05, max(k_values) + 0.05)
-    ax1.set_ylim(0, max(unmatched_masses) * 1.1 + 1)
-    ax1.grid(True, alpha=0.3)
-    ax1.axhline(y=0, color='gray', linestyle='--', alpha=0.5)
+    # plot shared mass curve
+    ax.plot(k_values, shared_masses, 'o-', color='#27ae60', linewidth=2, markersize=6)
+    ax.fill_between(k_values, shared_masses, alpha=0.2, color='#27ae60')
 
-    # highlight point of diminishing returns
-    ax1.scatter([elbow_k], [elbow_unmatched], color='#9b59b6', s=150, zorder=5,
-                marker='D', edgecolors='white', linewidths=2, label=f'Diminishing returns (K={elbow_k})')
-    ax1.axvline(x=elbow_k, color='#9b59b6', linestyle=':', alpha=0.7)
+    # draw chord line in log(K) space (appears curved in linear K space)
+    eps = 1e-12
+    log_k_first, log_k_last = np.log(k_values[0] + eps), np.log(k_values[-1] + eps)
+    sm_first, sm_last = shared_masses[0], shared_masses[-1]
+    n_chord_pts = 50
+    log_k_chord = np.linspace(log_k_first, log_k_last, n_chord_pts)
+    k_chord = np.exp(log_k_chord)
+    sm_chord = sm_first + (sm_last - sm_first) * (log_k_chord - log_k_first) / (log_k_last - log_k_first + eps)
+    ax.plot(k_chord, sm_chord, '--', color='#7f8c8d', linewidth=1.5, alpha=0.7, label='Chord (log K)')
 
-    # highlight default K if different from diminishing returns point
-    if default_idx is not None and default_k != elbow_k:
-        default_unmatched = unmatched_masses[default_idx]
-        ax1.scatter([default_k], [default_unmatched], color='#3498db', s=150, zorder=5,
-                    marker='s', edgecolors='white', linewidths=2, label=f'Default (K={default_k})')
-        ax1.axvline(x=default_k, color='#3498db', linestyle=':', alpha=0.7)
+    ax.set_xlabel('K (Mass Penalty)', fontsize=11)
+    ax.set_ylabel('Shared Mass (%)', fontsize=11)
+    title = f'Shared Mass vs K\n{analysis_name_a} ↔ {analysis_name_b}'
+    if not plateau_reached:
+        title += ' (curve may not have plateaued)'
+    ax.set_title(title, fontsize=12)
+    ax.set_xlim(-0.05, max(k_values) * 1.05)
+    ax.set_ylim(min(shared_masses) * 0.9, 100)
+    ax.grid(True, alpha=0.3)
+    ax.axhline(y=100, color='gray', linestyle='--', alpha=0.5)
 
-    ax1.legend(loc='upper right', fontsize=9)
+    # highlight chord-based elbow (filled purple diamond, lower layer)
+    ax.scatter([chord_k], [chord_shared], color='#9b59b6', s=150, zorder=5,
+               marker='D', edgecolors='white', linewidths=2, label=f'Chord elbow (K={chord_k})')
+    ax.axvline(x=chord_k, color='#9b59b6', linestyle=':', alpha=0.7)
 
-    # annotate selected points to avoid clutter (skip elbow and default)
-    for i, (k, um) in enumerate(zip(k_values, unmatched_masses)):
-        if i == elbow_idx or (default_idx is not None and i == default_idx):
-            continue
-        if i == 0 or i == len(k_values) - 1 or i % 3 == 0:
-            ax1.annotate(f'{um:.1f}%', (k, um), textcoords="offset points",
-                         xytext=(0, 10), ha='center', fontsize=8)
+    # highlight diminishing returns point (open orange circle, on top)
+    # always show, even when overlapping - open marker makes overlap visible
+    ax.scatter([diminishing_k], [diminishing_shared], facecolors='none', s=200, zorder=6,
+               marker='o', edgecolors='#e67e22', linewidths=3, label=f'Dim. returns (K={diminishing_k})')
+    if diminishing_k != chord_k:
+        ax.axvline(x=diminishing_k, color='#e67e22', linestyle=':', alpha=0.7)
 
-    # plot 2: shared mass (inverse perspective)
-    ax2.plot(k_values, shared_masses, 'o-', color='#27ae60', linewidth=2, markersize=6)
-    ax2.fill_between(k_values, shared_masses, alpha=0.2, color='#27ae60')
-    ax2.set_xlabel('K (Mass Penalty)', fontsize=11)
-    ax2.set_ylabel('Shared Mass (%)', fontsize=11)
-    ax2.set_title(f'Shared Mass vs K\n{analysis_name_a} ↔ {analysis_name_b}', fontsize=12)
-    ax2.set_xlim(-0.05, max(k_values) + 0.05)
-    ax2.set_ylim(min(shared_masses) * 0.9, 100)
-    ax2.grid(True, alpha=0.3)
-    ax2.axhline(y=100, color='gray', linestyle='--', alpha=0.5)
-
-    # highlight point of diminishing returns
-    ax2.scatter([elbow_k], [elbow_shared], color='#9b59b6', s=150, zorder=5,
-                marker='D', edgecolors='white', linewidths=2, label=f'Diminishing returns (K={elbow_k})')
-    ax2.axvline(x=elbow_k, color='#9b59b6', linestyle=':', alpha=0.7)
-
-    # highlight default K if different from diminishing returns point
-    if default_idx is not None and default_k != elbow_k:
+    # highlight default K (blue square) if different from both
+    if default_idx is not None and default_k != chord_k and default_k != diminishing_k:
         default_shared = shared_masses[default_idx]
-        ax2.scatter([default_k], [default_shared], color='#3498db', s=150, zorder=5,
-                    marker='s', edgecolors='white', linewidths=2, label=f'Default (K={default_k})')
-        ax2.axvline(x=default_k, color='#3498db', linestyle=':', alpha=0.7)
+        ax.scatter([default_k], [default_shared], color='#3498db', s=150, zorder=5,
+                   marker='s', edgecolors='white', linewidths=2, label=f'Default (K={default_k})')
+        ax.axvline(x=default_k, color='#3498db', linestyle=':', alpha=0.7)
 
-    ax2.legend(loc='lower right', fontsize=9)
+    ax.legend(loc='lower right', fontsize=9)
 
-    # annotate selected points to avoid clutter (skip elbow and default)
+    # annotate selected points to avoid clutter
+    skip_indices = {chord_idx, diminishing_idx}
+    if default_idx is not None:
+        skip_indices.add(default_idx)
     for i, (k, sm) in enumerate(zip(k_values, shared_masses)):
-        if i == elbow_idx or (default_idx is not None and i == default_idx):
+        if i in skip_indices:
             continue
-        if i == 0 or i == len(k_values) - 1 or i % 3 == 0:
-            ax2.annotate(f'{sm:.1f}%', (k, sm), textcoords="offset points",
-                         xytext=(0, -15), ha='center', fontsize=8)
+        if i == 0 or i == len(k_values) - 1 or i % 4 == 0:
+            ax.annotate(f'{sm:.1f}%', (k, sm), textcoords="offset points",
+                        xytext=(0, -15), ha='center', fontsize=8)
 
     fig.tight_layout()
 
@@ -1293,9 +1517,12 @@ def create_unmatched_mass_scree_plot(
     buffer.seek(0)
 
     return {
-        "image": Base64ImageFile(buffer, name="unmatched_mass_scree.png"),
-        "elbow_k": elbow_k,
-        "elbow_idx": elbow_idx,
+        "image": Base64ImageFile(buffer, name="shared_mass_scree.png"),
+        "chord_k": chord_k,
+        "chord_idx": chord_idx,
+        "diminishing_k": diminishing_k,
+        "diminishing_idx": diminishing_idx,
+        "plateau_reached": plateau_reached,
     }
 
 
@@ -1366,9 +1593,10 @@ def compare_result_similarity(
         - z_score_normalized_shepard: Shepard normalized by within-set z-scores
     """
 
-    # extract theme names and analysis names before reassigning A and B
-    theme_names_A = [theme.name for theme in A.themes]
-    theme_names_B = [theme.name for theme in B.themes]
+    # extract theme names/labels and analysis names before reassigning A and B
+    # use label if set (from --llm-labels), otherwise fall back to name
+    theme_names_A = [theme.label if theme.label else theme.name for theme in A.themes]
+    theme_names_B = [theme.label if theme.label else theme.name for theme in B.themes]
     analysis_name_A = A.name
     analysis_name_B = B.name
 
@@ -1548,20 +1776,24 @@ def compare_result_similarity(
     # K (reg_m) controls when themes are left unmatched vs forced to align
     # Higher K = stronger penalty for unmatching = more mass forced to transport
     # Lower K = weaker penalty = more mass can remain unmatched
-    # K values: finer granularity at low end where behavior changes most
-    # 0.01-0.5: steps of 0.05 | 0.5-1.0: steps of 0.1 | 1.0-2.0: steps of 0.25
+    # K values: fine at low end for elbow detection, coarser at high end
+    # 0.025-0.05: very low K | 0.1-1.0: every 0.1 | 1.0-2.0: every 0.5 | 2.0-4.0: every 1.0
     K_VALUES = [
-        0.025, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50,
-        0.6, 0.7, 0.8, 0.9, 1.0,
-        1.25, 1.5, 1.75, 2.0
+        0.025, 0.05,
+        0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0,
+        1.5, 2.0,
+        3.0, 4.0
     ]
-    DEFAULT_K = 0.25
+    EXTENDED_K_VALUES = [6.0, 8.0, 10.0]
+    DEFAULT_K = 0.3
 
+    # PHASE 1: Compute OT for all K values (without visualisations yet)
     ot_by_k = {}
+    computed_k_values = []
+    prev_shared_mass = 0.0
     for k_val in tqdm(K_VALUES, desc="Computing OT for K values", file=sys.stderr):
         logger.debug(f"\n--- Computing OT with K={k_val} ---")
 
-        # compute null baseline for all K values to enable relative metrics comparison
         ot_result = compute_ot(
             cost_matrix,
             null_cost_matrices=null_cost_matrices,
@@ -1569,7 +1801,90 @@ def compare_result_similarity(
             reg_m=k_val,
         )
 
-        # generate transport visualisations for this K
+        split_join_stats = compute_split_join_stats(ot_result["transport_plan"])
+
+        # store transport plan as numpy array for later visualisation
+        ot_by_k[k_val] = {
+            "ot_result": ot_result,
+            "split_join_stats": split_join_stats,
+        }
+        computed_k_values.append(k_val)
+
+        logger.debug(f"K={k_val:.1f}: shared_mass={ot_result['shared_mass']:.3f}, avg_cost={ot_result['avg_cost']:.3f}")
+        logger.debug(f"  Splits from A: mean={split_join_stats['splits_from_a']['mean']:.2f}, max={split_join_stats['splits_from_a']['max']}")
+        logger.debug(f"  Joins to B: mean={split_join_stats['joins_to_b']['mean']:.2f}, max={split_join_stats['joins_to_b']['max']}")
+
+        # stop early if improvement < 2.5% (curve has plateaued)
+        current_shared_mass = ot_result["shared_mass"]
+        improvement = (current_shared_mass - prev_shared_mass) / (prev_shared_mass + 1e-9)
+        prev_shared_mass = current_shared_mass
+        if improvement < 0.025 and k_val >= DEFAULT_K:
+            logger.info(f"Shared mass improvement {improvement:.1%} < 2.5% at K={k_val}, stopping early")
+            break
+
+    # adaptive extension: if last improvement was still >= 2.5%, add extra K values
+    all_k_values = list(computed_k_values)
+    last_shared_mass = ot_by_k[computed_k_values[-1]]["ot_result"]["shared_mass"]
+    if len(computed_k_values) >= 2:
+        second_last_shared = ot_by_k[computed_k_values[-2]]["ot_result"]["shared_mass"]
+        last_improvement = (last_shared_mass - second_last_shared) / (second_last_shared + 1e-9)
+    else:
+        last_improvement = 1.0  # assume we need extension if only 1 K value
+    if last_improvement >= 0.025:
+        logger.info(f"Last improvement ({last_improvement:.1%}) >= 2.5%, extending K values")
+        for k_val in tqdm(EXTENDED_K_VALUES, desc="Computing OT for extended K", file=sys.stderr):
+            logger.debug(f"\n--- Computing OT with K={k_val} (extended) ---")
+
+            ot_result = compute_ot(
+                cost_matrix,
+                null_cost_matrices=null_cost_matrices,
+                mode="unbalanced",
+                reg_m=k_val,
+            )
+
+            split_join_stats = compute_split_join_stats(ot_result["transport_plan"])
+
+            ot_by_k[k_val] = {
+                "ot_result": ot_result,
+                "split_join_stats": split_join_stats,
+            }
+            all_k_values.append(k_val)
+
+            logger.debug(f"K={k_val:.1f}: shared_mass={ot_result['shared_mass']:.3f}, avg_cost={ot_result['avg_cost']:.3f}")
+
+            # stop early if improvement < 2.5%
+            current_shared_mass = ot_result["shared_mass"]
+            improvement = (current_shared_mass - prev_shared_mass) / (prev_shared_mass + 1e-9)
+            prev_shared_mass = current_shared_mass
+            if improvement < 0.025:
+                logger.info(f"Shared mass improvement {improvement:.1%} < 2.5% at K={k_val}, stopping extension")
+                break
+
+    # PHASE 2: Get color scale from default K and create visualisations
+    # Extract min/max costs from default K transport plan for consistent color scale
+    default_transport = ot_by_k[DEFAULT_K]["ot_result"]["transport_plan"]
+    threshold_ratio = 0.01
+    threshold = threshold_ratio * default_transport.max()
+
+    # get costs for links that will be displayed (above threshold)
+    default_link_costs = []
+    for i in range(default_transport.shape[0]):
+        for j in range(default_transport.shape[1]):
+            if default_transport[i, j] > threshold:
+                default_link_costs.append(cost_matrix[i, j])
+
+    if default_link_costs:
+        color_cost_min = min(default_link_costs)
+        color_cost_max = max(default_link_costs)
+        logger.info(f"Color scale from default K={DEFAULT_K}: cost range [{color_cost_min:.3f}, {color_cost_max:.3f}] (similarity [{1-color_cost_max:.3f}, {1-color_cost_min:.3f}])")
+    else:
+        color_cost_min, color_cost_max = 0.0, 1.0
+
+    # Create visualisations for all K values with shared color scale
+    for k_val in tqdm(all_k_values, desc="Creating visualisations", file=sys.stderr):
+        ot_result = ot_by_k[k_val]["ot_result"]
+        split_join_stats = ot_by_k[k_val]["split_join_stats"]
+
         transport_sankey_k = create_transport_sankey(
             ot_result["transport_plan"],
             theme_names_A,
@@ -1577,6 +1892,8 @@ def compare_result_similarity(
             cost_matrix=cost_matrix,
             analysis_name_a=analysis_name_A,
             analysis_name_b=analysis_name_B,
+            cost_min=color_cost_min,
+            cost_max=color_cost_max,
         )
         transport_heatmap_k = create_transport_heatmap(
             ot_result["transport_plan"],
@@ -1585,9 +1902,6 @@ def compare_result_similarity(
             analysis_name_a=analysis_name_A,
             analysis_name_b=analysis_name_B,
         )
-
-        # compute split/join statistics for this transport plan
-        split_join_stats = compute_split_join_stats(ot_result["transport_plan"])
 
         # prepare OT results for serialisation (remove numpy array)
         ot_serialisable_k = {key: v for key, v in ot_result.items() if key != "transport_plan"}
@@ -1601,29 +1915,30 @@ def compare_result_similarity(
             "split_join_stats": split_join_stats,
         }
 
-        logger.debug(f"K={k_val:.1f}: shared_mass={ot_result['shared_mass']:.3f}, avg_cost={ot_result['avg_cost']:.3f}")
-        logger.debug(f"  Splits from A: mean={split_join_stats['splits_from_a']['mean']:.2f}, max={split_join_stats['splits_from_a']['max']}")
-        logger.debug(f"  Joins to B: mean={split_join_stats['joins_to_b']['mean']:.2f}, max={split_join_stats['joins_to_b']['max']}")
-
     # use default K for backward compatibility
     ot_results = ot_by_k[DEFAULT_K]["ot"]
     ot_results["transport_plan"] = np.array(ot_results["transport_plan"])  # convert back for later use
     transport_sankey = ot_by_k[DEFAULT_K]["transport_sankey"]
     transport_heatmap = ot_by_k[DEFAULT_K]["transport_heatmap"]
 
-    # generate scree plot showing unmatched mass vs K (with elbow detection)
-    scree_result = create_unmatched_mass_scree_plot(
+    # generate scree plot showing shared mass vs K (with distance-to-chord elbow detection)
+    scree_result = create_shared_mass_scree_plot(
         ot_by_k,
-        K_VALUES,
+        all_k_values,
         analysis_name_a=analysis_name_A,
         analysis_name_b=analysis_name_B,
         default_k=DEFAULT_K,
     )
-    unmatched_mass_scree = scree_result["image"]
-    elbow_k = scree_result["elbow_k"]
+    shared_mass_scree = scree_result["image"]
+    chord_k = scree_result["chord_k"]
+    diminishing_k = scree_result["diminishing_k"]
+    plateau_reached = scree_result["plateau_reached"]
 
-    logger.info(f"\n=== Diminishing Returns Analysis ===")
-    logger.info(f"Point of diminishing returns: K={elbow_k}")
+    logger.info(f"\n=== Elbow Detection ===")
+    logger.info(f"Chord-based elbow: K={chord_k} (max distance from chord)")
+    logger.info(f"Diminishing returns: K={diminishing_k} (slope < 20% of initial)")
+    if not plateau_reached:
+        logger.warning("Curve may not have plateaued -- elbow estimates may be less reliable")
 
     # log default K results
     logger.info(f"\n=== Default K={DEFAULT_K} Results ===")
@@ -1810,11 +2125,16 @@ def compare_result_similarity(
         "transport_heatmap": transport_heatmap,
         # OT results for all K values (for tabbed display)
         "ot_by_k": ot_by_k,
-        "k_values": K_VALUES,
+        "k_values": all_k_values,
         "default_k": DEFAULT_K,
-        "elbow_k": elbow_k,
-        # Scree plot of unmatched mass vs K
-        "unmatched_mass_scree": unmatched_mass_scree,
+        "chord_k": chord_k,
+        "diminishing_k": diminishing_k,
+        "plateau_reached": plateau_reached,
+        # color scale range (from default K, used across all K plots)
+        "color_sim_min": round(1 - color_cost_max, 3),
+        "color_sim_max": round(1 - color_cost_min, 3),
+        # Scree plot of shared mass vs K
+        "shared_mass_scree": shared_mass_scree,
         # best matches
         "best_matches_a_to_b": best_matches_a_to_b,
         "best_matches_b_to_a": best_matches_b_to_a,
@@ -2208,10 +2528,11 @@ class SimilarityComparator:
         reg_m = config.get("reg_m", 0.2)
         distance = config.get("distance", "angular")
 
-        # Set labels on all themes once at the beginning
+        # Set labels on all themes once at the beginning (only if not already set)
         for result in pipeline_results:
             for i, theme in enumerate(result.themes, start=1):
-                theme.set_label(label_template, i)
+                if not theme.label:
+                    theme.set_label(label_template, i)
 
         result_combinations = list(itertools.combinations(pipeline_results, 2))
 

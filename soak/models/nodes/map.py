@@ -85,16 +85,26 @@ class Map(ItemsNode, CompletionDAGNode):
             if self.dag.config.show_progress:
                 import sys
 
-                from tqdm import tqdm
+                # Use progress manager if available for coordinated display
+                if self.dag.progress_manager:
+                    pbar = self.dag.progress_manager.create_progress_bar(
+                        total=len(boxed_items),
+                        desc=f"{self.type}: {self.name}",
+                        unit="item",
+                    )
+                else:
+                    from tqdm import tqdm
 
-                desc = f"{self.type}: {self.name}".ljust(35)
-                pbar = tqdm(
-                    total=len(boxed_items),
-                    desc=desc,
-                    unit="item",
-                    file=sys.stderr,
-                    ncols=120,
-                )
+                    desc = f"{self.type}: {self.name}".ljust(35)
+                    pbar = tqdm(
+                        total=len(boxed_items),
+                        desc=desc,
+                        unit="item",
+                        file=sys.stderr,
+                        ncols=120,
+                        leave=True,
+                        mininterval=0.1,
+                    )
 
         try:
             async with anyio.create_task_group() as tg:

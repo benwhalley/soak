@@ -1,0 +1,10 @@
+<system>
+Make short unique labels for each theme in the list.
+Labels should be approx 6-10 words, but longer if needed to clearly identify the theme and also be unique.
+Make a list of new labels, same length as original list of themes.
+Return EXACTLY {{n_themes}} labels, one for each input theme.
+</system>
+
+{{themes_text}}
+
+[[respond*:labels]]

@@ -171,8 +171,21 @@ class Filter(ItemsNode, CompletionDAGNode):
             if self.dag.config.show_progress:
                 import sys
 
-                # Use CostProgressBar if cost tracking is enabled
-                if self.dag.cost_tracker:
+                # Use progress manager if available for coordinated display
+                if self.dag.progress_manager:
+                    if self.dag.cost_tracker:
+                        pbar = self.dag.progress_manager.create_cost_progress_bar(
+                            total=len(boxed_items),
+                            node_name=f"{self.type}: {self.name}",
+                            unit="item",
+                        )
+                    else:
+                        pbar = self.dag.progress_manager.create_progress_bar(
+                            total=len(boxed_items),
+                            desc=f"{self.type}: {self.name}",
+                            unit="item",
+                        )
+                elif self.dag.cost_tracker:
                     from soak.models.progress import CostProgressBar
 
                     pbar = CostProgressBar(
@@ -191,6 +204,8 @@ class Filter(ItemsNode, CompletionDAGNode):
                         unit="item",
                         file=sys.stderr,
                         ncols=120,
+                        leave=True,
+                        mininterval=0.1,
                     )
 
         try:

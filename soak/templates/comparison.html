@@ -13,25 +13,31 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bootstrap/4.6.2/js/bootstrap.bundle.min.js" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 
     <style>
-        /* Sticky pair tabs */
+{% include '_base_styles.html' %}
+
+        /* =============================================
+           COMPARISON TEMPLATE SPECIFIC STYLES
+           ============================================= */
+
+        /* Sticky pair tabs (below header) */
         .pair-tabs-container {
             position: sticky;
-            top: 0;
+            top: 36px;
             z-index: 100;
             background: white;
-            padding: 0.75rem 0;
-            border-bottom: 2px solid #dee2e6;
-            margin-bottom: 1.5rem;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid #dee2e6;
+            margin-bottom: 1rem;
         }
         .pair-tabs .nav-link {
-            padding: 0.5rem 1rem;
+            padding: 0.4rem 0.75rem;
             border-radius: 0.25rem;
             color: #495057;
             background: #f8f9fa;
-            margin-right: 0.5rem;
-            margin-bottom: 0.5rem;
+            margin-right: 0.4rem;
+            margin-bottom: 0.4rem;
             border: 1px solid #dee2e6;
-            font-size: 0.85rem;
+            font-size: 0.8rem;
         }
         .pair-tabs .nav-link:hover {
             background: #e9ecef;
@@ -42,76 +48,44 @@
             color: white;
             border-color: #007bff;
         }
-        .pair-pane {
-            display: none;
-        }
-        .pair-pane.active {
-            display: block;
-        }
+        .pair-pane { display: none; }
+        .pair-pane.active { display: block; }
 
-        /* Floating navigation */
-        .floating-nav {
-            position: fixed;
-            top: 80px;
-            right: 20px;
-            width: 180px;
-            max-height: calc(100vh - 100px);
-            overflow-y: auto;
-            z-index: 99;
-            font-size: 0.75rem;
-        }
-        .floating-nav .nav-link {
-            padding: 0.25rem 0.5rem;
-            color: #666;
-            border-left: 2px solid transparent;
-        }
-        .floating-nav .nav-link:hover {
-            color: #007bff;
-            border-left-color: #007bff;
-        }
-        .floating-nav .nav-link.active {
-            color: #007bff;
-            font-weight: bold;
-            border-left-color: #007bff;
-        }
-        .floating-nav .nav-section {
-            font-weight: bold;
-            color: #333;
-            padding: 0.4rem 0.5rem 0.2rem;
-            margin-top: 0.4rem;
-            border-bottom: 1px solid #ddd;
-            font-size: 0.7rem;
-        }
-        .floating-nav .nav-section:first-child {
-            margin-top: 0;
-        }
-        /* Adjust main content to not overlap with nav */
-        .main-content {
-            margin-right: 200px;
-        }
-        @media (max-width: 1200px) {
-            .floating-nav {
-                display: none;
-            }
-            .main-content {
-                margin-right: 0;
-            }
-        }
-        /* Smooth scrolling */
-        html {
-            scroll-behavior: smooth;
-        }
         /* Offset for sticky header when jumping to anchors */
         :target::before {
             content: "";
             display: block;
-            height: 70px;
-            margin-top: -70px;
+            height: 56px;
+            margin-top: -56px;
+        }
+
+        /* Sticky K value tabs (below pair tabs) */
+        .k-tabs-container {
+            position: sticky;
+            top: var(--k-tabs-top, 95px);
+            z-index: 90;
+            background: white;
+            padding: 0.5rem 0 0.25rem 0;
+            margin-bottom: 0.5rem;
+            border-bottom: 1px solid #dee2e6;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .k-tabs-container .nav-tabs {
+            margin-bottom: 0;
+            border-bottom: none;
+        }
+
+        @media print {
+            .pair-tabs-container { position: static; }
+            .k-tabs-container { position: static; }
         }
     </style>
 </head>
 
 <body data-spy="scroll" data-target="#floating-nav" data-offset="100">
+
+{% set header_subtitle = 'comparison report' %}
+{% include '_header.html' %}
 
     <!-- Floating Navigation (within-pair sections) -->
     <nav id="floating-nav" class="floating-nav card shadow-sm d-none d-xl-block">
@@ -125,12 +99,12 @@
 
             <div class="nav-section">Within Active Pair</div>
             <nav class="nav flex-column">
-                <a class="nav-link" href="#" onclick="scrollToActiveSection('angular')">Angular Similarity</a>
-                <a class="nav-link" href="#" onclick="scrollToActiveSection('summary')">Summary Stats</a>
-                <a class="nav-link" href="#" onclick="scrollToActiveSection('hungarian')">Best Matches (1:1)</a>
-                <a class="nav-link" href="#" onclick="scrollToActiveSection('ot')">Optimal Transport</a>
-                <a class="nav-link" href="#" onclick="scrollToActiveSection('best-matches')">Best Matches (many:many)</a>
-                <a class="nav-link" href="#" onclick="scrollToActiveSection('additional')">Additional Distance Metrics</a>
+                <a class="nav-link" href="#" onclick="return scrollToActiveSection('angular', event)">Angular Similarity</a>
+                <a class="nav-link" href="#" onclick="return scrollToActiveSection('summary', event)">Summary Stats</a>
+                <a class="nav-link" href="#" onclick="return scrollToActiveSection('hungarian', event)">Best Matches (1:1)</a>
+                <a class="nav-link" href="#" onclick="return scrollToActiveSection('ot', event)">Optimal Transport</a>
+                <a class="nav-link" href="#" onclick="return scrollToActiveSection('best-matches', event)">Best Matches (many:many)</a>
+                <a class="nav-link" href="#" onclick="return scrollToActiveSection('additional', event)">Additional Distance Metrics</a>
             </nav>
 
             <div class="nav-section">Config</div>
@@ -156,15 +130,22 @@
             });
             activePairIndex = index;
             // Update URL hash for bookmarking
-            history.replaceState(null, null, '#pair-' + index);
+            history.pushState(null, null, '#pair-' + index);
         }
 
         // Scroll to section within active pair
-        function scrollToActiveSection(sectionPrefix) {
-            var section = document.getElementById(sectionPrefix + '-' + activePairIndex);
+        function scrollToActiveSection(sectionPrefix, event) {
+            if (event) {
+                event.preventDefault();
+            }
+            var sectionId = sectionPrefix + '-' + activePairIndex;
+            var section = document.getElementById(sectionId);
             if (section) {
                 section.scrollIntoView({behavior: 'smooth'});
+                // Update URL hash for bookmarking (use pushState so it's visible)
+                history.pushState(null, null, '#' + sectionId);
             }
+            return false;
         }
 
         // On page load, check URL hash for pair selection
@@ -177,18 +158,25 @@
                 }
             }
         });
+
+        // Calculate sticky position for K tabs based on actual element heights
+        function updateKTabsPosition() {
+            var header = document.querySelector('.soak-header');
+            var pairTabs = document.querySelector('.pair-tabs-container');
+            if (header && pairTabs) {
+                var headerHeight = header.offsetHeight;
+                var pairTabsHeight = pairTabs.offsetHeight;
+                var topOffset = headerHeight + pairTabsHeight + 5;
+                document.documentElement.style.setProperty('--k-tabs-top', topOffset + 'px');
+            }
+        }
+        document.addEventListener('DOMContentLoaded', updateKTabsPosition);
+        window.addEventListener('resize', updateKTabsPosition);
     </script>
 
     <div class="container main-content">
 
-        <div class="row">
-            <div class="col-12">
-            <h1>Analysis Comparison Report</h1>
-            </div>
-        </div>
-
-        <hr>
-        <div id="analyses" class="analysis-results">
+        <div id="analyses" class="analysis-results mt-3">
             <h2 class="mt-4">Analyses Included in Comparison</h2>
 
             <div class="d-flex flex-wrap gap-4">
@@ -279,19 +267,7 @@
             <!-- Tab panes for each pair -->
             {% for key, comp in comparison.by_comparisons().items() %}
             <div id="pair-{{ loop.index }}" class="pair-pane{% if loop.first %} active{% endif %}">
-                <h3 class="mb-4">{{ comp.a.name }} vs {{ comp.b.name }}
-                    {% if comparison.comparison_plots.embeddings_csv and comparison.comparison_plots.embeddings_csv[key] %}
-                    <a href="data:text/csv;base64,{{ comparison.comparison_plots.embeddings_csv[key] }}"
-                       download="{{ comp.a.name }}_{{ comp.b.name }}_embeddings.csv"
-                       class="btn btn-sm btn-outline-secondary ms-3" title="Download embeddings as CSV">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-download" viewBox="0 0 16 16">
-                            <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
-                            <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
-                        </svg>
-                        Embeddings CSV
-                    </a>
-                    {% endif %}
-                </h3>
+                <h3 class="mb-4">{{ comp.a.name }} vs {{ comp.b.name }}</h3>
 
                 <!-- ============================================== -->
                 <!-- SECTION 1: ANGULAR DISTANCE                    -->
@@ -479,33 +455,35 @@
                 <h4 id="ot-{{ loop.index }}">Unbalanced Optimal Transport (Many-to-Many Alignment)</h4>
                 <p class="text-muted">Unbalanced Optimal Transport allows themes to remain unmatched, representing genuinely novel or missing concepts. Unlike balanced OT (which forces all mass to transport), unbalanced OT permits themes to be left out when no good match exists. The reg_m (K) parameter controls the penalty for leaving mass unmatched.</p>
 
-                <!-- K-value tabs -->
-                <ul class="nav nav-tabs mb-3" id="ot-k-tabs-{{ loop.index }}" role="tablist">
-                    <li class="nav-item" role="presentation">
-                        <a class="nav-link"
-                           id="ot-scree-tab-{{ loop.index }}"
-                           data-toggle="tab"
-                           href="#ot-scree-{{ loop.index }}"
-                           role="tab"
-                           aria-controls="ot-scree-{{ loop.index }}"
-                           aria-selected="false">
-                            📊 Scree
-                        </a>
-                    </li>
-                    {% for k_val in comp.stats.k_values %}
-                    <li class="nav-item" role="presentation">
-                        <a class="nav-link{% if k_val == comp.stats.default_k %} active{% endif %}"
-                           id="ot-k-{{ k_val|replace('.', '-') }}-tab-{{ loop.index }}"
-                           data-toggle="tab"
-                           href="#ot-k-{{ k_val|replace('.', '-') }}-{{ loop.index }}"
-                           role="tab"
-                           aria-controls="ot-k-{{ k_val|replace('.', '-') }}-{{ loop.index }}"
-                           aria-selected="{{ 'true' if k_val == comp.stats.default_k else 'false' }}">
-                            K={{ "%.2f"|format(k_val) }}{% if k_val == comp.stats.default_k %} ★{% endif %}{% if k_val == comp.stats.elbow_k %} ◆{% endif %}
-                        </a>
-                    </li>
-                    {% endfor %}
-                </ul>
+                <!-- K-value tabs (sticky) -->
+                <div class="k-tabs-container">
+                    <ul class="nav nav-tabs" id="ot-k-tabs-{{ loop.index }}" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <a class="nav-link"
+                               id="ot-scree-tab-{{ loop.index }}"
+                               data-toggle="tab"
+                               href="#ot-scree-{{ loop.index }}"
+                               role="tab"
+                               aria-controls="ot-scree-{{ loop.index }}"
+                               aria-selected="false">
+                                📊 Scree
+                            </a>
+                        </li>
+                        {% for k_val in comp.stats.k_values %}
+                        <li class="nav-item" role="presentation">
+                            <a class="nav-link{% if k_val == comp.stats.default_k %} active{% endif %}"
+                               id="ot-k-{{ k_val|replace('.', '-') }}-tab-{{ loop.index }}"
+                               data-toggle="tab"
+                               href="#ot-k-{{ k_val|replace('.', '-') }}-{{ loop.index }}"
+                               role="tab"
+                               aria-controls="ot-k-{{ k_val|replace('.', '-') }}-{{ loop.index }}"
+                               aria-selected="{{ 'true' if k_val == comp.stats.default_k else 'false' }}">
+                                K={{ "%.2f"|format(k_val) }}{% if k_val == comp.stats.default_k %} ★{% endif %}{% if k_val == comp.stats.elbow_k %} ◆{% endif %}
+                            </a>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
 
                 <div class="tab-content" id="ot-k-content-{{ loop.index }}">
                     <!-- Scree tab pane -->
@@ -516,15 +494,17 @@
 
                         <div class="card mb-4">
                             <div class="card-header bg-info text-white">
-                                <strong>Unmatched Mass vs K (Scree Plot)</strong>
+                                <strong>Shared Mass vs K (Scree Plot)</strong>
                             </div>
                             <div class="card-body">
-                                <p class="text-muted">This plot shows how unmatched mass changes as the K parameter varies. Lower K values allow more mass to remain unmatched (stricter matching), while higher K values force more themes to align even with poor matches.</p>
+                                <p class="text-muted">This plot shows how shared mass changes as the K parameter varies. Two elbow detection methods are shown: (1) chord-based finds the point furthest above the line connecting first and last values in log(K) space; (2) diminishing returns finds where slope drops below 20% of initial slope.</p>
                                 <div class="alert alert-info">
-                                    <strong>★ Default K={{ "%.2f"|format(comp.stats.default_k) }}</strong> &nbsp;|&nbsp;
-                                    <strong>◆ Diminishing returns K={{ "%.2f"|format(comp.stats.elbow_k) }}</strong> (beyond this K, gains in shared mass become marginal)
+                                    <strong>■ Default K={{ "%.2f"|format(comp.stats.default_k) }}</strong> &nbsp;|&nbsp;
+                                    <strong>◆ Chord elbow K={{ "%.2f"|format(comp.stats.chord_k) }}</strong> &nbsp;|&nbsp;
+                                    <strong>▲ Dim. returns K={{ "%.2f"|format(comp.stats.diminishing_k) }}</strong>
+                                    {% if not comp.stats.plateau_reached %}<br><em class="text-warning">⚠ Curve may not have plateaued -- elbow estimates may be less reliable</em>{% endif %}
                                 </div>
-                                <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comp.stats.unmatched_mass_scree.base64 }}" alt="Unmatched mass scree plot">
+                                <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comp.stats.shared_mass_scree.base64 }}" alt="Shared mass scree plot">
                             </div>
                         </div>
 
@@ -611,7 +591,18 @@
                                             {% endif %}
                                         </div>
                                         {% if ot_k.ot.shared_mass_relative is defined %}
-                                        <p class="small mt-2 mb-0"><strong>Interpretation:</strong> Of the possible improvement beyond random alignment, what fraction did we achieve? Values > 0.3 suggest meaningful structure; > 0.5 is good; > 0.7 is strong.</p>
+                                        <a class="small text-muted" data-toggle="collapse" href="#sharedMassMethodNote-{{ loop.index }}-{{ k_val|replace('.', '-') }}" role="button" aria-expanded="false">
+                                            ▶ Calculation and interpretation
+                                        </a>
+                                        <div class="collapse" id="sharedMassMethodNote-{{ loop.index }}-{{ k_val|replace('.', '-') }}">
+                                            <div class="alert alert-light small mt-2 mb-0">
+                                                <p class="mb-2"><strong>Relative shared mass.</strong> This metric quantifies alignment quality relative to a null baseline of semantically unstructured text. The relative score is computed as:</p>
+                                                <p class="mb-2 text-center"><code>relative = (observed - null_mean) / (1.0 - null_mean)</code></p>
+                                                <p class="mb-2">where <em>observed</em> is the shared mass from the actual comparison, <em>null_mean</em> is the mean shared mass from N=100 null comparisons (using word-salad permutations), and 1.0 represents the theoretical maximum (perfect alignment). The metric thus represents the proportion of possible improvement over random that was achieved.</p>
+                                                <p class="mb-2"><strong>Null distribution.</strong> Null comparisons are generated by randomly permuting words within each theme's embedded text while preserving word count. This destroys semantic coherence while maintaining surface-level statistical properties. Both directions are tested (A vs B<sub>salad</sub> and A<sub>salad</sub> vs B) to ensure the null is symmetric.</p>
+                                                <p class="mb-0"><strong>Interpretation guidelines.</strong> The thresholds (0.3 = meaningful, 0.5 = good, 0.7 = strong) are heuristic guidelines rather than validated cutoffs. They provide rough orientation but should be interpreted in the context of the specific domain and research question. A relative score of 0.3 indicates the observed alignment captures approximately 30% of the maximum possible improvement over chance -- whether this constitutes "meaningful" structure depends on the application.</p>
+                                            </div>
+                                        </div>
                                         {% endif %}
                                     </div>
                                 </div>
@@ -645,7 +636,18 @@
                                             </div>
                                         </div>
                                         {% if ot_k.ot.avg_cost_relative is defined %}
-                                        <p class="small mt-2 mb-0"><strong>Interpretation:</strong> How much lower is the transport cost compared to random? Lower cost = better semantic alignment. Values > 0.3 suggest themes are meaningfully closer than chance.</p>
+                                        <a class="small text-muted" data-toggle="collapse" href="#avgCostMethodNote-{{ loop.index }}-{{ k_val|replace('.', '-') }}" role="button" aria-expanded="false">
+                                            ▶ Calculation and interpretation
+                                        </a>
+                                        <div class="collapse" id="avgCostMethodNote-{{ loop.index }}-{{ k_val|replace('.', '-') }}">
+                                            <div class="alert alert-light small mt-2 mb-0">
+                                                <p class="mb-2"><strong>Relative average cost.</strong> This metric quantifies the quality of theme-to-theme alignments relative to a null baseline. The relative score is computed as:</p>
+                                                <p class="mb-2 text-center"><code>relative = (null_mean - observed) / null_mean</code></p>
+                                                <p class="mb-2">where <em>observed</em> is the mass-weighted average transport cost (1 - cosine similarity) from the actual comparison, and <em>null_mean</em> is the mean average cost from null comparisons. The metric represents the proportional reduction in transport cost compared to random alignment.</p>
+                                                <p class="mb-2"><strong>Relationship to shared mass.</strong> Average cost and shared mass capture complementary aspects of alignment quality. Shared mass measures <em>how much</em> of the thematic content could be matched; average cost measures <em>how well</em> matched themes align semantically. High shared mass with high average cost suggests forced alignments between dissimilar themes; low shared mass with low average cost suggests selective matching of only the best correspondences.</p>
+                                                <p class="mb-0"><strong>Interpretation.</strong> The score ranges from 0 (no improvement over random) to 1 (perfect alignment with zero cost). There are no validated cutoffs for this metric. A score of 0.22, for example, indicates transport costs were 22% lower than expected under the null hypothesis of random semantic structure. Whether this represents meaningful alignment depends on the domain, the granularity of themes, and the research question.</p>
+                                            </div>
+                                        </div>
                                         {% else %}
                                         <p class="small mt-2 mb-0 text-muted"><em>Null baseline comparison only computed for default K={{ "%.1f"|format(comp.stats.default_k) }}.</em></p>
                                         {% endif %}
@@ -722,7 +724,23 @@
                                 <div class="row">
                                     <div class="col-md-12">
                                         <h6>Transport Flow (Sankey)</h6>
-                                        <p class="small text-muted">Width of links shows amount of mass transported between themes. Colour indicates alignment quality (green = good match, pink = poor match). Hover over links for details.</p>
+                                        <p class="small text-muted">Width of links shows amount of mass transported between themes. Colour indicates alignment quality (green = high similarity, red = low similarity). Hover over links for details.</p>
+
+                                        <a class="small text-muted" data-toggle="collapse" href="#colorScaleNote-{{ loop.index }}" role="button" aria-expanded="false" aria-controls="colorScaleNote-{{ loop.index }}">
+                                            ▶ About the colour scale
+                                        </a>
+                                        <div class="collapse" id="colorScaleNote-{{ loop.index }}">
+                                            <div class="alert alert-light small mt-2">
+                                                <p class="mb-2"><strong>Colour scale calibration.</strong> Link colours represent the cosine similarity between connected themes, mapped to a green-amber-red gradient. To ensure comparability across K values, all plots use a shared colour scale derived from the default K={{ "%.2f"|format(comp.stats.default_k) }} transport plan.</p>
+
+                                                <p class="mb-2">The scale endpoints are set to the minimum and maximum similarity values observed among links in the default K solution (similarity range: {{ "%.2f"|format(comp.stats.color_sim_min) }}--{{ "%.2f"|format(comp.stats.color_sim_max) }}). Green indicates the highest-similarity matches; red indicates the lowest-similarity matches within this analysis.</p>
+
+                                                <p class="mb-2">This calibration means that as K increases and additional lower-quality matches are transported, these appear as progressively redder links. At low K values, only the best matches (greenest links) are transported; higher K values force the algorithm to include weaker alignments. The consistent scale across K values allows direct visual comparison of match quality.</p>
+
+                                                <p class="mb-0"><em>Note:</em> Because the scale is normalised to each comparison's observed range, colours are not directly comparable across different pairwise comparisons. Within a single comparison, however, the colour scale provides an intuitive representation of relative alignment quality across the full range of K values examined.</p>
+                                            </div>
+                                        </div>
+
                                         <iframe srcdoc="{{ ot_k.transport_sankey.html | e }}" style="width: 100%; height: 700px; border: 1px solid #ddd; border-radius: 4px;" frameborder="0"></iframe>
                                     </div>
                                 </div>
@@ -1014,8 +1032,30 @@
             <pre class="bg-light p-3" style="white-space: pre-wrap;">{{ comparison.config | tojson(indent=2) }}</pre>
         </div>
 
-        <footer class="mt-5 pt-3 border-top text-muted small">
-            <p>Generated by <strong>soak</strong> v{{ soak_version | default('unknown') }}</p>
+        <hr class="mt-5">
+
+        <div id="additional-data" class="additional-data mt-4">
+            <h3>Additional Data</h3>
+            <p class="text-muted">Download raw data files for further analysis.</p>
+            <div class="list-group">
+                {% for key, comp in comparison.by_comparisons().items() %}
+                {% if comparison.comparison_plots.embeddings_csv and comparison.comparison_plots.embeddings_csv[key] %}
+                <a href="data:text/csv;base64,{{ comparison.comparison_plots.embeddings_csv[key] }}"
+                   download="{{ comp.a.name }}_{{ comp.b.name }}_embeddings.csv"
+                   class="list-group-item list-group-item-action d-flex align-items-center">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-download mr-2" viewBox="0 0 16 16">
+                        <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                        <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+                    </svg>
+                    {{ comp.a.name }} vs {{ comp.b.name }} -- Embeddings CSV
+                </a>
+                {% endif %}
+                {% endfor %}
+            </div>
+        </div>
+
+        <footer class="screen-footer mt-4 pt-2 border-top text-muted small">
+            <p class="mb-0">Generated by <strong>soak</strong> v{{ soak_version | default('unknown') }}</p>
         </footer>
     </div>
 </body>
