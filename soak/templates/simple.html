@@ -10,172 +10,154 @@
           crossorigin="anonymous" referrerpolicy="no-referrer" />
 
     <style>
+{% include '_base_styles.html' %}
+
+        /* =============================================
+           SIMPLE TEMPLATE SPECIFIC STYLES
+           ============================================= */
+
+        /* Simple uses fixed header with body padding */
+        .soak-header { position: fixed; left: 0; right: 0; }
+
         body {
             max-width: 900px;
-            margin: 40px auto;
-            padding: 20px;
+            margin: 0 auto;
+            padding: 60px 20px 40px 20px;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
             line-height: 1.6;
             color: #333;
         }
 
+        /* Simple template uses styled h1 */
         h1 {
             color: #2c3e50;
-            border-bottom: 3px solid #3498db;
-            padding-bottom: 15px;
-            margin-bottom: 30px;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 0.5rem;
         }
-
-        h2 {
-            color: #2c3e50;
-            margin-top: 40px;
-            margin-bottom: 20px;
-            font-size: 1.8rem;
-        }
+        h2 { color: #2c3e50; }
 
         .narrative-section {
             background-color: #f8f9fa;
-            padding: 30px;
-            border-radius: 8px;
-            border-left: 5px solid #3498db;
-            margin-bottom: 40px;
-            font-size: 1.05rem;
-            line-height: 1.8;
+            padding: 1.25rem;
+            border-radius: 6px;
+            border-left: 4px solid #3498db;
+            margin-bottom: 1.5rem;
+            font-size: 0.95rem;
+            line-height: 1.7;
         }
 
         .code-card {
             background: white;
             border: 1px solid #e1e8ed;
-            border-radius: 8px;
-            padding: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            border-radius: 6px;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
             transition: box-shadow 0.2s;
         }
-
-        .code-card:hover {
-            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-        }
+        .code-card:hover { box-shadow: 0 2px 6px rgba(0,0,0,0.08); }
 
         .code-name {
-            font-size: 1.3rem;
+            font-size: 1rem;
             font-weight: 600;
             color: #2c3e50;
-            margin-bottom: 10px;
+            margin-bottom: 0.5rem;
         }
 
         .code-slug {
             display: inline-block;
             background-color: #e8f4f8;
             color: #2980b9;
-            padding: 3px 10px;
-            border-radius: 4px;
-            font-size: 0.85rem;
-            font-family: 'Courier New', monospace;
-            margin-left: 10px;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            font-family: 'SF Mono', 'Menlo', 'Courier New', monospace;
+            margin-left: 8px;
         }
 
         .code-description {
             color: #555;
-            margin-bottom: 15px;
-            font-size: 1.05rem;
+            margin-bottom: 0.75rem;
+            font-size: 0.9rem;
         }
 
-        .quotes-section {
-            margin-top: 15px;
-        }
+        .quotes-section { margin-top: 0.75rem; }
 
         .quotes-label {
             font-weight: 600;
             color: #7f8c8d;
-            font-size: 0.9rem;
+            font-size: 0.75rem;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            margin-bottom: 10px;
+            margin-bottom: 0.5rem;
         }
 
         .quote {
             background-color: #fafafa;
-            border-left: 3px solid #95a5a6;
-            padding: 12px 15px;
-            margin-bottom: 10px;
+            border-left: 2px solid #95a5a6;
+            padding: 0.6rem 0.75rem;
+            margin-bottom: 0.5rem;
             font-style: italic;
             color: #555;
-            border-radius: 4px;
+            border-radius: 3px;
+            font-size: 0.85rem;
         }
 
         .theme-card {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
-            border-radius: 8px;
-            padding: 25px;
-            margin-bottom: 25px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border-radius: 6px;
+            padding: 1rem 1.25rem;
+            margin-bottom: 1rem;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
 
-        .theme-name {
-            font-size: 1.4rem;
-            font-weight: 600;
-            margin-bottom: 12px;
-        }
-
-        .theme-description {
-            margin-bottom: 15px;
-            font-size: 1.05rem;
-            opacity: 0.95;
-        }
-
-        .theme-codes {
-            margin-top: 15px;
-        }
-
+        .theme-name { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem; }
+        .theme-description { margin-bottom: 0.75rem; font-size: 0.9rem; opacity: 0.95; }
+        .theme-codes { margin-top: 0.75rem; }
         .theme-codes-label {
             font-weight: 600;
-            font-size: 0.9rem;
+            font-size: 0.75rem;
             text-transform: uppercase;
             letter-spacing: 0.5px;
-            margin-bottom: 8px;
+            margin-bottom: 0.5rem;
             opacity: 0.9;
         }
 
         .code-badge {
             display: inline-block;
             background-color: rgba(255, 255, 255, 0.2);
-            padding: 5px 12px;
-            border-radius: 20px;
-            margin-right: 8px;
-            margin-bottom: 8px;
-            font-size: 0.9rem;
+            padding: 3px 10px;
+            border-radius: 15px;
+            margin-right: 6px;
+            margin-bottom: 6px;
+            font-size: 0.8rem;
             border: 1px solid rgba(255, 255, 255, 0.3);
         }
 
         .meta-info {
             color: #7f8c8d;
-            font-size: 0.9rem;
-            margin-bottom: 30px;
-            padding: 15px;
-            background-color: #ecf0f1;
-            border-radius: 6px;
+            font-size: 0.8rem;
+            margin-bottom: 1.25rem;
+            padding: 0.75rem;
+            background-color: #f5f6f7;
+            border-radius: 4px;
         }
 
         .section-divider {
-            border-top: 2px solid #e1e8ed;
-            margin: 50px 0 30px 0;
+            border-top: 1px solid #e1e8ed;
+            margin: 2rem 0 1.5rem 0;
         }
 
-        details.meta-info summary {
-            cursor: pointer;
-            font-weight: 600;
-            color: #555;
-        }
-
-        details.meta-info summary:hover {
-            color: #2980b9;
-        }
+        details.meta-info summary { cursor: pointer; font-weight: 600; color: #555; }
+        details.meta-info summary:hover { color: #2980b9; }
     </style>
 </head>
 
 <body>
+{% set header_subtitle = 'analysis results' %}
+{% include '_header.html' %}
+
     <div class="container">
         <h1>{{ pipeline.name }}</h1>
 
@@ -187,7 +169,7 @@
         </div>
         
         <details class="meta-info">
-            <summary>Source files ({{ pipeline.config.document_paths|length }})</summary>
+            <summary>Source files: {{ pipeline.config.input_source or "files" }} ({{ pipeline.config.document_paths|length }})</summary>
             <ul style="margin-top: 10px; margin-bottom: 0;">
             {% for i in pipeline.config.document_paths %}
                 <li>{{i.0}}</li>
@@ -271,7 +253,10 @@ a.code-badge:hover {
             {% endif %}
         </div>
         {% endfor %}
-    
+
+        <footer class="screen-footer">
+            <p class="mb-0">Generated by <strong>soak</strong></p>
+        </footer>
     </div>
 </body>
 </html>

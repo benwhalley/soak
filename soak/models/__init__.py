@@ -10,7 +10,8 @@ from .base import (  # Exceptions; Base models; Utility functions
     MAX_CONCURRENCY, SOAK_MAX_RUNTIME, Cancelled, CancelledRun, Code, CodeList,
     CodeSlugStr, Document, QualitativeAnalysis, QualitativeAnalysisComparison,
     Theme, Themes, TrackedItem, extract_content, extract_prompt,
-    get_action_lookup, get_default_llm_credentials, get_embedding, memory,
+    get_action_lookup, get_default_llm_credentials, get_embedding,
+    get_embedding_async, memory,
     safe_json_dump, semaphore)
 # DAG execution
 from .dag import (DAG, DAGConfig, DAGNodeUnion, Edge, OutputUnion,
@@ -73,6 +74,7 @@ __all__ = [
     "get_action_lookup",
     "get_default_llm_credentials",
     "get_embedding",
+    "get_embedding_async",
     "get_template_variables",
     "render_strict_template",
     "run_node",

@@ -21,6 +21,7 @@ from soak.export_utils import export_to_csv
 from soak.models.base import (SOAK_MAX_RUNTIME, TrackedItem,
                               get_default_llm_credentials)
 from soak.models.cost_tracker import GlobalCostTracker
+from soak.models.progress import ProgressManager
 
 if TYPE_CHECKING:
     from .nodes.base import DAGNode
@@ -34,6 +35,7 @@ class DAGConfig(BaseModel):
 
     document_paths: List[Union[str, tuple[str, Dict[str, Any]]]] = []
     documents: List[Union[str, "TrackedItem"]] = []
+    input_source: Optional[str] = None  # summary of input (e.g., "data/*.txt")
     model_name: str = "gpt-4.1-mini"
     chunk_size: int = 20000  # characters, so ~5k tokens or ~4k English words
     extra_context: Dict[str, Any] = {}
@@ -277,6 +279,7 @@ async def run_node(node):
     Raises:
         Exception: Propagates node execution failures
     """
+    logger.info(f"Starting node: {node.name} ({node.type})")
     try:
         result = await node.run()
         logger.debug(f"COMPLETED: {node.name}\n")
@@ -382,6 +385,7 @@ class DAG(BaseModel):
     nodes: List["DAGNodeUnion"] = Field(default_factory=list)
     config: Optional[DAGConfig] = Field(default_factory=DAGConfig, exclude=False)
     cost_tracker: Optional[GlobalCostTracker] = Field(default=None, exclude=True)
+    progress_manager: Optional[ProgressManager] = Field(default=None, exclude=True)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -542,17 +546,12 @@ class DAG(BaseModel):
             if self.config.export_enabled and self.config.export_folder:
                 self._prepare_incremental_export()
 
-            # Create global cost display if progress is enabled
-            cost_display_context = None
-            if self.config.show_progress and self.cost_tracker:
-                from soak.models.progress import GlobalCostDisplay
-
-                cost_display_context = GlobalCostDisplay(self.cost_tracker)
-
-            # Execute nodes with optional global cost display
-            if cost_display_context:
-                with cost_display_context:
+            # Create progress manager if progress is enabled
+            if self.config.show_progress:
+                self.progress_manager = ProgressManager(self.cost_tracker)
+                with self.progress_manager:
                     await self._execute_batches(skip_nodes, stop_at_node)
+                self.progress_manager = None
             else:
                 await self._execute_batches(skip_nodes, stop_at_node)
 

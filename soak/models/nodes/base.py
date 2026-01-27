@@ -285,8 +285,22 @@ class ItemsNode(DAGNode):
             else:
                 total_items = 1
 
-            # Use CostProgressBar if this is a CompletionDAGNode with cost tracking
-            if isinstance(self, CompletionDAGNode) and self.dag.cost_tracker:
+            # Use progress manager if available for coordinated display
+            if self.dag.progress_manager:
+                if isinstance(self, CompletionDAGNode) and self.dag.cost_tracker:
+                    progress_bar = self.dag.progress_manager.create_cost_progress_bar(
+                        total=total_items,
+                        node_name=f"{self.type}: {self.name}",
+                        unit="item",
+                    )
+                else:
+                    progress_bar = self.dag.progress_manager.create_progress_bar(
+                        total=total_items,
+                        desc=f"{self.type}: {self.name}",
+                        unit="item",
+                    )
+            # fallback to direct tqdm if no progress manager
+            elif isinstance(self, CompletionDAGNode) and self.dag.cost_tracker:
                 from soak.models.progress import CostProgressBar
 
                 progress_bar = CostProgressBar(
@@ -296,7 +310,7 @@ class ItemsNode(DAGNode):
                     unit="item",
                 )
             else:
-                # Pad description to match CostProgressBar alignment
+                # pad description to match CostProgressBar alignment
                 desc = f"{self.type}: {self.name}".ljust(35)
                 progress_bar = tqdm(
                     total=total_items,
@@ -304,6 +318,8 @@ class ItemsNode(DAGNode):
                     unit="item",
                     file=sys.stderr,
                     ncols=120,
+                    leave=True,
+                    mininterval=0.1,
                 )
 
         try:
@@ -498,8 +514,22 @@ class ItemsNode(DAGNode):
 
         total_completions = len(items) * slots_per_item
 
-        # Use CostProgressBar if this is a CompletionDAGNode with cost tracking
-        if isinstance(self, CompletionDAGNode) and self.dag.cost_tracker:
+        # Use progress manager if available for coordinated display
+        if self.dag.progress_manager:
+            if isinstance(self, CompletionDAGNode) and self.dag.cost_tracker:
+                pbar = self.dag.progress_manager.create_cost_progress_bar(
+                    total=total_completions,
+                    node_name=node_name,
+                    unit="call",
+                )
+            else:
+                pbar = self.dag.progress_manager.create_progress_bar(
+                    total=total_completions,
+                    desc=node_name,
+                    unit="call",
+                )
+        # fallback to direct tqdm if no progress manager
+        elif isinstance(self, CompletionDAGNode) and self.dag.cost_tracker:
             from soak.models.progress import CostProgressBar
 
             pbar = CostProgressBar(
@@ -511,7 +541,7 @@ class ItemsNode(DAGNode):
         else:
             from tqdm import tqdm
 
-            # Pad description to match CostProgressBar alignment
+            # pad description to match CostProgressBar alignment
             padded_name = node_name.ljust(35)
             pbar = tqdm(
                 total=total_completions,
@@ -519,6 +549,8 @@ class ItemsNode(DAGNode):
                 unit="call",
                 file=sys.stderr,
                 ncols=120,
+                leave=True,
+                mininterval=0.1,
             )
 
         # store slots count so callers know how much to increment

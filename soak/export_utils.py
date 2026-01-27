@@ -21,7 +21,7 @@ def export_to_csv(df: pd.DataFrame, path: Path) -> None:
     """
     try:
         df.to_csv(path, index=False)
-        logger.info(f"Exported CSV to {path}")
+        logger.debug(f"Exported CSV to {path}")
     except Exception as e:
         logger.error(f"Failed to export CSV to {path}: {e}")
         raise

@@ -1,5 +1,6 @@
 """VerifyQuotes node for validating quotes against source documents."""
 
+import hashlib
 import json
 import logging
 import re
@@ -7,7 +8,10 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
+
+if TYPE_CHECKING:
+    from soak.models.progress import ProgressManager
 
 import anyio
 import numpy as np
@@ -23,8 +27,8 @@ from soak.error_handlers import (ErrorBehavior, get_error_behavior,
                                  log_error_to_stderr, managed_llm_call,
                                  should_continue_pipeline)
 from soak.models.alignment import trim_span_to_quote
-from soak.models.base import (TrackedItem, get_action_lookup, get_embedding,
-                              safe_json_dump, semaphore)
+from soak.models.base import (TrackedItem, get_action_lookup, get_embedding_async,
+                              memory, safe_json_dump, semaphore)
 from soak.models.text_utils import (ELLIPSIS_RE, create_document_boundaries,
                                     extract_context_window,
                                     find_source_document, is_match_truncated,
@@ -47,6 +51,30 @@ def _fast_tokenize(text: str) -> List[str]:
     - Splits hyphenated: "well-known" -> ["well", "known"]
     """
     return _WORD_RE.findall(text.lower())
+
+
+def _hash_bm25_inputs(window_texts: List[str], k1: float, b: float) -> str:
+    """Create a stable hash for BM25 cache key."""
+    content = "\n".join(window_texts) + f"|k1={k1}|b={b}"
+    return hashlib.sha256(content.encode()).hexdigest()[:16]
+
+
+@memory.cache
+def _cached_build_bm25_index(
+    corpus_hash: str,
+    window_texts: List[str],
+    bm25_k1: float,
+    bm25_b: float,
+) -> Tuple[List[List[str]], Dict[str, set]]:
+    """Cached BM25 index building - tokenizes windows and builds inverted index.
+
+    Returns tokenized windows and token index. BM25Okapi is recreated from
+    tokenized since it's not picklable.
+    """
+    logger.info(f"BM25 cache miss - building index (hash={corpus_hash})")
+    tokenized = [_fast_tokenize(w) for w in window_texts]
+    token_index = _build_token_index(tokenized)
+    return tokenized, token_index
 
 
 def _build_token_index(tokenized: List[List[str]]) -> Dict[str, set]:
@@ -341,13 +369,13 @@ def _extract_llm_field(result, field_name: str, default=None):
     return field_obj.output if hasattr(field_obj, "output") else default
 
 
-def verify_quotes_bm25_first(
+async def verify_quotes_bm25_first(
     extracted_quotes: List["Quote"],
     original_windows: List[Tuple[str, int, int]],
     original_text: str,
     doc_boundaries: List[Tuple[str, int, int]],
     doc_content_map: Dict[str, str],
-    get_embedding,
+    get_embedding_async,
     bm25_k1: float = 1.5,
     bm25_b: float = 0.4,
     ellipsis_max_gap: Optional[int] = 300,
@@ -356,6 +384,7 @@ def verify_quotes_bm25_first(
     min_fuzzy_ratio: float = 0.6,
     expand_window_neighbors: int = 1,
     show_progress: bool = True,
+    progress_manager: Optional["ProgressManager"] = None,
 ) -> List[Dict[str, Any]]:
     """Verify quotes using BM25-first matching with ellipsis support.
 
@@ -378,28 +407,97 @@ def verify_quotes_bm25_first(
         return []
 
     # Extract window texts and build BM25 index with inverted index for fast pre-filtering
-    logger.info(f"Tokenizing {len(original_windows)} windows...")
     window_texts = [w[0] for w in original_windows]
-    tokenized = [_fast_tokenize(w) for w in window_texts]
 
-    logger.info(f"Building BM25 index from {len(original_windows)} windows...")
+    # Use cached tokenization and token index
+    corpus_hash = _hash_bm25_inputs(window_texts, bm25_k1, bm25_b)
+    logger.info(f"Building BM25 index from {len(original_windows)} windows (hash={corpus_hash})...")
+    tokenized, token_index = _cached_build_bm25_index(
+        corpus_hash, window_texts, bm25_k1, bm25_b
+    )
+
+    # BM25Okapi isn't picklable, so recreate from cached tokenized data
     bm25 = BM25Okapi(tokenized, k1=bm25_k1, b=bm25_b)
-
-    # Build inverted index for candidate pre-filtering (major performance win)
-    token_index = _build_token_index(tokenized)
     logger.info(f"Built BM25 index and inverted index ({len(token_index)} unique tokens)")
+
+    # Build mapping: doc_name -> list of window indices for per-document filtering
+    from collections import defaultdict
+
+    doc_to_windows: Dict[str, List[int]] = defaultdict(list)
+    for idx, (_, start, end) in enumerate(original_windows):
+        # Find which document this window belongs to
+        for doc_name, doc_start, doc_end in doc_boundaries:
+            if doc_start <= start < doc_end:
+                doc_to_windows[doc_name].append(idx)
+                break
+    logger.info(f"Built per-document window index: {len(doc_to_windows)} docs")
+    logger.info(f"Sample doc names in index: {list(doc_to_windows.keys())[:5]}")
+
+    # Build base ID -> doc name mapping (handles any extension)
+    # e.g., "tSR_rftWR44" -> "tSR_rftWR44.txt"
+    base_id_to_doc: Dict[str, str] = {}
+    for doc_name in doc_to_windows:
+        # Extract base (filename without extension)
+        base = doc_name.rsplit(".", 1)[0] if "." in doc_name else doc_name
+        base_id_to_doc[base] = doc_name
 
     # Phase 1: BM25 matching (no embeddings yet)
     # Collect intermediate results with texts that need embedding
-    logger.info(f"Phase 1: BM25 matching for {len(extracted_quotes)} quotes...")
+    logger.debug(f"Phase 1: BM25 matching for {len(extracted_quotes)} quotes...")
+    if extracted_quotes:
+        sample_sources = [q.source for q in extracted_quotes[:5] if q.source]
+        logger.debug(f"Sample quote sources: {sample_sources}")
     intermediate_results = []
-    num_quotes = len(extracted_quotes)
+
+    # Create progress bar for BM25 matching
+    if show_progress:
+        if progress_manager:
+            pbar_bm25 = progress_manager.create_progress_bar(
+                total=len(extracted_quotes),
+                desc="VerifyQuotes: BM25 matching",
+                unit="quote",
+            )
+        else:
+            desc = "VerifyQuotes: BM25 matching".ljust(35)
+            pbar_bm25 = tqdm(
+                total=len(extracted_quotes),
+                desc=desc,
+                unit="quote",
+                file=sys.stderr,
+                ncols=120,
+                leave=True,
+                mininterval=0.1,
+            )
+    else:
+        pbar_bm25 = None
 
     for i, quote_obj in enumerate(extracted_quotes):
-        if i > 0 and i % 1000 == 0:
-            logger.info(f"  Processed {i}/{num_quotes} quotes...")
+        if pbar_bm25:
+            pbar_bm25.update(1)
         quote = quote_obj.text
         has_ellipsis = bool(ELLIPSIS_RE.search(quote))
+
+        # Get windows for this quote's source document only (major performance win)
+        quote_source = quote_obj.source
+        quote_source_base = None
+        if quote_source:
+            # Strip __chunks__N suffix to get base ID
+            base = re.sub(r"__chunks__\d+$", "", quote_source)
+            # Look up actual doc name (handles extensions)
+            quote_source_base = base_id_to_doc.get(base)
+
+        if quote_source_base and quote_source_base in doc_to_windows:
+            doc_window_indices = doc_to_windows[quote_source_base]
+            doc_window_set = set(doc_window_indices)
+        else:
+            # Fallback: search all windows if source unknown
+            doc_window_indices = list(range(len(original_windows)))
+            doc_window_set = set(doc_window_indices)
+            if quote_source:
+                base = re.sub(r"__chunks__\d+$", "", quote_source)
+                logger.warning(
+                    f"Quote source '{quote_source}' (base: '{base}') not in doc_to_windows, searching all"
+                )
 
         if not has_ellipsis:
             # Simple case: single BM25 match with candidate pre-filtering
@@ -408,14 +506,19 @@ def verify_quotes_bm25_first(
                 query_tokens, token_index, len(original_windows)
             )
 
+            # Intersect token candidates with document windows
+            doc_candidates = [i for i in candidate_indices if i in doc_window_set]
+            if not doc_candidates:
+                doc_candidates = doc_window_indices  # Fallback to all doc windows
+
             # Score only candidate windows (major performance win)
-            if len(candidate_indices) < len(original_windows):
-                candidate_scores = bm25.get_batch_scores(query_tokens, candidate_indices)
+            if len(doc_candidates) < len(original_windows):
+                candidate_scores = bm25.get_batch_scores(query_tokens, doc_candidates)
                 best_local_idx = int(np.argmax(candidate_scores))
-                best_idx = candidate_indices[best_local_idx]
+                best_idx = doc_candidates[best_local_idx]
                 # Build full scores array for ratio calculation
                 scores = np.zeros(len(original_windows))
-                for i, idx in enumerate(candidate_indices):
+                for i, idx in enumerate(doc_candidates):
                     scores[idx] = candidate_scores[i]
             else:
                 scores = bm25.get_scores(query_tokens)
@@ -444,12 +547,17 @@ def verify_quotes_bm25_first(
             head_candidates = _find_candidate_windows(
                 head_tokens, token_index, len(original_windows)
             )
-            if len(head_candidates) < len(original_windows):
-                head_candidate_scores = bm25.get_batch_scores(head_tokens, head_candidates)
+            # Intersect token candidates with document windows
+            head_doc_candidates = [i for i in head_candidates if i in doc_window_set]
+            if not head_doc_candidates:
+                head_doc_candidates = doc_window_indices  # Fallback to all doc windows
+
+            if len(head_doc_candidates) < len(original_windows):
+                head_candidate_scores = bm25.get_batch_scores(head_tokens, head_doc_candidates)
                 head_local_idx = int(np.argmax(head_candidate_scores))
-                head_idx = head_candidates[head_local_idx]
+                head_idx = head_doc_candidates[head_local_idx]
                 head_scores = np.zeros(len(original_windows))
-                for i, idx in enumerate(head_candidates):
+                for i, idx in enumerate(head_doc_candidates):
                     head_scores[idx] = head_candidate_scores[i]
             else:
                 head_scores = bm25.get_scores(head_tokens)
@@ -461,12 +569,17 @@ def verify_quotes_bm25_first(
             tail_candidates = _find_candidate_windows(
                 tail_tokens, token_index, len(original_windows)
             )
-            if len(tail_candidates) < len(original_windows):
-                tail_candidate_scores = bm25.get_batch_scores(tail_tokens, tail_candidates)
+            # Intersect token candidates with document windows
+            tail_doc_candidates = [i for i in tail_candidates if i in doc_window_set]
+            if not tail_doc_candidates:
+                tail_doc_candidates = doc_window_indices  # Fallback to all doc windows
+
+            if len(tail_doc_candidates) < len(original_windows):
+                tail_candidate_scores = bm25.get_batch_scores(tail_tokens, tail_doc_candidates)
                 tail_local_idx = int(np.argmax(tail_candidate_scores))
-                tail_idx = tail_candidates[tail_local_idx]
+                tail_idx = tail_doc_candidates[tail_local_idx]
                 tail_scores = np.zeros(len(original_windows))
-                for i, idx in enumerate(tail_candidates):
+                for i, idx in enumerate(tail_doc_candidates):
                     tail_scores[idx] = tail_candidate_scores[i]
             else:
                 tail_scores = bm25.get_scores(tail_tokens)
@@ -533,6 +646,28 @@ def verify_quotes_bm25_first(
             global_start, doc_boundaries, doc_content_map
         )
 
+        # Extract context window around match (2000 chars centered on match)
+        # Find document start position to calculate relative position
+        doc_start = 0
+        for doc_name, start, end in doc_boundaries:
+            if doc_name == source_doc:
+                doc_start = start
+                break
+        # Position within the source document
+        local_start = global_start - doc_start
+        local_end = global_end - doc_start
+        # Create window centered on match
+        context_size = 2000
+        match_center = (local_start + local_end) // 2
+        ctx_start = max(0, match_center - context_size // 2)
+        ctx_end = min(len(source_doc_content), match_center + context_size // 2)
+        context_around_match = source_doc_content[ctx_start:ctx_end]
+        # Add ellipsis if truncated
+        if ctx_start > 0:
+            context_around_match = "..." + context_around_match
+        if ctx_end < len(source_doc_content):
+            context_around_match = context_around_match + "..."
+
         # Compute truncated texts for embedding (but don't embed yet)
         max_embed_chars = min(max(len(quote) * 2, 500), 4000)
         quote_truncated = quote[:max_embed_chars]
@@ -544,7 +679,8 @@ def verify_quotes_bm25_first(
                 "quote_hash": quote_obj.hash(),
                 "source_doc": source_doc,
                 "span_text": span_text,
-                "source_doc_content": source_doc_content,
+                "source_doc_content": source_doc_content,  # kept for LLM verification
+                "context_around_match": context_around_match,  # truncated for export
                 "bm25_score": float(bm25_score),
                 "bm25_ratio": float(ratio),
                 "global_start": int(global_start),
@@ -556,7 +692,9 @@ def verify_quotes_bm25_first(
             }
         )
 
-    logger.info(f"BM25 matching complete. {len(intermediate_results)} matches found.")
+    if pbar_bm25:
+        pbar_bm25.close()
+    logger.debug(f"BM25 matching complete. {len(intermediate_results)} matches found.")
 
     # Phase 2: Batch embed all unique texts
     # Collect all unique texts needing embeddings
@@ -568,20 +706,34 @@ def verify_quotes_bm25_first(
     unique_texts = list(texts_to_embed)
     logger.info(f"Phase 2: Computing embeddings for {len(unique_texts)} unique texts...")
 
-    # Batch embed all at once
+    # Batch embed with progress callback
     if show_progress:
-        desc = "VerifyQuotes: embeddings".ljust(35)
-        with tqdm(
-            total=len(unique_texts),
-            desc=desc,
-            unit="text",
-            file=sys.stderr,
-            ncols=120,
-        ) as pbar:
-            embeddings_list = get_embedding(unique_texts)
-            pbar.update(len(unique_texts))
+        if progress_manager:
+            pbar = progress_manager.create_progress_bar(
+                total=len(unique_texts),
+                desc="VerifyQuotes: embeddings",
+                unit="text",
+            )
+        else:
+            desc = "VerifyQuotes: embeddings".ljust(35)
+            pbar = tqdm(
+                total=len(unique_texts),
+                desc=desc,
+                unit="text",
+                file=sys.stderr,
+                ncols=120,
+                leave=True,
+                mininterval=0.1,
+            )
+        try:
+            embeddings_list = await get_embedding_async(
+                unique_texts,
+                progress_callback=lambda n: pbar.update(n),
+            )
+        finally:
+            pbar.close()
     else:
-        embeddings_list = get_embedding(unique_texts)
+        embeddings_list = await get_embedding_async(unique_texts)
 
     # Build lookup from text -> embedding
     text_to_embedding = {text: emb for text, emb in zip(unique_texts, embeddings_list)}
@@ -1022,13 +1174,13 @@ class VerifyQuotes(CompletionDAGNode):
             extracted_sentences=quote_texts,
         )
         logger.info(f"Created {len(windows)} search windows")
-        matches = verify_quotes_bm25_first(
+        matches = await verify_quotes_bm25_first(
             quotes_to_verify,
             windows,
             search_corpus,
             doc_boundaries,
             doc_content_map,
-            get_embedding,
+            get_embedding_async,
             bm25_k1=self.bm25_k1,
             bm25_b=self.bm25_b,
             ellipsis_max_gap=self.ellipsis_max_gap,
@@ -1037,6 +1189,7 @@ class VerifyQuotes(CompletionDAGNode):
             min_fuzzy_ratio=self.min_fuzzy_ratio,
             expand_window_neighbors=self.expand_window_neighbors,
             show_progress=self.dag.config.show_progress,
+            progress_manager=self.dag.progress_manager,
         )
 
         if not matches:
@@ -1079,8 +1232,21 @@ class VerifyQuotes(CompletionDAGNode):
             df["llm_is_contained"] = None
 
             # Run LLM judge on poor matches in parallel
-            # Use CostProgressBar if cost tracking is enabled
-            if self.dag.cost_tracker:
+            # Use progress manager if available for coordinated display
+            if self.dag.progress_manager:
+                if self.dag.cost_tracker:
+                    pbar = self.dag.progress_manager.create_cost_progress_bar(
+                        total=len(poor_matches),
+                        node_name=f"{self.type}: {self.name} (LLM existence)",
+                        unit="item",
+                    )
+                else:
+                    pbar = self.dag.progress_manager.create_progress_bar(
+                        total=len(poor_matches),
+                        desc=f"{self.type}: {self.name} (LLM existence)",
+                        unit="item",
+                    )
+            elif self.dag.cost_tracker:
                 from soak.models.progress import CostProgressBar
 
                 pbar = CostProgressBar(
@@ -1097,6 +1263,8 @@ class VerifyQuotes(CompletionDAGNode):
                     file=sys.stderr,
                     unit="item",
                     ncols=120,
+                    leave=True,
+                    mininterval=0.1,
                 )
 
             async with anyio.create_task_group() as tg:
@@ -1157,8 +1325,21 @@ class VerifyQuotes(CompletionDAGNode):
             )
 
             # Run fairness checks in parallel
-            # Use CostProgressBar if cost tracking is enabled
-            if self.dag.cost_tracker:
+            # Use progress manager if available for coordinated display
+            if self.dag.progress_manager:
+                if self.dag.cost_tracker:
+                    pbar_fairness = self.dag.progress_manager.create_cost_progress_bar(
+                        total=len(df),
+                        node_name=f"{self.type}: {self.name} (LLM fairness)",
+                        unit="item",
+                    )
+                else:
+                    pbar_fairness = self.dag.progress_manager.create_progress_bar(
+                        total=len(df),
+                        desc=f"{self.type}: {self.name} (LLM fairness)",
+                        unit="item",
+                    )
+            elif self.dag.cost_tracker:
                 from soak.models.progress import CostProgressBar
 
                 pbar_fairness = CostProgressBar(
@@ -1175,6 +1356,8 @@ class VerifyQuotes(CompletionDAGNode):
                     file=sys.stderr,
                     unit="item",
                     ncols=120,
+                    leave=True,
+                    mininterval=0.1,
                 )
 
             async with anyio.create_task_group() as tg:
@@ -1369,12 +1552,16 @@ class VerifyQuotes(CompletionDAGNode):
         excel_path = folder / f"quote_verification{uid_suffix}.xlsx"
         df = pd.DataFrame(self.sentence_matches)
 
+        # Drop full document content (too large for Excel, kept internally for LLM verification)
+        if "source_doc_content" in df.columns:
+            df = df.drop(columns=["source_doc_content"])
+
         # Rename columns for clarity
         df = df.rename(
             columns={
                 "quote": "extracted_quote",
                 "span_text": "found_in_original",
-                "source_doc_content": "full_original_text",
+                "context_around_match": "source_context",
             }
         )
 
@@ -1415,70 +1602,41 @@ class VerifyQuotes(CompletionDAGNode):
 
         df = df.sort_values(sort_cols, ascending=sort_ascending)
 
-        with pd.ExcelWriter(excel_path, engine="openpyxl") as writer:
-            from openpyxl.styles import Alignment, Font
-
+        # Use xlsxwriter engine - more permissive with special characters
+        with pd.ExcelWriter(excel_path, engine="xlsxwriter") as writer:
             df.to_excel(writer, sheet_name="Quote Verification", index=False)
-            # Access the worksheet to apply formatting
+
+            workbook = writer.book
             worksheet = writer.sheets["Quote Verification"]
-            default_font = Font(size=11)
 
-            for i in range(1, worksheet.max_row + 1):
-                worksheet.row_dimensions[i].height = 20
+            # Define formats
+            wrap_format = workbook.add_format({"text_wrap": True, "valign": "top"})
+            default_format = workbook.add_format({"font_size": 11})
 
-            for column in worksheet.columns:
-                column_letter = column[0].column_letter
-                header_value = column[0].value
+            # Set column widths based on header names
+            text_cols = [
+                "extracted_quote", "found_in_original", "source_context",
+                "llm_explanation", "llm_fairness_explanation",
+                "theme_description", "code_description",
+            ]
+            bool_cols = ["llm_is_contained", "llm_is_fair"]
+            name_cols = ["theme", "code_name", "source_doc"]
+            num_cols = [
+                "bm25_score", "bm25_ratio", "cosine_similarity",
+                "global_start", "global_end", "match_ratio",
+            ]
 
-                # Set width and wrapping for text columns
-                if header_value in [
-                    "extracted_quote",
-                    "found_in_original",
-                    "full_original_text",
-                    "llm_explanation",
-                    "llm_fairness_explanation",
-                    "theme_description",
-                    "code_description",
-                ]:
-                    worksheet.column_dimensions[column_letter].width = 60
-                    for cell in column:
-                        cell.alignment = Alignment(wrap_text=True, vertical="top")
-                        cell.font = default_font
-
-                elif header_value in ["llm_is_contained", "llm_is_fair"]:
-                    # Boolean columns - narrow
-                    worksheet.column_dimensions[column_letter].width = 18
-                    for cell in column:
-                        cell.font = default_font
-
-                elif header_value in ["theme", "code_name", "source_doc"]:
-                    # Theme/code names - medium width
-                    worksheet.column_dimensions[column_letter].width = 25
-                    for cell in column:
-                        cell.font = default_font
-
-                elif header_value in [
-                    "bm25_score",
-                    "bm25_ratio",
-                    "cosine_similarity",
-                    "global_start",
-                    "global_end",
-                    "match_ratio",
-                ]:
-                    # Number columns - narrower
-                    worksheet.column_dimensions[column_letter].width = 15
-                    for cell in column:
-                        cell.font = default_font
+            for col_idx, col_name in enumerate(df.columns):
+                if col_name in text_cols:
+                    worksheet.set_column(col_idx, col_idx, 60, wrap_format)
+                elif col_name in bool_cols:
+                    worksheet.set_column(col_idx, col_idx, 18, default_format)
+                elif col_name in name_cols:
+                    worksheet.set_column(col_idx, col_idx, 25, default_format)
+                elif col_name in num_cols:
+                    worksheet.set_column(col_idx, col_idx, 15, default_format)
                 else:
-                    # Auto-width for other columns
-                    max_length = 0
-                    for cell in column:
-                        if cell.value:
-                            max_length = max(max_length, len(str(cell.value)))
-                        cell.font = default_font
-                    worksheet.column_dimensions[column_letter].width = min(
-                        max_length + 2, 20
-                    )
+                    worksheet.set_column(col_idx, col_idx, 20, default_format)
 
         # Export LLM prompts and responses
         if self._llm_results_by_type:

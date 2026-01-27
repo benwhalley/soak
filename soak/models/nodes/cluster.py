@@ -1,5 +1,6 @@
 """Cluster node for grouping items by semantic similarity."""
 
+import hashlib
 import logging
 import random
 import sys
@@ -10,13 +11,41 @@ from jinja2 import Environment, StrictUndefined
 from pydantic import BaseModel, Field, PrivateAttr
 from tqdm import tqdm
 
-from soak.models.base import TrackedItem, get_embedding
+from soak.models.base import TrackedItem, get_embedding_async, memory
 from soak.models.utils import unwrap_chatter_items
 
 from .base import DAGNode
 from .batch import BatchList
 
+from decouple import config as env_config
+
+MAX_LLM_CONCURRENCY = env_config("SD_MAX_CONCURRENCY", default=20, cast=int)
+
 logger = logging.getLogger(__name__)
+
+
+def _hash_embeddings(embeddings: np.ndarray) -> str:
+    """Create a stable hash of embeddings array for cache key."""
+    return hashlib.sha256(embeddings.tobytes()).hexdigest()[:16]
+
+
+@memory.cache
+def _cached_hdbscan_fit(
+    embeddings_hash: str,
+    embeddings: np.ndarray,
+    min_cluster_size: int,
+    min_samples: int,
+) -> np.ndarray:
+    """Cached HDBSCAN fit_predict."""
+    import hdbscan
+
+    logger.info(f"HDBSCAN cache miss - running fit_predict (hash={embeddings_hash})")
+    clusterer = hdbscan.HDBSCAN(
+        min_cluster_size=min_cluster_size,
+        min_samples=min_samples,
+        metric="euclidean",
+    )
+    return clusterer.fit_predict(embeddings)
 
 
 class HDBSCANMethod(BaseModel):
@@ -44,7 +73,7 @@ class HDBSCANMethod(BaseModel):
     _singleton_count: int = PrivateAttr(default=0)
     _oversized_count: int = PrivateAttr(default=0)
 
-    def cluster(self, embeddings: np.ndarray) -> List[List[int]]:
+    def cluster(self, embeddings: np.ndarray, seed: int = 42) -> List[List[int]]:
         """Run HDBSCAN and return list of lists of indices.
 
         Handles:
@@ -54,12 +83,11 @@ class HDBSCANMethod(BaseModel):
 
         Args:
             embeddings: numpy array of shape (n_samples, embedding_dim)
+            seed: random seed for deterministic chunking fallback
 
         Returns:
             List of lists of indices, where each inner list is a cluster
         """
-        import hdbscan
-
         n_samples = len(embeddings)
         if n_samples == 0:
             return []
@@ -77,18 +105,16 @@ class HDBSCANMethod(BaseModel):
         # store for reporting
         self._effective_min_cluster_size = effective_min_cluster_size
 
-        # run HDBSCAN
+        # run HDBSCAN (cached)
         logger.info(
             f"HDBSCAN: min_cluster_size={effective_min_cluster_size}, "
             f"min_samples={self.min_samples}, n_samples={n_samples}"
         )
-        clusterer = hdbscan.HDBSCAN(
-            min_cluster_size=effective_min_cluster_size,
-            min_samples=self.min_samples,
-            metric="euclidean",
+        embeddings_hash = _hash_embeddings(embeddings)
+        logger.info(f"Running HDBSCAN fit_predict on {n_samples} samples (hash={embeddings_hash})...")
+        labels = _cached_hdbscan_fit(
+            embeddings_hash, embeddings, effective_min_cluster_size, self.min_samples
         )
-        logger.info(f"Running HDBSCAN fit_predict on {n_samples} samples...")
-        labels = clusterer.fit_predict(embeddings)
         logger.info("HDBSCAN fit_predict complete.")
 
         # group indices by label
@@ -127,7 +153,7 @@ class HDBSCANMethod(BaseModel):
                 # recursively split oversized cluster
                 sub_embeddings = embeddings[indices]
                 sub_clusters = self._split_oversized(
-                    sub_embeddings, indices, effective_min_cluster_size
+                    sub_embeddings, indices, effective_min_cluster_size, seed=seed
                 )
                 final_clusters.extend(sub_clusters)
 
@@ -145,6 +171,7 @@ class HDBSCANMethod(BaseModel):
         effective_min_cluster_size: int,
         depth: int = 0,
         max_depth: int = 5,
+        seed: int = 42,
     ) -> List[List[int]]:
         """Recursively split an oversized cluster.
 
@@ -154,12 +181,11 @@ class HDBSCANMethod(BaseModel):
             effective_min_cluster_size: the calculated min size to use for splitting
             depth: current recursion depth
             max_depth: maximum recursion depth before falling back to random chunking
+            seed: random seed for deterministic chunking fallback
 
         Returns:
             List of lists of original indices, each <= max_cluster_size
         """
-        import hdbscan
-
         n = len(embeddings)
         if n <= self.max_cluster_size:
             return [original_indices]
@@ -170,25 +196,21 @@ class HDBSCANMethod(BaseModel):
                 f"  Max recursion depth ({max_depth}) reached for cluster of {n} items, "
                 f"using random chunking"
             )
-            return self._random_chunk(original_indices, effective_min_cluster_size)
+            return self._random_chunk(original_indices, effective_min_cluster_size, seed=seed)
 
         logger.debug(f"  Splitting oversized cluster: {n} items (depth={depth})")
 
         # try HDBSCAN with smaller min_cluster_size to force splitting
         # use half of effective, but not smaller than 2
         smaller_min = max(2, effective_min_cluster_size // 2)
-        clusterer = hdbscan.HDBSCAN(
-            min_cluster_size=smaller_min,
-            min_samples=1,
-            metric="euclidean",
-        )
-        labels = clusterer.fit_predict(embeddings)
+        embeddings_hash = _hash_embeddings(embeddings)
+        labels = _cached_hdbscan_fit(embeddings_hash, embeddings, smaller_min, 1)
 
         # check if it actually split
         unique_labels = set(labels) - {-1}
         if len(unique_labels) <= 1:
             logger.debug(f"  HDBSCAN won't split {n} items further, using random chunking")
-            return self._random_chunk(original_indices, effective_min_cluster_size)
+            return self._random_chunk(original_indices, effective_min_cluster_size, seed=seed)
 
         # group by new labels
         clusters_by_label: Dict[int, List[int]] = {}
@@ -228,22 +250,26 @@ class HDBSCANMethod(BaseModel):
                     effective_min_cluster_size,
                     depth=depth + 1,
                     max_depth=max_depth,
+                    seed=seed,
                 )
                 result.extend(sub_result)
 
         return result
 
     def _random_chunk(
-        self, indices: List[int], effective_min_cluster_size: int
+        self, indices: List[int], effective_min_cluster_size: int, seed: int = 42
     ) -> List[List[int]]:
         """Split indices into random chunks respecting max cluster size.
 
         Note: min_cluster_size is a goal for HDBSCAN clustering, but when we fall back
         to random chunking, we prioritise the max_cluster_size hard limit. Small final
         chunks are acceptable here since they come from splitting, not initial clustering.
+
+        Uses a seeded RNG for deterministic results across runs.
         """
+        rng = random.Random(seed)
         shuffled = indices.copy()
-        random.shuffle(shuffled)
+        rng.shuffle(shuffled)
 
         chunks = []
         for i in range(0, len(shuffled), self.max_cluster_size):
@@ -373,21 +399,33 @@ class Cluster(DAGNode):
         # get embeddings with progress bar
         logger.info(f"Computing embeddings for {len(unique_texts)} texts...")
         if self.dag.config.show_progress:
-            desc = f"Cluster: {self.name}".ljust(35)
-            with tqdm(
-                total=len(unique_texts),
-                desc=desc,
-                unit="text",
-                file=sys.stderr,
-                ncols=120,
-            ) as pbar:
-                embeddings_list = get_embedding(
+            if self.dag.progress_manager:
+                pbar = self.dag.progress_manager.create_progress_bar(
+                    total=len(unique_texts),
+                    desc=f"Cluster: {self.name}",
+                    unit="text",
+                )
+            else:
+                desc = f"Cluster: {self.name}".ljust(35)
+                pbar = tqdm(
+                    total=len(unique_texts),
+                    desc=desc,
+                    unit="text",
+                    file=sys.stderr,
+                    ncols=120,
+                    leave=True,
+                    mininterval=0.1,
+                )
+            try:
+                embeddings_list = await get_embedding_async(
                     unique_texts,
                     model=self.dag.config.embedding_model,
                 )
                 pbar.update(len(unique_texts))
+            finally:
+                pbar.close()
         else:
-            embeddings_list = get_embedding(
+            embeddings_list = await get_embedding_async(
                 unique_texts,
                 model=self.dag.config.embedding_model,
             )
@@ -400,7 +438,7 @@ class Cluster(DAGNode):
 
         # run clustering
         logger.info(f"Running HDBSCAN clustering on {len(full_embeddings)} embeddings...")
-        cluster_indices = self.method.cluster(full_embeddings)
+        cluster_indices = self.method.cluster(full_embeddings, seed=self.dag.config.seed)
         logger.info(f"Clustering complete: {len(cluster_indices)} clusters found.")
 
         # build output: one TrackedItem per cluster

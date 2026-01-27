@@ -13,7 +13,7 @@ import anyio
 from decouple import config as env_config
 from joblib import Memory
 from pydantic import BaseModel, Field, constr
-from struckdown import ChatterResult, LLMCredentials, get_embedding
+from struckdown import ChatterResult, LLMCredentials, get_embedding, get_embedding_async
 from struckdown.response_types import ResponseTypes
 from struckdown.return_type_models import ResponseModel
 

@@ -1,11 +1,13 @@
 """Core theme coverage analysis logic."""
 
 import logging
+import sys
 from collections import defaultdict
 from typing import Any, Dict, List, Literal, Optional, Tuple
 
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
+from tqdm import tqdm
 
 from soak.models.base import QualitativeAnalysis, TrackedItem, get_embedding
 from soak.models.nodes.base import Split
@@ -437,10 +439,17 @@ class ThemeCoverageAnalyzer:
         Local backend uses sentence-transformers with batching.
         API backend uses struckdown/litellm with parallel batch processing.
         """
+        pbar = tqdm(total=len(texts), desc="Embedding", file=sys.stderr)
+
+        def progress_callback(n: int) -> None:
+            pbar.update(n - pbar.n)
+
         embeddings = get_embedding(
             list(texts),
             model=self.embedding_model,
+            progress_callback=progress_callback,
         )
+        pbar.close()
         return np.array(embeddings)
 
     def _aggregate_to_documents(

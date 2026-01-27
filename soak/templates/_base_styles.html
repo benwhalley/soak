@@ -1,0 +1,124 @@
+        /* =============================================
+           SOAK COMMON STYLES
+           Shared across all soak HTML templates
+           ============================================= */
+
+        /* Header bar */
+        .soak-header {
+            background-color: #1a1a1a;
+            color: #fff;
+            padding: 0.4rem 1rem;
+            font-size: 0.85rem;
+            font-weight: 500;
+            position: sticky;
+            top: 0;
+            z-index: 1050;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .soak-header .brand { letter-spacing: 0.5px; }
+        .soak-header a { color: #888; font-size: 0.7rem; text-decoration: none; display: flex; align-items: center; gap: 0.35rem; }
+        .soak-header a:hover { color: #aaa; }
+
+        /* Restrained heading sizes */
+        h1 { font-size: 1.4rem; font-weight: 600; margin-bottom: 0.5rem; }
+        h2 { font-size: 1.15rem; font-weight: 600; margin-top: 1.5rem; margin-bottom: 0.5rem; color: #212529; }
+        h3 { font-size: 1rem; font-weight: 600; margin-top: 1rem; margin-bottom: 0.4rem; }
+        h4 { font-size: 0.875rem; font-weight: 600; margin-top: 0.75rem; margin-bottom: 0.25rem; color: #495057; }
+        h5 { font-size: 0.8rem; font-weight: 600; }
+        h6 { font-size: 0.75rem; font-weight: 600; }
+
+        /* Tighter card spacing */
+        .card { margin-bottom: 0.75rem; }
+        .card-header { padding: 0.5rem 0.75rem; font-size: 0.85rem; }
+        .card-body { padding: 0.75rem; }
+        .card-title { font-size: 0.9rem; margin-bottom: 0.25rem; }
+
+        hr { margin-top: 1rem; margin-bottom: 1rem; }
+
+        /* Screen footer */
+        .screen-footer {
+            margin-top: 2rem;
+            padding-top: 1rem;
+            border-top: 1px solid #dee2e6;
+            color: #6c757d;
+            font-size: 0.8rem;
+        }
+
+        /* Print styles */
+        @media print {
+            .soak-header {
+                position: static;
+                background: none;
+                color: #333;
+                border-bottom: 1px solid #ccc;
+                padding: 0.25rem 0;
+                margin-bottom: 1rem;
+            }
+            body { padding-top: 0; }
+            @page { margin-bottom: 2cm; }
+            .print-footer {
+                position: fixed;
+                bottom: 0;
+                left: 0;
+                right: 0;
+                height: 1.5cm;
+                text-align: center;
+                font-size: 0.7rem;
+                color: #666;
+                border-top: 1px solid #ddd;
+                padding-top: 0.25cm;
+            }
+            .screen-footer { display: none; }
+            .floating-nav { display: none !important; }
+            .main-content { margin-right: 0; }
+        }
+        @media screen {
+            .print-footer { display: none; }
+        }
+
+        /* Floating navigation (used by comparison & coverage) */
+        .floating-nav {
+            position: fixed;
+            top: 56px;
+            right: 20px;
+            width: 170px;
+            max-height: calc(100vh - 76px);
+            overflow-y: auto;
+            z-index: 99;
+            font-size: 0.7rem;
+        }
+        .floating-nav .nav-link {
+            padding: 0.2rem 0.4rem;
+            color: #666;
+            border-left: 2px solid transparent;
+        }
+        .floating-nav .nav-link:hover {
+            color: #007bff;
+            border-left-color: #007bff;
+        }
+        .floating-nav .nav-link.active {
+            color: #007bff;
+            font-weight: bold;
+            border-left-color: #007bff;
+        }
+        .floating-nav .nav-section {
+            font-weight: bold;
+            color: #333;
+            padding: 0.3rem 0.4rem 0.15rem;
+            margin-top: 0.3rem;
+            border-bottom: 1px solid #ddd;
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .floating-nav .nav-section:first-child { margin-top: 0; }
+
+        .main-content { margin-right: 190px; }
+        @media (max-width: 1200px) {
+            .floating-nav { display: none; }
+            .main-content { margin-right: 0; }
+        }
+
+        html { scroll-behavior: smooth; }

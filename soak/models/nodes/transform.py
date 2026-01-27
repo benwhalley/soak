@@ -38,8 +38,21 @@ class Transform(ItemsNode, CompletionDAGNode):
         # Create progress bar with total=1 (Transform always makes exactly 1 LLM call)
         progress_bar = None
         if self.dag.config.show_progress:
-            # Use CostProgressBar if this is a CompletionDAGNode with cost tracking
-            if isinstance(self, CompletionDAGNode) and self.dag.cost_tracker:
+            # Use progress manager if available for coordinated display
+            if self.dag.progress_manager:
+                if isinstance(self, CompletionDAGNode) and self.dag.cost_tracker:
+                    progress_bar = self.dag.progress_manager.create_cost_progress_bar(
+                        total=1,
+                        node_name=self.name,
+                        unit="item",
+                    )
+                else:
+                    progress_bar = self.dag.progress_manager.create_progress_bar(
+                        total=1,
+                        desc=f"{self.type}: {self.name}",
+                        unit="item",
+                    )
+            elif isinstance(self, CompletionDAGNode) and self.dag.cost_tracker:
                 from soak.models.progress import CostProgressBar
 
                 progress_bar = CostProgressBar(
@@ -49,7 +62,7 @@ class Transform(ItemsNode, CompletionDAGNode):
                     unit="item",
                 )
             else:
-                # Pad description to match CostProgressBar alignment
+                # pad description to match CostProgressBar alignment
                 desc = f"{self.type}: {self.name}".ljust(35)
                 progress_bar = tqdm(
                     total=1,  # Always 1 for Transform
@@ -57,6 +70,8 @@ class Transform(ItemsNode, CompletionDAGNode):
                     unit="item",
                     file=sys.stderr,
                     ncols=120,
+                    leave=True,
+                    mininterval=0.1,
                 )
 
         try:

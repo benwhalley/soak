@@ -25,6 +25,38 @@ PIPELINE_DIR = Path(__file__).parent / "pipelines"
 COMMANDS = {"run", "export", "compare", "show", "tui", "coverage", "test"}
 
 
+def _derive_input_source(docfiles: list) -> str:
+    """Derive a summary string from document paths.
+
+    Attempts to find common directory and file extension pattern.
+    E.g., [("data/a.txt", {}), ("data/b.txt", {})] -> "data/*.txt"
+    """
+    if not docfiles:
+        return ""
+
+    # extract paths from tuples
+    paths = [Path(p[0]) if isinstance(p, tuple) else Path(p) for p in docfiles]
+
+    # find common parent directory
+    parents = [p.parent for p in paths]
+    if parents and all(p == parents[0] for p in parents):
+        common_dir = str(parents[0])
+    else:
+        # try to find longest common prefix
+        parent_strs = [str(p) for p in parents]
+        common_prefix = os.path.commonpath(parent_strs) if parent_strs else ""
+        common_dir = common_prefix if common_prefix else "."
+
+    # find common extension
+    extensions = {p.suffix for p in paths}
+    if len(extensions) == 1 and extensions != {""}:
+        ext_pattern = f"*{list(extensions)[0]}"
+    else:
+        ext_pattern = "*"
+
+    return f"{common_dir}/{ext_pattern}"
+
+
 def get_soak_version() -> str:
     """Get soak package version."""
     try:
@@ -523,6 +555,7 @@ def run(
                 raise typer.Exit(1)
 
             pipeline.config.document_paths = docfiles
+            pipeline.config.input_source = _derive_input_source(docfiles)
             pipeline.config.documents = pipeline.config.load_documents()
     except FileNotFoundError as e:
         logger.error(str(e))
@@ -670,6 +703,60 @@ def resolve_analysis_path(input_path: str) -> Path:
         raise typer.BadParameter(f"No JSON files found in directory: {path}")
 
     raise typer.BadParameter(f"Path does not exist: {path}")
+
+
+async def _generate_llm_labels(
+    themes: list[str],
+    model: str,
+    api_key: str,
+    base_url: str,
+) -> list[str]:
+    """Generate short, unique labels for themes using LLM.
+
+    Args:
+        themes: List of theme names/strings to generate labels for
+        model: LLM model name to use
+        api_key: API key for LLM
+        base_url: Base URL for LLM API
+
+    Returns:
+        List of short labels, same length as input themes
+    """
+    from jinja2 import StrictUndefined, Template
+    from struckdown import LLM, LLMCredentials, chatter_async
+
+    # load prompt template from .sd file
+    prompt_path = Path(__file__).parent / "pipelines" / "make_labels.sd"
+    prompt_template = prompt_path.read_text()
+
+    # format themes as numbered list
+    themes_text = "\n".join(f"{i+1}. {t}" for i, t in enumerate(themes))
+
+    # render template with context
+    template = Template(prompt_template, undefined=StrictUndefined)
+    prompt = template.render(themes_text=themes_text, n_themes=len(themes))
+
+    credentials = LLMCredentials(api_key=api_key, base_url=base_url)
+    llm = LLM(model_name=model)
+
+    result = await chatter_async(
+        multipart_prompt=prompt,
+        model=llm,
+        credentials=credentials,
+    )
+
+    # extract labels from result
+    if hasattr(result, "outputs") and "labels" in result.outputs:
+        labels_output = result.outputs["labels"]
+        if hasattr(labels_output, "labels"):
+            # structured response object with labels attribute
+            return labels_output.labels
+        elif isinstance(labels_output, list):
+            return labels_output
+
+    # fallback: return original themes if LLM fails
+    logger.warning("LLM label generation failed, using original theme names")
+    return themes
 
 
 def _print_comparison_stats(
@@ -992,6 +1079,17 @@ def compare(
         envvar="SOAK_SIMILARITY",
         help="Similarity metric: angular (default), cosine, shepard. Angular is preferred as it satisfies the triangle inequality. Used consistently for coverage, fidelity, and OT.",
     ),
+    llm_labels: bool = typer.Option(
+        False,
+        "--llm-labels",
+        help="Use LLM to generate short, unique labels for themes in plots (requires API credentials)",
+    ),
+    llm_labels_model: str = typer.Option(
+        "gpt-4.1-mini",
+        "--llm-labels-model",
+        envvar="SOAK_LLM_LABELS_MODEL",
+        help="Model to use for generating labels (default: gpt-4.1-mini)",
+    ),
 ):
     """Compare analyses or string lists and generate comparison statistics.
 
@@ -1046,15 +1144,22 @@ def compare(
             logger.error(f"Error reading file: {e}")
             raise typer.Exit(1)
 
+        # parse column names (default to first two columns from file)
+        if cols:
+            col_names = [c.strip() for c in cols.split(",")]
+        else:
+            if len(df.columns) < 2:
+                logger.error("File must have at least 2 columns for comparison")
+                raise typer.Exit(1)
+            col_names = list(df.columns[:2])
+            logger.info(f"Using first two columns: {col_names[0]}, {col_names[1]}")
+
         # warn if file has more columns than being compared
         if not cols and len(df.columns) > 2:
             logger.warning(
-                f"File has {len(df.columns)} columns ({', '.join(df.columns)}) but only comparing A and B. "
+                f"File has {len(df.columns)} columns ({', '.join(df.columns)}) but only comparing first two. "
                 f"Use --cols to compare more, e.g. --cols {','.join(df.columns)}"
             )
-
-        # parse column names (default to A,B)
-        col_names = [c.strip() for c in (cols or "A,B").split(",")]
         if len(col_names) < 2:
             logger.error("At least 2 columns required for comparison")
             raise typer.Exit(1)
@@ -1084,6 +1189,33 @@ def compare(
             themes = [Theme(name=s, description=s, code_slugs=[]) for s in items]
             analysis = QualitativeAnalysis(name=col_name, themes=themes)
             analyses.append(analysis)
+
+        # generate LLM labels if requested
+        if llm_labels:
+            api_key, base_url = check_and_prompt_credentials(Path.cwd())
+            logger.info("Generating LLM labels for themes...")
+
+            for analysis in analyses:
+                theme_names = [t.name for t in analysis.themes]
+                labels = asyncio.run(
+                    _generate_llm_labels(
+                        themes=theme_names,
+                        model=llm_labels_model,
+                        api_key=api_key,
+                        base_url=base_url,
+                    )
+                )
+                # set labels on themes
+                if len(labels) == len(analysis.themes):
+                    for theme, lbl in zip(analysis.themes, labels):
+                        theme.label = lbl
+                    logger.info(f"  {analysis.name}: generated {len(labels)} labels")
+                else:
+                    logger.warning(
+                        f"  {analysis.name}: label count mismatch ({len(labels)} vs {len(analysis.themes)}), using names"
+                    )
+                    for i, theme in enumerate(analysis.themes):
+                        theme.set_label("{name}", i + 1)
 
         # default embedding template for strings mode
         effective_embedding_template = embedding_template or "{name}"
@@ -1189,6 +1321,33 @@ def compare(
             logger.info(
                 f"  Loaded: {analysis.name} ({len(analysis.themes)} themes, {len(analysis.codes)} codes)"
             )
+
+        # generate LLM labels if requested
+        if llm_labels:
+            api_key, base_url = check_and_prompt_credentials(Path.cwd())
+            logger.info("Generating LLM labels for themes...")
+
+            for analysis in analyses:
+                theme_names = [t.name for t in analysis.themes]
+                labels = asyncio.run(
+                    _generate_llm_labels(
+                        themes=theme_names,
+                        model=llm_labels_model,
+                        api_key=api_key,
+                        base_url=base_url,
+                    )
+                )
+                # set labels on themes
+                if len(labels) == len(analysis.themes):
+                    for theme, lbl in zip(analysis.themes, labels):
+                        theme.label = lbl
+                    logger.info(f"  {analysis.name}: generated {len(labels)} labels")
+                else:
+                    logger.warning(
+                        f"  {analysis.name}: label count mismatch ({len(labels)} vs {len(analysis.themes)}), using names"
+                    )
+                    for i, theme in enumerate(analysis.themes):
+                        theme.set_label("{name}", i + 1)
 
         # default embedding template for JSON mode
         effective_embedding_template = embedding_template or "{name}: {description}"
@@ -1676,6 +1835,7 @@ def coverage(
         template = env.get_template("coverage.html")
         html_content = template.render(
             result=result,
+            analysis_file=analysis_file,
             heatmap=heatmap,
             heatmap_thresholded=heatmap_thresholded,
             group_heatmap=group_heatmap,
