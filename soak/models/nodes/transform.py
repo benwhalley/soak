@@ -196,7 +196,9 @@ class Transform(ItemsNode, CompletionDAGNode):
                         for theme in output.themes:
                             rows.append(
                                 {
-                                    "name": theme.name if hasattr(theme, "name") else "",
+                                    "name": (
+                                        theme.name if hasattr(theme, "name") else ""
+                                    ),
                                     "description": (
                                         theme.description
                                         if hasattr(theme, "description")

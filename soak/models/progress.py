@@ -145,4 +145,6 @@ class CostProgressBar(tqdm):
         self._node_tokens += tokens
         tokens_k = self._node_tokens / 1000
         # refresh=False to let mininterval throttle updates
-        self.set_postfix_str(f"${self._node_fresh_cost:.4f} | {tokens_k:.1f}k tokens", refresh=False)
+        self.set_postfix_str(
+            f"${self._node_fresh_cost:.4f} | {tokens_k:.1f}k tokens", refresh=False
+        )

@@ -46,13 +46,17 @@ class DAGConfig(BaseModel):
     scrubber_model: str = "en_core_web_md"
     scrubber_salt: str | None = Field(default="42", exclude=True)
     seed: int = 42
-    randomise_document_order: bool = True  # shuffle documents to avoid folder-name ordering
+    randomise_document_order: bool = (
+        True  # shuffle documents to avoid folder-name ordering
+    )
     sample_n: int | None = None  # randomly sample N documents/rows
     head_n: int | None = None  # take first N documents/rows
     show_progress: bool = False  # show progress bars during execution
 
     # embedding configuration
-    embedding_model: str = "text-embedding-3-large"  # model for embeddings (use "local/model-name" for sentence-transformers)
+    embedding_model: str = (
+        "text-embedding-3-large"  # model for embeddings (use "local/model-name" for sentence-transformers)
+    )
 
     # error handling configuration
     fail_on_context_exceeded: bool = True  # if False, skip item with warning
@@ -68,7 +72,9 @@ class DAGConfig(BaseModel):
     export_metadata: Dict[str, Any] = Field(default_factory=dict)  # metadata for export
 
     # node skipping and stopping
-    skip_nodes: List[str] = Field(default_factory=list)  # nodes to skip during execution
+    skip_nodes: List[str] = Field(
+        default_factory=list
+    )  # nodes to skip during execution
     stop_at_node: Optional[str] = None  # stop execution before this node runs
 
     # debugging
@@ -244,7 +250,9 @@ class DAGConfig(BaseModel):
         if self.randomise_document_order:
             random.seed(self.seed)
             random.shuffle(self.documents)
-            logger.debug(f"Shuffled {len(self.documents)} documents with seed={self.seed}")
+            logger.debug(
+                f"Shuffled {len(self.documents)} documents with seed={self.seed}"
+            )
 
         # Apply sampling/slicing if requested
         original_count = len(self.documents)
@@ -485,7 +493,9 @@ class DAG(BaseModel):
         if skip_nodes:
             unknown_skips = skip_nodes - node_names
             if unknown_skips:
-                logger.warning(f"Skip nodes not found in DAG: {', '.join(unknown_skips)}")
+                logger.warning(
+                    f"Skip nodes not found in DAG: {', '.join(unknown_skips)}"
+                )
             valid_skips = skip_nodes & node_names
             if valid_skips:
                 logger.info(f"Skipping nodes: {', '.join(valid_skips)}")

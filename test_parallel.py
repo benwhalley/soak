@@ -13,14 +13,16 @@ from pathlib import Path
 # Configure logging to show timestamps
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s.%(msecs)03d [%(name)s] %(message)s',
-    datefmt='%H:%M:%S'
+    format="%(asctime)s.%(msecs)03d [%(name)s] %(message)s",
+    datefmt="%H:%M:%S",
 )
 logger = logging.getLogger(__name__)
 
 # Patch litellm.completion to log timing
 import litellm
+
 _original_completion = litellm.completion
+
 
 def logged_completion(*args, **kwargs):
     start = time.time()
@@ -29,6 +31,7 @@ def logged_completion(*args, **kwargs):
     elapsed = time.time() - start
     logger.info(f"✅ API call DONE in {elapsed:.2f}s")
     return result
+
 
 litellm.completion = logged_completion
 
@@ -65,17 +68,18 @@ dag.config.documents = test_docs
 dag.config.show_progress = False
 dag.config.model_name = "gpt-4o-mini"
 
-logger.info("="*60)
+logger.info("=" * 60)
 logger.info("Starting pipeline with 5 items in Map node")
 logger.info("If parallel: all 5 START logs should appear before DONE logs")
 logger.info("If sequential: START/DONE pairs should alternate")
-logger.info("="*60)
+logger.info("=" * 60)
 
 # Run the pipeline
 import anyio
+
 result, error = anyio.run(dag.run)
 
-logger.info("="*60)
+logger.info("=" * 60)
 logger.info("Pipeline complete!")
 if error:
     logger.error(f"Error: {error}")

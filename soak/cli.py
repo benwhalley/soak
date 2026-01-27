@@ -347,7 +347,8 @@ def run(
     from struckdown import CostSummary, LLMCredentials, new_run
 
     from .document_utils import unpack_zip_to_temp_paths_if_needed
-    from .helpers import format_exception_concise, hash_run_config, resolve_pipeline
+    from .helpers import (format_exception_concise, hash_run_config,
+                          resolve_pipeline)
     from .specs import load_template_bundle
 
     new_run()
@@ -415,7 +416,9 @@ def run(
     # Template-only mode: if JSON exists, no -f, and new templates requested
     if existing_json.exists() and not force and new_templates:
         logger.info(f"Found existing analysis at {existing_json}")
-        logger.info(f"Rendering {len(new_templates)} new template(s): {', '.join(new_templates)}")
+        logger.info(
+            f"Rendering {len(new_templates)} new template(s): {', '.join(new_templates)}"
+        )
 
         # Load existing pipeline and render new templates only
         pipeline_for_html = load_pipeline_json(str(existing_json))
@@ -426,7 +429,9 @@ def run(
         for tmpl in new_templates:
             template_stem = Path(resolve_template(tmpl)).stem
             html_filename = dump_path / f"{output}_{template_stem}.html"
-            logger.info(f"Writing HTML with template '{template_stem}' to {html_filename}")
+            logger.info(
+                f"Writing HTML with template '{template_stem}' to {html_filename}"
+            )
             with open(html_filename, "w", encoding="utf-8") as f:
                 f.write(html_outputs[tmpl])
 
@@ -786,7 +791,9 @@ def _print_comparison_stats(
     lines.append("=" * 70)
     lines.append(f"Comparison: {name_a} vs {name_b}")
     lines.append("=" * 70)
-    lines.append(f"Similarity: {sim_metric}  |  Threshold: {threshold}  |  Shepard k: {shepard_k}")
+    lines.append(
+        f"Similarity: {sim_metric}  |  Threshold: {threshold}  |  Shepard k: {shepard_k}"
+    )
     lines.append(f"Embedding: {embedding_model}")
     lines.append(f"Items: {len(list_a)} ({name_a}) x {len(list_b)} ({name_b})")
 
@@ -795,9 +802,13 @@ def _print_comparison_stats(
     lines.append("─" * 70)
     lines.append("COVERAGE (Hit Rates)")
     lines.append("─" * 70)
-    lines.append(f"  Hit Rate {name_a}: {result['hit_rate_a']:.1%}  (items with ≥1 match above threshold)")
+    lines.append(
+        f"  Hit Rate {name_a}: {result['hit_rate_a']:.1%}  (items with ≥1 match above threshold)"
+    )
     lines.append(f"  Hit Rate {name_b}: {result['hit_rate_b']:.1%}")
-    lines.append(f"  Jaccard:         {result['jaccard']:.3f}  (proportion of pairs above threshold)")
+    lines.append(
+        f"  Jaccard:         {result['jaccard']:.3f}  (proportion of pairs above threshold)"
+    )
 
     # fidelity
     lines.append("")
@@ -817,8 +828,10 @@ def _print_comparison_stats(
     thresh_metrics = hungarian.get("thresholded_metrics", {})
     lines.append(f"  Coverage {name_a}: {thresh_metrics.get('coverage_a', 0):.1%}")
     lines.append(f"  Coverage {name_b}: {thresh_metrics.get('coverage_b', 0):.1%}")
-    lines.append(f"  1-to-1 Jaccard:  {thresh_metrics.get('true_jaccard', 0):.3f}  "
-                 "(matched pairs / total unique items)")
+    lines.append(
+        f"  1-to-1 Jaccard:  {thresh_metrics.get('true_jaccard', 0):.3f}  "
+        "(matched pairs / total unique items)"
+    )
 
     # optimal transport
     lines.append("")
@@ -851,10 +864,14 @@ def _print_comparison_stats(
 
             lines.append(f"")
             lines.append(f"  K = {k_val}{marker}")
-            lines.append(f"    Shared Mass:     {ot_data.get('shared_mass', 0):.3f}  (mass transported)")
+            lines.append(
+                f"    Shared Mass:     {ot_data.get('shared_mass', 0):.3f}  (mass transported)"
+            )
             rel = ot_data.get("shared_mass_relative", 0)
             lines.append(f"    Shared Mass Rel: {rel:.3f}  (0=random, 1=perfect)")
-            lines.append(f"    Avg Cost:        {ot_data.get('avg_cost', 0):.3f}  (lower = better)")
+            lines.append(
+                f"    Avg Cost:        {ot_data.get('avg_cost', 0):.3f}  (lower = better)"
+            )
             lines.append(f"    Unmatched Mass:  {ot_data.get('unmatched_mass', 0):.3f}")
 
     if elbow_k:
@@ -864,14 +881,18 @@ def _print_comparison_stats(
     # text sankey diagram
     lines.append("")
     lines.append("─" * 70)
-    lines.append(f"TRANSPORT FLOWS (cost labels: low <K, med K-2K, high >2K where K={default_k})")
+    lines.append(
+        f"TRANSPORT FLOWS (cost labels: low <K, med K-2K, high >2K where K={default_k})"
+    )
     lines.append("─" * 70)
 
     # use default K for sankey
     if default_k in ot_by_k:
         transport_plan = np.array(ot_by_k[default_k]["ot"]["transport_plan"])
         # use selected similarity for cost (same as OT uses internally)
-        selected_sim = result.get("selected_similarity_matrix", result.get("angle_similarity_matrix", []))
+        selected_sim = result.get(
+            "selected_similarity_matrix", result.get("angle_similarity_matrix", [])
+        )
         cost_matrix = 1 - np.array(selected_sim)
         total_mass = transport_plan.sum()
 
@@ -902,13 +923,19 @@ def _print_comparison_stats(
                     flows.append((item_b, pct, cost_label))
 
             # truncate item name for display
-            item_a_display = item_a[:25] + "..." if len(str(item_a)) > 28 else str(item_a)
+            item_a_display = (
+                item_a[:25] + "..." if len(str(item_a)) > 28 else str(item_a)
+            )
 
             if flows:
                 flows.sort(key=lambda x: -x[1])  # sort by % descending
-                flow_strs = [f"{b[:20]}({cost},{pct:.0f}%)" for b, pct, cost in flows[:3]]
+                flow_strs = [
+                    f"{b[:20]}({cost},{pct:.0f}%)" for b, pct, cost in flows[:3]
+                ]
                 extra = f" +{len(flows)-3} more" if len(flows) > 3 else ""
-                lines.append(f"  {item_a_display:28s} --> {', '.join(flow_strs)}{extra}")
+                lines.append(
+                    f"  {item_a_display:28s} --> {', '.join(flow_strs)}{extra}"
+                )
             else:
                 lines.append(f"  {item_a_display:28s} --> (unmatched)")
 
@@ -927,7 +954,15 @@ def _print_comparison_stats(
             pct_matrix = transport_plan
 
         # print compact matrix
-        _print_compact_matrix(lines, pct_matrix, list_a, list_b, fmt="{:5.1f}", name_a=name_a, name_b=name_b)
+        _print_compact_matrix(
+            lines,
+            pct_matrix,
+            list_a,
+            list_b,
+            fmt="{:5.1f}",
+            name_a=name_a,
+            name_b=name_b,
+        )
 
     # selected similarity matrix (used for all metrics)
     lines.append("")
@@ -936,12 +971,26 @@ def _print_comparison_stats(
     lines.append("─" * 70)
 
     if "selected_similarity_matrix" in result:
-        _print_compact_matrix(lines, np.array(result["selected_similarity_matrix"]), list_a, list_b,
-                              fmt="{:5.2f}", name_a=name_a, name_b=name_b)
+        _print_compact_matrix(
+            lines,
+            np.array(result["selected_similarity_matrix"]),
+            list_a,
+            list_b,
+            fmt="{:5.2f}",
+            name_a=name_a,
+            name_b=name_b,
+        )
     elif "angle_similarity_matrix" in result:
         # fallback for older results
-        _print_compact_matrix(lines, np.array(result["angle_similarity_matrix"]), list_a, list_b,
-                              fmt="{:5.2f}", name_a=name_a, name_b=name_b)
+        _print_compact_matrix(
+            lines,
+            np.array(result["angle_similarity_matrix"]),
+            list_a,
+            list_b,
+            fmt="{:5.2f}",
+            name_a=name_a,
+            name_b=name_b,
+        )
 
     lines.append("")
     lines.append("=" * 70)
@@ -967,7 +1016,7 @@ def _print_compact_matrix(
     # truncate labels
     def trunc(s, max_len):
         s = str(s)
-        return s[:max_len-1] + "…" if len(s) > max_len else s
+        return s[: max_len - 1] + "…" if len(s) > max_len else s
 
     labels_a = [trunc(s, max_label_len) for s in list_a]
     labels_b = [trunc(s, max_label_len) for s in list_b]
@@ -978,7 +1027,9 @@ def _print_compact_matrix(
         flat_indices = np.argsort(matrix.ravel())[::-1][:5]
         for idx in flat_indices:
             i, j = np.unravel_index(idx, matrix.shape)
-            lines.append(f"    {labels_a[i]:12s} <-> {labels_b[j]:12s}: {fmt.format(matrix[i, j])}")
+            lines.append(
+                f"    {labels_a[i]:12s} <-> {labels_b[j]:12s}: {fmt.format(matrix[i, j])}"
+            )
         return
 
     # header row
@@ -1108,7 +1159,8 @@ def compare(
     import pandas as pd
     from jinja2 import Environment, FileSystemLoader
 
-    from .comparators.similarity_comparator import SimilarityComparator, compare_result_similarity
+    from .comparators.similarity_comparator import (SimilarityComparator,
+                                                    compare_result_similarity)
     from .helpers import format_exception_concise
     from .models import QualitativeAnalysis, QualitativeAnalysisPipeline, Theme
 
@@ -1118,7 +1170,9 @@ def compare(
         try:
             parsed_ot_k_values = [float(v.strip()) for v in ot_k_values.split(",")]
         except ValueError:
-            logger.error(f"Invalid --ot-k-values format: {ot_k_values}. Use comma-separated floats.")
+            logger.error(
+                f"Invalid --ot-k-values format: {ot_k_values}. Use comma-separated floats."
+            )
             raise typer.Exit(1)
 
     # determine mode: strings or JSON
@@ -1220,7 +1274,9 @@ def compare(
         # default embedding template for strings mode
         effective_embedding_template = embedding_template or "{name}"
 
-        logger.info(f"Comparing {len(analyses)} sets ({len(analyses) * (len(analyses) - 1) // 2} pairwise comparisons)...")
+        logger.info(
+            f"Comparing {len(analyses)} sets ({len(analyses) * (len(analyses) - 1) // 2} pairwise comparisons)..."
+        )
 
         # use comparator for all pairwise combinations
         comparator = SimilarityComparator()
@@ -1281,7 +1337,9 @@ def compare(
                 env = Environment(loader=FileSystemLoader(template_dir))
                 env.globals["enumerate"] = enumerate
                 template = env.get_template("comparison.html")
-                html_content = template.render(comparison=comparison, soak_version=get_soak_version())
+                html_content = template.render(
+                    comparison=comparison, soak_version=get_soak_version()
+                )
                 with open(output_path, "w", encoding="utf-8") as f:
                     f.write(html_content)
                 logger.info(f"✓ HTML report saved to: {output}")
@@ -1289,7 +1347,9 @@ def compare(
     else:
         # JSON MODE: compare analysis files
         if not input_files or len(input_files) < 2:
-            logger.error("At least 2 JSON files required for comparison (or use --strings)")
+            logger.error(
+                "At least 2 JSON files required for comparison (or use --strings)"
+            )
             raise typer.Exit(1)
 
         logger.info(f"Loading {len(input_files)} analyses...")
@@ -1411,7 +1471,9 @@ def compare(
             env = Environment(loader=FileSystemLoader(template_dir))
             env.globals["enumerate"] = enumerate
             template = env.get_template("comparison.html")
-            html_content = template.render(comparison=comparison, soak_version=get_soak_version())
+            html_content = template.render(
+                comparison=comparison, soak_version=get_soak_version()
+            )
 
             with open(output_path, "w", encoding="utf-8") as f:
                 f.write(html_content)
@@ -1421,7 +1483,8 @@ def compare(
 @app.command()
 def show(
     item_type: str = typer.Argument(
-        ..., help="Type of item to show: 'pipeline', 'template', or a pipeline name directly"
+        ...,
+        help="Type of item to show: 'pipeline', 'template', or a pipeline name directly",
     ),
     name: str = typer.Argument(
         None,
@@ -1510,20 +1573,22 @@ def coverage(
         "coverage", "--output", "-o", help="Output file path (without extension)"
     ),
     documents: list[Path] = typer.Option(
-        None, "--documents", "-d", help="Override documents (default: use documents from analysis)"
+        None,
+        "--documents",
+        "-d",
+        help="Override documents (default: use documents from analysis)",
     ),
     groups_file: Path = typer.Option(
-        None, "--groups", "-g", help="XLSX file with 'filename' and 'group' columns for grouping"
+        None,
+        "--groups",
+        "-g",
+        help="XLSX file with 'filename' and 'group' columns for grouping",
     ),
     format: str = typer.Option(
         "all", "--format", "-f", help="Output format: json, html, csv, or all"
     ),
-    chunk_size: int = typer.Option(
-        500, "--chunk-size", help="Size of document chunks"
-    ),
-    overlap_size: int = typer.Option(
-        50, "--overlap", help="Overlap between chunks"
-    ),
+    chunk_size: int = typer.Option(500, "--chunk-size", help="Size of document chunks"),
+    overlap_size: int = typer.Option(50, "--overlap", help="Overlap between chunks"),
     split_unit: str = typer.Option(
         "words", "--split-unit", help="Unit for chunking: words, tokens, or chars"
     ),
@@ -1591,15 +1656,13 @@ def coverage(
     from jinja2 import Environment, FileSystemLoader
 
     from .coverage import ThemeCoverageAnalyzer
-    from .coverage.analyzer import (
-        compute_within_doc_variation,
-        generate_absolute_chunk_heatmap,
-        generate_chunk_heatmap,
-        generate_coverage_heatmap,
-        generate_group_heatmap,
-        generate_normalized_chunk_heatmap,
-        generate_theme_trajectories,
-    )
+    from .coverage.analyzer import (compute_within_doc_variation,
+                                    generate_absolute_chunk_heatmap,
+                                    generate_chunk_heatmap,
+                                    generate_coverage_heatmap,
+                                    generate_group_heatmap,
+                                    generate_normalized_chunk_heatmap,
+                                    generate_theme_trajectories)
     from .document_utils import unpack_zip_to_temp_paths_if_needed
     from .helpers import format_exception_concise
 
@@ -1612,19 +1675,25 @@ def coverage(
     # validate split_unit
     valid_split_units = {"words", "tokens", "chars"}
     if split_unit not in valid_split_units:
-        logger.error(f"Invalid split-unit '{split_unit}'. Must be one of: {valid_split_units}")
+        logger.error(
+            f"Invalid split-unit '{split_unit}'. Must be one of: {valid_split_units}"
+        )
         raise typer.Exit(1)
 
     # validate aggregation
     valid_aggregations = {"max", "mean", "p95"}
     if aggregation not in valid_aggregations:
-        logger.error(f"Invalid aggregation '{aggregation}'. Must be one of: {valid_aggregations}")
+        logger.error(
+            f"Invalid aggregation '{aggregation}'. Must be one of: {valid_aggregations}"
+        )
         raise typer.Exit(1)
 
     # validate embed
     valid_embed_sources = {"quotes", "themes", "both"}
     if embed not in valid_embed_sources:
-        logger.error(f"Invalid embed source '{embed}'. Must be one of: {valid_embed_sources}")
+        logger.error(
+            f"Invalid embed source '{embed}'. Must be one of: {valid_embed_sources}"
+        )
         raise typer.Exit(1)
 
     # check for API credentials if using api backend
@@ -1670,8 +1739,8 @@ def coverage(
     logger.info(f"Loaded analysis with {len(analysis.themes)} themes")
 
     # load documents - from CLI, or from analysis config
-    from .models.base import TrackedItem
     from .document_utils import extract_text
+    from .models.base import TrackedItem
 
     doc_items = []
 
@@ -1681,13 +1750,17 @@ def coverage(
         try:
             with unpack_zip_to_temp_paths_if_needed(documents) as docfiles:
                 if not docfiles:
-                    logger.error(f"No files found matching input patterns: {', '.join(map(str, documents))}")
+                    logger.error(
+                        f"No files found matching input patterns: {', '.join(map(str, documents))}"
+                    )
                     raise typer.Exit(1)
 
                 for docpath, doc_metadata in docfiles:
                     content = extract_text(str(docpath))
                     if isinstance(content, list):
-                        logger.warning(f"Skipping spreadsheet file {docpath} - use text documents for coverage analysis")
+                        logger.warning(
+                            f"Skipping spreadsheet file {docpath} - use text documents for coverage analysis"
+                        )
                         continue
                     doc_id = Path(docpath).stem
                     doc_items.append(
@@ -1695,7 +1768,11 @@ def coverage(
                             content=content,
                             id=doc_id,
                             sources=[doc_id],
-                            metadata={"filename": Path(docpath).name, "original_path": str(docpath), **doc_metadata},
+                            metadata={
+                                "filename": Path(docpath).name,
+                                "original_path": str(docpath),
+                                **doc_metadata,
+                            },
                         )
                     )
         except FileNotFoundError as e:
@@ -1723,7 +1800,9 @@ def coverage(
             # try to load from document_paths in config
             doc_paths = config.get("document_paths", [])
             if doc_paths:
-                logger.info(f"Loading documents from {len(doc_paths)} paths in analysis config")
+                logger.info(
+                    f"Loading documents from {len(doc_paths)} paths in analysis config"
+                )
                 for path_entry in doc_paths:
                     # handle both tuple format [(path, metadata), ...] and plain paths
                     if isinstance(path_entry, (list, tuple)):
@@ -1734,7 +1813,9 @@ def coverage(
                         doc_metadata = {}
 
                     if not Path(docpath).exists():
-                        logger.warning(f"Document not found (may have moved): {docpath}")
+                        logger.warning(
+                            f"Document not found (may have moved): {docpath}"
+                        )
                         continue
 
                     content = extract_text(str(docpath))
@@ -1748,12 +1829,18 @@ def coverage(
                             content=content,
                             id=doc_id,
                             sources=[doc_id],
-                            metadata={"filename": Path(docpath).name, "original_path": str(docpath), **(doc_metadata or {})},
+                            metadata={
+                                "filename": Path(docpath).name,
+                                "original_path": str(docpath),
+                                **(doc_metadata or {}),
+                            },
                         )
                     )
 
     if not doc_items:
-        logger.error("No documents found. Specify --documents or ensure analysis contains document paths.")
+        logger.error(
+            "No documents found. Specify --documents or ensure analysis contains document paths."
+        )
         raise typer.Exit(1)
 
     logger.info(f"Loaded {len(doc_items)} documents")
@@ -1775,7 +1862,9 @@ def coverage(
                 logger.info(f"Available columns: {', '.join(groups_df.columns)}")
                 raise typer.Exit(1)
 
-            groups = dict(zip(groups_df["filename"].astype(str), groups_df["group"].astype(str)))
+            groups = dict(
+                zip(groups_df["filename"].astype(str), groups_df["group"].astype(str))
+            )
             logger.info(f"Loaded {len(groups)} group mappings")
         except Exception as e:
             logger.error(f"Error reading groups file: {e}")
@@ -1808,7 +1897,9 @@ def coverage(
 
     # generate new chunk-level visualizations
     normalized_heatmap = generate_normalized_chunk_heatmap(result, n_bins=n_bins)
-    normalized_heatmap_zscore = generate_normalized_chunk_heatmap(result, n_bins=n_bins, z_score=True)
+    normalized_heatmap_zscore = generate_normalized_chunk_heatmap(
+        result, n_bins=n_bins, z_score=True
+    )
     absolute_heatmap = generate_absolute_chunk_heatmap(result, n_bins_target=n_bins)
     theme_trajectories = generate_theme_trajectories(result, n_bins=n_bins)
     within_doc_variation = compute_within_doc_variation(result, n_bins=n_bins)
@@ -1901,13 +1992,17 @@ def check_and_prompt_credentials(cwd: Path) -> tuple[str | None, str | None]:
 
         if not api_key:
             api_key = typer.prompt("Enter LLM_API_KEY", err=True)
-            api_key = api_key.strip().strip('"').strip("'")  # strip quotes from user input
+            api_key = (
+                api_key.strip().strip('"').strip("'")
+            )  # strip quotes from user input
             env_vars["LLM_API_KEY"] = api_key
 
         if not base_url:
             default_url = "https://api.openai.com/v1"
             base_url = typer.prompt("Enter LLM_API_BASE", default=default_url, err=True)
-            base_url = base_url.strip().strip('"').strip("'")  # strip quotes from user input
+            base_url = (
+                base_url.strip().strip('"').strip("'")
+            )  # strip quotes from user input
             env_vars["LLM_API_BASE"] = base_url
 
         # Save to .env file

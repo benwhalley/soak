@@ -12,7 +12,8 @@ from tqdm import tqdm
 from soak.models.base import QualitativeAnalysis, TrackedItem, get_embedding
 from soak.models.nodes.base import Split
 
-from .models import ChunkExample, ChunkInfo, DocumentCoverage, GroupCoverage, ThemeCoverageResult
+from .models import (ChunkExample, ChunkInfo, DocumentCoverage, GroupCoverage,
+                     ThemeCoverageResult)
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,9 @@ class ThemeCoverageAnalyzer:
         self,
         chunk_size: int = 500,
         overlap: int = 50,
-        split_unit: Literal["words", "tokens", "chars", "sentences", "paragraphs"] = "words",
+        split_unit: Literal[
+            "words", "tokens", "chars", "sentences", "paragraphs"
+        ] = "words",
         aggregation: Literal["max", "mean", "p95"] = "max",
         embedding_template: str = "{name}: {description}",
         embedding_model: str = "text-embedding-3-large",
@@ -80,7 +83,9 @@ class ThemeCoverageAnalyzer:
         # extract theme info
         theme_names = [t.name for t in analysis.themes]
 
-        logger.info(f"Analyzing coverage for {len(theme_names)} themes across {len(documents)} documents")
+        logger.info(
+            f"Analyzing coverage for {len(theme_names)} themes across {len(documents)} documents"
+        )
         logger.info(f"Embed source: {self.embed_source}")
 
         # split documents into chunks
@@ -89,13 +94,19 @@ class ThemeCoverageAnalyzer:
         logger.info(f"Split into {total_chunks} chunks")
 
         # apply sampling if requested
-        all_chunks, chunk_doc_mapping = self._sample_chunks(all_chunks, chunk_doc_mapping)
+        all_chunks, chunk_doc_mapping = self._sample_chunks(
+            all_chunks, chunk_doc_mapping
+        )
         if len(all_chunks) < total_chunks:
-            logger.info(f"Sampled {len(all_chunks)} chunks ({100*len(all_chunks)/total_chunks:.1f}%)")
+            logger.info(
+                f"Sampled {len(all_chunks)} chunks ({100*len(all_chunks)/total_chunks:.1f}%)"
+            )
 
         # embed chunks
         logger.info("Embedding chunks...")
-        chunk_texts = [c.content if isinstance(c, TrackedItem) else c for c in all_chunks]
+        chunk_texts = [
+            c.content if isinstance(c, TrackedItem) else c for c in all_chunks
+        ]
         # debug: verify chunks have different content
         if len(chunk_texts) >= 3:
             logger.debug(f"Chunk text lengths: {[len(t) for t in chunk_texts[:10]]}...")
@@ -110,7 +121,9 @@ class ThemeCoverageAnalyzer:
 
         # debug: verify chunk-level matrix has variation
         logger.debug(f"chunk_theme_sim shape: {chunk_theme_sim.shape}")
-        logger.debug(f"chunk_theme_sim min: {chunk_theme_sim.min():.3f}, max: {chunk_theme_sim.max():.3f}")
+        logger.debug(
+            f"chunk_theme_sim min: {chunk_theme_sim.min():.3f}, max: {chunk_theme_sim.max():.3f}"
+        )
         logger.debug(f"chunk_theme_sim std per theme: {chunk_theme_sim.std(axis=0)}")
         # show first 5 chunks' scores for first theme to verify variation
         if chunk_theme_sim.shape[0] >= 5:
@@ -154,13 +167,21 @@ class ThemeCoverageAnalyzer:
         doc_filenames = {}
         for doc in documents:
             doc_id = doc.root_document if isinstance(doc, TrackedItem) else doc.id
-            filename = doc.metadata.get("filename", doc_id) if isinstance(doc, TrackedItem) else doc_id
+            filename = (
+                doc.metadata.get("filename", doc_id)
+                if isinstance(doc, TrackedItem)
+                else doc_id
+            )
             doc_filenames[doc_id] = filename
 
         chunk_info = []
         for chunk_idx, chunk in enumerate(all_chunks):
             doc_id = chunk_doc_mapping[chunk_idx]
-            chunk_index = chunk.metadata.get("split_index", 0) if isinstance(chunk, TrackedItem) else 0
+            chunk_index = (
+                chunk.metadata.get("split_index", 0)
+                if isinstance(chunk, TrackedItem)
+                else 0
+            )
             chunk_info.append(
                 ChunkInfo(
                     document_id=doc_id,
@@ -171,7 +192,9 @@ class ThemeCoverageAnalyzer:
 
         return ThemeCoverageResult(
             analysis_name=analysis.name or "unnamed",
-            themes=[{"name": t.name, "description": t.description} for t in analysis.themes],
+            themes=[
+                {"name": t.name, "description": t.description} for t in analysis.themes
+            ],
             documents=doc_coverages,
             coverage_matrix=coverage_matrix,
             document_ids=[d.document_id for d in doc_coverages],
@@ -225,7 +248,9 @@ class ThemeCoverageAnalyzer:
 
         elif self.embed_source == "quotes":
             # embed quotes for each theme, take max similarity across quotes
-            return self._compute_quote_similarity(analysis, chunk_embeddings, theme_names)
+            return self._compute_quote_similarity(
+                analysis, chunk_embeddings, theme_names
+            )
 
         elif self.embed_source == "both":
             # compute both and take element-wise max
@@ -240,7 +265,9 @@ class ThemeCoverageAnalyzer:
             theme_sim = cosine_similarity(chunk_embeddings, theme_embeddings)
 
             # quote-based similarity
-            quote_sim = self._compute_quote_similarity(analysis, chunk_embeddings, theme_names)
+            quote_sim = self._compute_quote_similarity(
+                analysis, chunk_embeddings, theme_names
+            )
 
             # element-wise max
             return np.maximum(theme_sim, quote_sim)
@@ -278,7 +305,9 @@ class ThemeCoverageAnalyzer:
             total_quotes += len(quotes)
 
         if total_quotes == 0:
-            logger.warning("No quotes found in analysis. Falling back to theme descriptions.")
+            logger.warning(
+                "No quotes found in analysis. Falling back to theme descriptions."
+            )
             theme_texts = [
                 self.embedding_template.format(name=t.name, description=t.description)
                 for t in analysis.themes
@@ -370,7 +399,9 @@ class ThemeCoverageAnalyzer:
                 )
                 chunks = splitter.split_tracked_document(temp_tracked)
 
-            doc_id = doc.root_document if isinstance(doc, TrackedItem) else "unknown_doc"
+            doc_id = (
+                doc.root_document if isinstance(doc, TrackedItem) else "unknown_doc"
+            )
 
             for chunk in chunks:
                 chunk_idx = len(all_chunks)
@@ -475,7 +506,11 @@ class ThemeCoverageAnalyzer:
         doc_filenames = {}
         for doc in documents:
             doc_id = doc.root_document if isinstance(doc, TrackedItem) else doc.id
-            filename = doc.metadata.get("filename", doc_id) if isinstance(doc, TrackedItem) else doc_id
+            filename = (
+                doc.metadata.get("filename", doc_id)
+                if isinstance(doc, TrackedItem)
+                else doc_id
+            )
             doc_filenames[doc_id] = filename
 
         doc_coverages = []
@@ -515,6 +550,7 @@ class ThemeCoverageAnalyzer:
                 if not group:
                     # try basename
                     import os
+
                     basename = os.path.basename(filename)
                     group = groups.get(basename)
 
@@ -577,7 +613,11 @@ class ThemeCoverageAnalyzer:
         doc_filenames = {}
         for doc in documents:
             doc_id = doc.root_document if isinstance(doc, TrackedItem) else doc.id
-            filename = doc.metadata.get("filename", doc_id) if isinstance(doc, TrackedItem) else doc_id
+            filename = (
+                doc.metadata.get("filename", doc_id)
+                if isinstance(doc, TrackedItem)
+                else doc_id
+            )
             doc_filenames[doc_id] = filename
 
         top_chunks = {}
@@ -593,7 +633,9 @@ class ThemeCoverageAnalyzer:
             for idx in top_indices:
                 chunk = chunks[idx]
                 doc_id = chunk_doc_mapping[idx]
-                chunk_text = chunk.content if isinstance(chunk, TrackedItem) else str(chunk)
+                chunk_text = (
+                    chunk.content if isinstance(chunk, TrackedItem) else str(chunk)
+                )
 
                 # truncate chunk text for display
                 if len(chunk_text) > 500:
@@ -741,10 +783,9 @@ def generate_group_heatmap(
 
     # build matrix
     group_names = [g.group_name for g in result.groups]
-    matrix = np.array([
-        [g.theme_scores[t] for t in result.theme_names]
-        for g in result.groups
-    ])
+    matrix = np.array(
+        [[g.theme_scores[t] for t in result.theme_names] for g in result.groups]
+    )
 
     theme_labels = [t[:25] + "..." if len(t) > 25 else t for t in result.theme_names]
 
@@ -807,7 +848,9 @@ def generate_chunk_heatmap(
     import seaborn as sns
 
     # group chunks by document, preserving order
-    doc_chunks: Dict[str, List[Tuple[int, int]]] = defaultdict(list)  # doc_id -> [(chunk_idx, chunk_position)]
+    doc_chunks: Dict[str, List[Tuple[int, int]]] = defaultdict(
+        list
+    )  # doc_id -> [(chunk_idx, chunk_position)]
     doc_order = []  # preserve document order
 
     for idx, info in enumerate(result.chunk_info):
@@ -856,9 +899,13 @@ def generate_chunk_heatmap(
     matrix = np.array(windowed_rows)
 
     # debug: verify windowed matrix has variation
-    logger.debug(f"Chunk heatmap: {len(doc_order)} docs, {len(windowed_rows)} windows, {matrix.shape}")
+    logger.debug(
+        f"Chunk heatmap: {len(doc_order)} docs, {len(windowed_rows)} windows, {matrix.shape}"
+    )
     logger.debug(f"Chunk heatmap matrix std per theme: {matrix.std(axis=0)}")
-    logger.debug(f"Chunk heatmap matrix min: {matrix.min():.3f}, max: {matrix.max():.3f}")
+    logger.debug(
+        f"Chunk heatmap matrix min: {matrix.min():.3f}, max: {matrix.max():.3f}"
+    )
 
     # debug: check within-document vs between-document variation
     doc_row_ranges = []  # track which rows belong to which doc
@@ -876,7 +923,9 @@ def generate_chunk_heatmap(
             doc_matrix = matrix[start:end, :]
             within_doc_stds.append(doc_matrix.std())
     if within_doc_stds:
-        logger.debug(f"Mean within-doc std: {np.mean(within_doc_stds):.4f}, between-doc std: {matrix.std():.4f}")
+        logger.debug(
+            f"Mean within-doc std: {np.mean(within_doc_stds):.4f}, between-doc std: {matrix.std():.4f}"
+        )
 
     # create figure
     fig, ax = plt.subplots(figsize=figsize)
@@ -939,13 +988,15 @@ def _build_chunk_dataframe(result: ThemeCoverageResult) -> "pd.DataFrame":
     rows = []
     for chunk_idx, info in enumerate(chunk_info):
         for theme_idx, theme_name in enumerate(theme_names):
-            rows.append({
-                "document": info.filename,
-                "document_id": info.document_id,
-                "chunk_position": info.chunk_index,
-                "theme": theme_name,
-                "similarity": chunk_sim[chunk_idx, theme_idx],
-            })
+            rows.append(
+                {
+                    "document": info.filename,
+                    "document_id": info.document_id,
+                    "chunk_position": info.chunk_index,
+                    "theme": theme_name,
+                    "similarity": chunk_sim[chunk_idx, theme_idx],
+                }
+            )
 
     return pd.DataFrame(rows)
 
@@ -976,11 +1027,13 @@ def _add_absolute_bins(df: "pd.DataFrame", chunks_per_bin: int) -> "pd.DataFrame
     return df
 
 
-def _aggregate_bins(df: "pd.DataFrame", bin_col: str, agg: str = "max") -> "pd.DataFrame":
+def _aggregate_bins(
+    df: "pd.DataFrame", bin_col: str, agg: str = "max"
+) -> "pd.DataFrame":
     """Aggregate similarity within bins."""
-    return (
-        df.groupby(["document", "document_id", bin_col, "theme"], as_index=False)["similarity"].agg(agg)
-    )
+    return df.groupby(["document", "document_id", bin_col, "theme"], as_index=False)[
+        "similarity"
+    ].agg(agg)
 
 
 def generate_normalized_chunk_heatmap(
@@ -1035,7 +1088,9 @@ def generate_normalized_chunk_heatmap(
     for idx, (theme, ax) in enumerate(zip(themes, axes)):
         theme_df = df_binned[df_binned["theme"] == theme].copy()
 
-        pivot = theme_df.pivot(index="document", columns="position_bin", values="similarity")
+        pivot = theme_df.pivot(
+            index="document", columns="position_bin", values="similarity"
+        )
         valid_docs = [d for d in doc_order if d in pivot.index]
         pivot = pivot.reindex(valid_docs)
         pivot = pivot.reindex(sorted(pivot.columns), axis=1)
@@ -1127,7 +1182,9 @@ def generate_absolute_chunk_heatmap(
     mean_chunks = doc_chunk_counts.mean()
     chunks_per_bin = max(1, int(mean_chunks / n_bins_target))
 
-    logger.debug(f"Absolute heatmap: mean_chunks={mean_chunks:.1f}, chunks_per_bin={chunks_per_bin}")
+    logger.debug(
+        f"Absolute heatmap: mean_chunks={mean_chunks:.1f}, chunks_per_bin={chunks_per_bin}"
+    )
 
     df = _add_absolute_bins(df, chunks_per_bin=chunks_per_bin)
     df_binned = _aggregate_bins(df, "abs_bin", agg="max")
@@ -1166,7 +1223,11 @@ def generate_absolute_chunk_heatmap(
 
         short_title = theme[:25] + "..." if len(theme) > 25 else theme
         ax.set_title(short_title, fontsize=10)
-        ax.set_xlabel("" if idx != n_themes // 2 else f"Chunk Groups ({chunks_per_bin} chunks each)")
+        ax.set_xlabel(
+            ""
+            if idx != n_themes // 2
+            else f"Chunk Groups ({chunks_per_bin} chunks each)"
+        )
         if idx > 0:
             ax.set_ylabel("")
         else:
@@ -1260,6 +1321,7 @@ def generate_theme_trajectories(
 
     try:
         from statsmodels.nonparametric.smoothers_lowess import lowess
+
         has_lowess = True
     except ImportError:
         has_lowess = False

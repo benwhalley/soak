@@ -19,13 +19,8 @@ from litellm.exceptions import (APIConnectionError, APIResponseValidationError,
                                 PermissionDeniedError, Timeout,
                                 UnsupportedParamsError)
 from struckdown import StruckdownLLMError
-from tenacity import (
-    retry,
-    retry_if_exception,
-    stop_after_attempt,
-    wait_exponential,
-    before_sleep_log,
-)
+from tenacity import (before_sleep_log, retry, retry_if_exception,
+                      stop_after_attempt, wait_exponential)
 
 logger = logging.getLogger(__name__)
 
@@ -247,7 +242,9 @@ def log_error_to_stderr(
             log_func("Skipping this item. Consider chunking or reducing input size.")
 
     elif isinstance(original_error, Timeout):
-        log_func(f"\n{prefix} [{error_type}] LLM call timed out in node '{node_name}'{item_str}")
+        log_func(
+            f"\n{prefix} [{error_type}] LLM call timed out in node '{node_name}'{item_str}"
+        )
         log_func(f"Model: {model_name}")
         log_func("The API did not respond within the timeout period.")
         log_func("Try increasing --timeout or check API endpoint responsiveness.")
