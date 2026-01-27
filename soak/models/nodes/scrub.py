@@ -162,7 +162,7 @@ def _import_detector_class_static(
     class_path: str, locale: str, spacy_model: str
 ) -> Optional[Any]:
     """Static version of detector class import for caching."""
-    
+
     parts = class_path.rsplit(".", 1)
     if len(parts) != 2:
         return None
@@ -185,7 +185,7 @@ class Scrub(ItemsNode):
     - Third-party detectors (scrubadub_spacy, scrubadub_address)
     - Configurable SpaCy model for name detection
     - PII logging with context
-    - Statistics tracking 
+    - Statistics tracking
     """
 
     type: Literal["Scrub"] = "Scrub"
@@ -220,7 +220,6 @@ class Scrub(ItemsNode):
         default=True,
         description="If True, replace detected PII with placeholders. If False, just detect and log.",
     )
-
 
     locale: str = Field(
         default="en_GB",
@@ -366,11 +365,7 @@ class Scrub(ItemsNode):
 
     def _get_config_hash(self) -> str:
         """Generate hash of detector configuration for cache key."""
-        config_str = (
-            f"{sorted(self.detectors)}"
-            f"{self.spacy_model}"
-            f"{self.locale}"
-        )
+        config_str = f"{sorted(self.detectors)}" f"{self.spacy_model}" f"{self.locale}"
         return hashlib.md5(config_str.encode()).hexdigest()
 
     async def process_items(

@@ -13,7 +13,8 @@ import anyio
 from decouple import config as env_config
 from joblib import Memory
 from pydantic import BaseModel, Field, constr
-from struckdown import ChatterResult, LLMCredentials, get_embedding, get_embedding_async
+from struckdown import (ChatterResult, LLMCredentials, get_embedding,
+                        get_embedding_async)
 from struckdown.response_types import ResponseTypes
 from struckdown.return_type_models import ResponseModel
 
@@ -32,6 +33,7 @@ memory = Memory(Path(".embeddings"), verbose=0)
 # Concurrency settings
 MAX_CONCURRENCY = env_config("SOAK_MAX_CONCURRENCY", default=20, cast=int)
 semaphore = anyio.Semaphore(MAX_CONCURRENCY)
+
 
 # Exception classes for backward compatibility
 class CancelledRun(Exception):
@@ -229,22 +231,22 @@ class Theme(ResponseModel):
         max_length=60,
         description="A List of the code-references that are part of this theme. Identify them accurately by the slug/hash from the text. Each code slug MUST BE no more than 40 ascii characters. Alphanumeric only, no spaces. Only refer to codes in the input text above. An absolute MAXIMUM of 60 codes is allowed per theme, but normally far fewer--be selective.",
     )
+
     def __str__(self):
         cds_ = str([str(c) for c in self.resolved_codes])
         return f"Theme: {self.name}\n{self.description}\nCodes: {cds_}"
-        
+
     # Post-processed fields (excluded from LLM schema)
     resolved_code_refs: Optional[List[Dict]] = PostProcessedField(default=None)
     label: Optional[str] = PostProcessedField(default=None)
-    
-    
+
     @property
     def resolved_codes(self) -> List[Code]:
         """Get Code objects matched from context."""
         if self.resolved_code_refs:
             return [Code(**c) for c in self.resolved_code_refs]
         return []
-    
+
     def set_label(self, template: str, index: int) -> None:
         """Set label from template string with index, name, and description.
 
@@ -252,7 +254,9 @@ class Theme(ResponseModel):
             template: Format string with {i}, {name}, {description} placeholders
             index: 1-based index for this theme
         """
-        self.label = template.format(i=index, name=self.name, description=self.description)
+        self.label = template.format(
+            i=index, name=self.name, description=self.description
+        )
 
     def post_process(self, context: Dict[str, Any]):
         """Post-process code_slugs to match actual Codes."""

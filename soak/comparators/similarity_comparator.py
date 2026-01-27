@@ -53,7 +53,9 @@ def _compute_ot_cached(
     cost_matrix = np.array(cost_matrix_tuple, dtype=np.float64)
     null_cost_matrices = None
     if null_matrices_tuple is not None:
-        null_cost_matrices = [np.array(m, dtype=np.float64) for m in null_matrices_tuple]
+        null_cost_matrices = [
+            np.array(m, dtype=np.float64) for m in null_matrices_tuple
+        ]
 
     n_A, n_B = cost_matrix.shape
 
@@ -89,7 +91,9 @@ def _compute_ot_cached(
             P = ot.emd(a_dist, b_dist, cost)
         else:
             P = ot.unbalanced.sinkhorn_unbalanced(
-                a_dist, b_dist, cost,
+                a_dist,
+                b_dist,
+                cost,
                 reg=reg,
                 reg_m=reg_m,
                 numItermax=1000,
@@ -211,7 +215,9 @@ def _compute_ot_cached(
     return result
 
 
-def create_embeddings_csv_base64(embeddings_a: dict, embeddings_b: dict, name_a: str, name_b: str) -> str:
+def create_embeddings_csv_base64(
+    embeddings_a: dict, embeddings_b: dict, name_a: str, name_b: str
+) -> str:
     """Create a base64-encoded CSV of embeddings for download.
 
     Args:
@@ -234,11 +240,15 @@ def create_embeddings_csv_base64(embeddings_a: dict, embeddings_b: dict, name_a:
     writer.writerow(header)
 
     # write A embeddings
-    for label, text, vec in zip(embeddings_a["labels"], embeddings_a["texts"], embeddings_a["vectors"]):
+    for label, text, vec in zip(
+        embeddings_a["labels"], embeddings_a["texts"], embeddings_a["vectors"]
+    ):
         writer.writerow([name_a, label, text] + vec)
 
     # write B embeddings
-    for label, text, vec in zip(embeddings_b["labels"], embeddings_b["texts"], embeddings_b["vectors"]):
+    for label, text, vec in zip(
+        embeddings_b["labels"], embeddings_b["texts"], embeddings_b["vectors"]
+    ):
         writer.writerow([name_b, label, text] + vec)
 
     csv_content = output.getvalue()
@@ -290,7 +300,7 @@ def format_similarity_matrix(
     df = pd.DataFrame(
         np.round(matrix, round_dp),
         index=[str(i) for i in range(len(row_names))],
-        columns=[str(i) for i in range(len(col_names))]
+        columns=[str(i) for i in range(len(col_names))],
     )
 
     output_parts.append(str(df))
@@ -371,16 +381,31 @@ def compute_split_join_stats(
     Returns:
         Dictionary with split/join statistics including counts, mean, median, mode, max
     """
-    import numpy as np
     from collections import Counter
+
+    import numpy as np
 
     P = np.asarray(transport_plan)
     n_A, n_B = P.shape
 
     if n_A == 0 or n_B == 0:
         return {
-            "splits_from_a": {"counts": {}, "mean": 0.0, "median": 0.0, "mode": 0, "max": 0, "total": 0},
-            "joins_to_b": {"counts": {}, "mean": 0.0, "median": 0.0, "mode": 0, "max": 0, "total": 0},
+            "splits_from_a": {
+                "counts": {},
+                "mean": 0.0,
+                "median": 0.0,
+                "mode": 0,
+                "max": 0,
+                "total": 0,
+            },
+            "joins_to_b": {
+                "counts": {},
+                "mean": 0.0,
+                "median": 0.0,
+                "mode": 0,
+                "max": 0,
+                "total": 0,
+            },
         }
 
     threshold = threshold_ratio * P.max() if P.max() > 0 else 0
@@ -399,7 +424,14 @@ def compute_split_join_stats(
 
     def compute_stats(values: List[int]) -> Dict[str, Any]:
         if not values:
-            return {"counts": {}, "mean": 0.0, "median": 0.0, "mode": 0, "max": 0, "total": 0}
+            return {
+                "counts": {},
+                "mean": 0.0,
+                "median": 0.0,
+                "mode": 0,
+                "max": 0,
+                "total": 0,
+            }
 
         counts = Counter(values)
         values_arr = np.array(values)
@@ -554,15 +586,17 @@ def hungarian_matching(
     ]
 
     # filter pairs above threshold for thresholded metrics
-    matched_pairs = [
-        (i, j, sim) for i, j, sim in all_pairs if sim >= threshold
-    ]
+    matched_pairs = [(i, j, sim) for i, j, sim in all_pairs if sim >= threshold]
 
     # extract similarities for all optimal pairs (for soft metrics)
     all_sims = np.array([sim for _, _, sim in all_pairs])
 
     # extract similarities for matched pairs (for distribution)
-    matched_sims = np.array([sim for _, _, sim in matched_pairs]) if matched_pairs else np.array([])
+    matched_sims = (
+        np.array([sim for _, _, sim in matched_pairs])
+        if matched_pairs
+        else np.array([])
+    )
 
     # === THRESHOLDED METRICS (COVERAGE) ===
     n_matched = len(matched_pairs)  # pairs above threshold
@@ -682,28 +716,39 @@ _SANKEY_HOVER_CSS = """
 
 # Plotly config with export buttons
 _SANKEY_PLOTLY_CONFIG = {
-    'displayModeBar': True,
-    'displaylogo': False,
-    'staticPlot': False,
-    'modeBarButtonsToRemove': ['zoom2d', 'pan2d', 'select2d', 'lasso2d', 'zoomIn2d', 'zoomOut2d', 'autoScale2d', 'resetScale2d'],
-    'modeBarButtonsToAdd': [],
-    'toImageButtonOptions': {
-        'format': 'svg',  # default to SVG for print quality
-        'filename': 'sankey_diagram',
-        'height': None,
-        'width': None,
-        'scale': 2,
+    "displayModeBar": True,
+    "displaylogo": False,
+    "staticPlot": False,
+    "modeBarButtonsToRemove": [
+        "zoom2d",
+        "pan2d",
+        "select2d",
+        "lasso2d",
+        "zoomIn2d",
+        "zoomOut2d",
+        "autoScale2d",
+        "resetScale2d",
+    ],
+    "modeBarButtonsToAdd": [],
+    "toImageButtonOptions": {
+        "format": "svg",  # default to SVG for print quality
+        "filename": "sankey_diagram",
+        "height": None,
+        "width": None,
+        "scale": 2,
     },
 }
 
-# Print-safe font stack (Helvetica/Arial based, widely available)
-_PRINT_FONT_STACK = "Helvetica Neue, Helvetica, Arial, sans-serif"
+# System UI font stack (consistent with struckdown online editor)
+_FONT_STACK = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Ubuntu, Cantarell, 'Helvetica Neue', sans-serif"
 
 
 class SankeyHTML:
     """Wrapper for Sankey diagram that provides both HTML and base64 PNG."""
 
-    def __init__(self, html_content: str, png_buffer: BytesIO, name: str = "transport_sankey"):
+    def __init__(
+        self, html_content: str, png_buffer: BytesIO, name: str = "transport_sankey"
+    ):
         self.html_content = html_content
         self.png_buffer = png_buffer
         self.name = name
@@ -785,7 +830,7 @@ def create_transport_sankey(
         M_sorted = None
 
     # text wrapping with hyphenation and widow control
-    dic = pyphen.Pyphen(lang='en_GB')
+    dic = pyphen.Pyphen(lang="en_GB")
 
     def hyphenate_word(word, max_len=10):
         if len(word) <= max_len:
@@ -795,7 +840,7 @@ def create_transport_sankey(
             return [word]
         mid = len(word) // 2
         best_pair = min(pairs, key=lambda p: abs(len(p[0]) - mid))
-        return [best_pair[0] + '-', best_pair[1]]
+        return [best_pair[0] + "-", best_pair[1]]
 
     def wrap_with_hyphenation(text, width):
         words = text.split()
@@ -818,17 +863,17 @@ def create_transport_sankey(
                         current_len += (1 if current_line else 0) + len(part)
                     else:
                         if current_line:
-                            lines.append(' '.join(current_line))
+                            lines.append(" ".join(current_line))
                         current_line = [part]
                         current_len = len(part)
             else:
                 if current_line:
-                    lines.append(' '.join(current_line))
+                    lines.append(" ".join(current_line))
                 current_line = [word]
                 current_len = word_len
 
         if current_line:
-            lines.append(' '.join(current_line))
+            lines.append(" ".join(current_line))
         return lines
 
     def wrap_text(text, max_width=35, min_last_line_ratio=0.6):
@@ -836,7 +881,7 @@ def create_transport_sankey(
             return text
 
         best_lines = None
-        best_score = float('inf')
+        best_score = float("inf")
 
         for width in range(max(20, max_width - 8), max_width + 1):
             lines = wrap_with_hyphenation(text, width)
@@ -850,7 +895,9 @@ def create_transport_sankey(
             last_len = lengths[-1]
             max_len = max(lengths)
             widow_ratio = last_len / max_len if max_len > 0 else 1
-            widow_penalty = 50 * (1 - widow_ratio) ** 2 if widow_ratio < min_last_line_ratio else 0
+            widow_penalty = (
+                50 * (1 - widow_ratio) ** 2 if widow_ratio < min_last_line_ratio else 0
+            )
 
             score = len(lines) * 5 + variance * 0.5 + widow_penalty
 
@@ -861,10 +908,9 @@ def create_transport_sankey(
         return "<br>".join(best_lines) if best_lines else text
 
     # node hover texts (show full analysis name in hover)
-    hover_texts = (
-        [f"A{i+1} ({analysis_name_a}): {names_a_sorted[i]}" for i in range(n_A)] +
-        [f"B{j+1} ({analysis_name_b}): {names_b_sorted[j]}" for j in range(n_B)]
-    )
+    hover_texts = [
+        f"A{i+1} ({analysis_name_a}): {names_a_sorted[i]}" for i in range(n_A)
+    ] + [f"B{j+1} ({analysis_name_b}): {names_b_sorted[j]}" for j in range(n_B)]
 
     # collect links and unit costs
     sources, targets, values, link_costs = [], [], [], []
@@ -927,7 +973,9 @@ def create_transport_sankey(
     node_y = y_a + y_b
 
     # build link hover text
-    total_cost = sum(values[i] * link_costs[i] for i in range(len(values))) if link_costs else 1
+    total_cost = (
+        sum(values[i] * link_costs[i] for i in range(len(values))) if link_costs else 1
+    )
     total_mass = sum(values) if values else 1
     a_mass_totals = P_sorted.sum(axis=1)
     b_mass_totals = P_sorted.sum(axis=0)
@@ -967,61 +1015,69 @@ def create_transport_sankey(
         ),
     )
 
-    fig = go.Figure(data=[go.Sankey(
-        arrangement="fixed",
-        node=dict(
-            pad=20,
-            thickness=2,
-            line=dict(color="#666666", width=0.5),
-            label=node_labels,
-            color=["#666666"] * (n_A + n_B),
-            x=node_x,
-            y=node_y,
-            customdata=hover_texts,
-            hovertemplate="%{customdata}<extra></extra>",
-            hoverlabel=hoverlabel_style,
-        ),
-        link=dict(
-            source=sources,
-            target=targets,
-            value=values,
-            color=colors,
-            customdata=link_hovers,
-            hovertemplate="%{customdata}<extra></extra>",
-            hoverlabel=hoverlabel_style,
-        )
-    )])
+    fig = go.Figure(
+        data=[
+            go.Sankey(
+                arrangement="fixed",
+                node=dict(
+                    pad=20,
+                    thickness=2,
+                    line=dict(color="#666666", width=0.5),
+                    label=node_labels,
+                    color=["#666666"] * (n_A + n_B),
+                    x=node_x,
+                    y=node_y,
+                    customdata=hover_texts,
+                    hovertemplate="%{customdata}<extra></extra>",
+                    hoverlabel=hoverlabel_style,
+                ),
+                link=dict(
+                    source=sources,
+                    target=targets,
+                    value=values,
+                    color=colors,
+                    customdata=link_hovers,
+                    hovertemplate="%{customdata}<extra></extra>",
+                    hoverlabel=hoverlabel_style,
+                ),
+            )
+        ]
+    )
 
     # annotations for labels outside plot area
     annotations = []
 
     for i, name in enumerate(names_a_sorted):
-        annotations.append(dict(
-            x=-0.01,
-            y=1 - y_a[i],
-            xref="paper",
-            yref="paper",
-            text=f"{wrap_text(name, 50)} (A{i+1})",
-            showarrow=False,
-            xanchor="right",
-            yanchor="middle",
-            font=dict(size=13),
-            align="right",
-        ))
+        annotations.append(
+            dict(
+                x=-0.01,
+                y=1 - y_a[i],
+                xref="paper",
+                yref="paper",
+                text=f"{wrap_text(name, 50)} (A{i+1})",
+                showarrow=False,
+                xanchor="right",
+                yanchor="middle",
+                font=dict(size=13),
+                align="right",
+            )
+        )
 
     for j, name in enumerate(names_b_sorted):
-        annotations.append(dict(
-            x=1.01,
-            y=1 - y_b[j],
-            xref="paper",
-            yref="paper",
-            text=f"{wrap_text(name, 50)} (B{j+1})",
-            showarrow=False,
-            xanchor="left",
-            yanchor="middle",
-            font=dict(size=13),
-            align="left",
-        ))
+        annotations.append(
+            dict(
+                x=1.01,
+                y=1 - y_b[j],
+                xref="paper",
+                yref="paper",
+                text=f"{wrap_text(name, 50)} (B{j+1})",
+                showarrow=False,
+                xanchor="left",
+                yanchor="middle",
+                font=dict(size=13),
+                align="left",
+            )
+        )
 
     padding = 48  # 3em
 
@@ -1034,9 +1090,9 @@ def create_transport_sankey(
 
         # Similarity colorscale: low similarity (red) → high similarity (green)
         colorscale = [
-            [0.0, '#e74c3c'],   # red (low similarity)
-            [0.5, '#f39c12'],   # amber (medium similarity)
-            [1.0, '#27ae60'],   # green (high similarity)
+            [0.0, "#e74c3c"],  # red (low similarity)
+            [0.5, "#f39c12"],  # amber (medium similarity)
+            [1.0, "#27ae60"],  # green (high similarity)
         ]
 
         # generate tick values spread across the similarity range
@@ -1044,36 +1100,38 @@ def create_transport_sankey(
         tick_vals = [sim_min + sim_range * i / 4 for i in range(5)]
 
         # add invisible scatter trace just for the colorbar
-        fig.add_trace(go.Scatter(
-            x=[None],
-            y=[None],
-            mode='markers',
-            marker=dict(
-                colorscale=colorscale,
-                cmin=sim_min,
-                cmax=sim_max,
-                color=[(sim_min + sim_max) / 2],
-                colorbar=dict(
-                    title=dict(
-                        text="Similarity",
-                        side="top",
-                        font=dict(size=13),
+        fig.add_trace(
+            go.Scatter(
+                x=[None],
+                y=[None],
+                mode="markers",
+                marker=dict(
+                    colorscale=colorscale,
+                    cmin=sim_min,
+                    cmax=sim_max,
+                    color=[(sim_min + sim_max) / 2],
+                    colorbar=dict(
+                        title=dict(
+                            text="Similarity",
+                            side="top",
+                            font=dict(size=13),
+                        ),
+                        orientation="h",
+                        x=0.5,
+                        y=-0.08,
+                        xanchor="center",
+                        yanchor="top",
+                        len=0.4,
+                        thickness=15,
+                        tickfont=dict(size=11),
+                        tickformat=".2f",
+                        tickvals=tick_vals,
                     ),
-                    orientation="h",
-                    x=0.5,
-                    y=-0.08,
-                    xanchor="center",
-                    yanchor="top",
-                    len=0.4,
-                    thickness=15,
-                    tickfont=dict(size=11),
-                    tickformat=".2f",
-                    tickvals=tick_vals,
                 ),
-            ),
-            hoverinfo='skip',
-            showlegend=False,
-        ))
+                hoverinfo="skip",
+                showlegend=False,
+            )
+        )
 
     fig.update_layout(
         title_text="",
@@ -1102,7 +1160,9 @@ def create_transport_sankey(
     )
 
     # generate HTML with CSS injection (use CDN to reduce size)
-    html_str = fig.to_html(config=_SANKEY_PLOTLY_CONFIG, include_plotlyjs='cdn', full_html=True)
+    html_str = fig.to_html(
+        config=_SANKEY_PLOTLY_CONFIG, include_plotlyjs="cdn", full_html=True
+    )
     html_str = html_str.replace("<head>", f"<head>{_SANKEY_HOVER_CSS}")
 
     # add download buttons below the chart
@@ -1172,6 +1232,7 @@ def create_transport_heatmap(
         Base64ImageFile containing the heatmap
     """
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import numpy as np
@@ -1203,7 +1264,7 @@ def create_transport_heatmap(
 
     # truncate names
     def truncate(s, max_len=30):
-        return s if len(s) <= max_len else s[:max_len - 3] + "..."
+        return s if len(s) <= max_len else s[: max_len - 3] + "..."
 
     names_a_display = [truncate(n) for n in names_a]
     names_b_display = [truncate(n) for n in names_b]
@@ -1214,7 +1275,9 @@ def create_transport_heatmap(
         P_pct = (P / shared_mass) * 100
     else:
         P_pct = P * 100
-    logger.info(f"Transport heatmap: max={P_pct.max():.1f}%, sum={P_pct.sum():.1f}% (shared_mass={shared_mass:.3f})")
+    logger.info(
+        f"Transport heatmap: max={P_pct.max():.1f}%, sum={P_pct.sum():.1f}% (shared_mass={shared_mass:.3f})"
+    )
 
     fig_height = max(6, n_A * 0.4)
     fig_width = max(10, n_B * 0.5)
@@ -1315,7 +1378,9 @@ def find_elbow_points(
 
     # === PLATEAU DETECTION ===
     # criterion 1: relative slope -- final slope < 25% of initial
-    relative_plateau = (initial_slope <= 0) or (final_slope / (initial_slope + 1e-12) < 0.25)
+    relative_plateau = (initial_slope <= 0) or (
+        final_slope / (initial_slope + 1e-12) < 0.25
+    )
     # criterion 2: absolute change in last 20% of curve < 4 points
     n_tail = max(1, len(s_uniform) // 5)
     tail_range = s_uniform[-1] - s_uniform[-n_tail]
@@ -1330,7 +1395,9 @@ def find_elbow_points(
         decelerating = second_half_slope < 0.5 * first_half_slope
     else:
         decelerating = False
-    plateau_reached = relative_plateau or absolute_plateau or high_value_plateau or decelerating
+    plateau_reached = (
+        relative_plateau or absolute_plateau or high_value_plateau or decelerating
+    )
 
     # === CHORD-BASED ELBOW (Kneedle-style) ===
     x_min, x_max = logK_uniform.min(), logK_uniform.max()
@@ -1428,6 +1495,7 @@ def create_shared_mass_scree_plot(
         - plateau_reached: Whether the curve has clearly asymptoted
     """
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import numpy as np
@@ -1453,8 +1521,8 @@ def create_shared_mass_scree_plot(
     fig, ax = plt.subplots(1, 1, figsize=(8, 5))
 
     # plot shared mass curve
-    ax.plot(k_values, shared_masses, 'o-', color='#27ae60', linewidth=2, markersize=6)
-    ax.fill_between(k_values, shared_masses, alpha=0.2, color='#27ae60')
+    ax.plot(k_values, shared_masses, "o-", color="#27ae60", linewidth=2, markersize=6)
+    ax.fill_between(k_values, shared_masses, alpha=0.2, color="#27ae60")
 
     # draw chord line in log(K) space (appears curved in linear K space)
     eps = 1e-12
@@ -1463,40 +1531,77 @@ def create_shared_mass_scree_plot(
     n_chord_pts = 50
     log_k_chord = np.linspace(log_k_first, log_k_last, n_chord_pts)
     k_chord = np.exp(log_k_chord)
-    sm_chord = sm_first + (sm_last - sm_first) * (log_k_chord - log_k_first) / (log_k_last - log_k_first + eps)
-    ax.plot(k_chord, sm_chord, '--', color='#7f8c8d', linewidth=1.5, alpha=0.7, label='Chord (log K)')
+    sm_chord = sm_first + (sm_last - sm_first) * (log_k_chord - log_k_first) / (
+        log_k_last - log_k_first + eps
+    )
+    ax.plot(
+        k_chord,
+        sm_chord,
+        "--",
+        color="#7f8c8d",
+        linewidth=1.5,
+        alpha=0.7,
+        label="Chord (log K)",
+    )
 
-    ax.set_xlabel('K (Mass Penalty)', fontsize=11)
-    ax.set_ylabel('Shared Mass (%)', fontsize=11)
-    title = f'Shared Mass vs K\n{analysis_name_a} ↔ {analysis_name_b}'
+    ax.set_xlabel("K (Mass Penalty)", fontsize=11)
+    ax.set_ylabel("Shared Mass (%)", fontsize=11)
+    title = f"Shared Mass vs K\n{analysis_name_a} ↔ {analysis_name_b}"
     if not plateau_reached:
-        title += ' (curve may not have plateaued)'
+        title += " (curve may not have plateaued)"
     ax.set_title(title, fontsize=12)
     ax.set_xlim(-0.05, max(k_values) * 1.05)
     ax.set_ylim(min(shared_masses) * 0.9, 100)
     ax.grid(True, alpha=0.3)
-    ax.axhline(y=100, color='gray', linestyle='--', alpha=0.5)
+    ax.axhline(y=100, color="gray", linestyle="--", alpha=0.5)
 
     # highlight chord-based elbow (filled purple diamond, lower layer)
-    ax.scatter([chord_k], [chord_shared], color='#9b59b6', s=150, zorder=5,
-               marker='D', edgecolors='white', linewidths=2, label=f'Chord elbow (K={chord_k})')
-    ax.axvline(x=chord_k, color='#9b59b6', linestyle=':', alpha=0.7)
+    ax.scatter(
+        [chord_k],
+        [chord_shared],
+        color="#9b59b6",
+        s=150,
+        zorder=5,
+        marker="D",
+        edgecolors="white",
+        linewidths=2,
+        label=f"Chord elbow (K={chord_k})",
+    )
+    ax.axvline(x=chord_k, color="#9b59b6", linestyle=":", alpha=0.7)
 
     # highlight diminishing returns point (open orange circle, on top)
     # always show, even when overlapping - open marker makes overlap visible
-    ax.scatter([diminishing_k], [diminishing_shared], facecolors='none', s=200, zorder=6,
-               marker='o', edgecolors='#e67e22', linewidths=3, label=f'Dim. returns (K={diminishing_k})')
+    ax.scatter(
+        [diminishing_k],
+        [diminishing_shared],
+        facecolors="none",
+        s=200,
+        zorder=6,
+        marker="o",
+        edgecolors="#e67e22",
+        linewidths=3,
+        label=f"Dim. returns (K={diminishing_k})",
+    )
     if diminishing_k != chord_k:
-        ax.axvline(x=diminishing_k, color='#e67e22', linestyle=':', alpha=0.7)
+        ax.axvline(x=diminishing_k, color="#e67e22", linestyle=":", alpha=0.7)
 
     # highlight default K (blue square) if different from both
     if default_idx is not None and default_k != chord_k and default_k != diminishing_k:
         default_shared = shared_masses[default_idx]
-        ax.scatter([default_k], [default_shared], color='#3498db', s=150, zorder=5,
-                   marker='s', edgecolors='white', linewidths=2, label=f'Default (K={default_k})')
-        ax.axvline(x=default_k, color='#3498db', linestyle=':', alpha=0.7)
+        ax.scatter(
+            [default_k],
+            [default_shared],
+            color="#3498db",
+            s=150,
+            zorder=5,
+            marker="s",
+            edgecolors="white",
+            linewidths=2,
+            label=f"Default (K={default_k})",
+        )
+        ax.axvline(x=default_k, color="#3498db", linestyle=":", alpha=0.7)
 
-    ax.legend(loc='lower right', fontsize=9)
+    ax.legend(loc="lower right", fontsize=9)
 
     # annotate selected points to avoid clutter
     skip_indices = {chord_idx, diminishing_idx}
@@ -1506,8 +1611,14 @@ def create_shared_mass_scree_plot(
         if i in skip_indices:
             continue
         if i == 0 or i == len(k_values) - 1 or i % 4 == 0:
-            ax.annotate(f'{sm:.1f}%', (k, sm), textcoords="offset points",
-                        xytext=(0, -15), ha='center', fontsize=8)
+            ax.annotate(
+                f"{sm:.1f}%",
+                (k, sm),
+                textcoords="offset points",
+                xytext=(0, -15),
+                ha="center",
+                fontsize=8,
+            )
 
     fig.tight_layout()
 
@@ -1613,8 +1724,12 @@ def compare_result_similarity(
     def count_words(text: str) -> int:
         return len(text.split())
 
-    mean_embedding_len_A = sum(count_words(t) for t in A_texts) / len(A_texts) if A_texts else 0
-    mean_embedding_len_B = sum(count_words(t) for t in B_texts) / len(B_texts) if B_texts else 0
+    mean_embedding_len_A = (
+        sum(count_words(t) for t in A_texts) / len(A_texts) if A_texts else 0
+    )
+    mean_embedding_len_B = (
+        sum(count_words(t) for t in B_texts) / len(B_texts) if B_texts else 0
+    )
 
     # keep A and B as the text lists for backward compatibility
     A = A_texts
@@ -1666,7 +1781,9 @@ def compare_result_similarity(
     def pairwise_shepard(emb, k_val):
         cos = cosine_similarity(emb, emb)
         theta_inner = np.arccos(np.clip(cos, -1, 1))
-        S = (np.exp(-k_val * theta_inner) - np.exp(-k_val * np.pi)) / (1 - np.exp(-k_val * np.pi))
+        S = (np.exp(-k_val * theta_inner) - np.exp(-k_val * np.pi)) / (
+            1 - np.exp(-k_val * np.pi)
+        )
         # drop diagonal and duplicates
         n = S.shape[0]
         iu = np.triu_indices(n, k=1)
@@ -1702,14 +1819,24 @@ def compare_result_similarity(
 
     # log Hungarian results
     logger.info(f"\n=== Hungarian Matching (1-to-1, {distance} similarity) ===")
-    logger.info(f"Optimal assignment: {hungarian_results['distribution']['n_pairs']}/{min(len(emb_A), len(emb_B))} pairs above threshold")
-    logger.info(f"Coverage: {hungarian_results['thresholded_metrics']['coverage_a']:.1%} of A, {hungarian_results['thresholded_metrics']['coverage_b']:.1%} of B")
-    logger.info(f"True Jaccard: {hungarian_results['thresholded_metrics']['true_jaccard']:.3f}")
-    logger.info(f"Fidelity -- Mean assignment similarity: {hungarian_results['soft_metrics']['soft_precision']:.3f}, Normalised total: {hungarian_results['soft_metrics']['soft_recall']:.3f}")
+    logger.info(
+        f"Optimal assignment: {hungarian_results['distribution']['n_pairs']}/{min(len(emb_A), len(emb_B))} pairs above threshold"
+    )
+    logger.info(
+        f"Coverage: {hungarian_results['thresholded_metrics']['coverage_a']:.1%} of A, {hungarian_results['thresholded_metrics']['coverage_b']:.1%} of B"
+    )
+    logger.info(
+        f"True Jaccard: {hungarian_results['thresholded_metrics']['true_jaccard']:.3f}"
+    )
+    logger.info(
+        f"Fidelity -- Mean assignment similarity: {hungarian_results['soft_metrics']['soft_precision']:.3f}, Normalised total: {hungarian_results['soft_metrics']['soft_recall']:.3f}"
+    )
 
-    dist = hungarian_results['distribution']
-    if dist['n_pairs'] > 0:
-        logger.info(f"Similarity distribution: median={dist['median']:.3f} (Q1={dist['q1']:.3f}, Q3={dist['q3']:.3f}, range: {dist['min']:.3f}-{dist['max']:.3f})")
+    dist = hungarian_results["distribution"]
+    if dist["n_pairs"] > 0:
+        logger.info(
+            f"Similarity distribution: median={dist['median']:.3f} (Q1={dist['q1']:.3f}, Q3={dist['q3']:.3f}, range: {dist['min']:.3f}-{dist['max']:.3f})"
+        )
 
     # === UNBALANCED OPTIMAL TRANSPORT (many-to-many alignment) ===
     # use selected distance metric for cost matrix
@@ -1730,7 +1857,9 @@ def compare_result_similarity(
 
     n_samples_per_direction = n_null_samples // 2  # split samples between directions
 
-    logger.info(f"Generating symmetric word-salad null ({n_samples_per_direction} samples each direction)...")
+    logger.info(
+        f"Generating symmetric word-salad null ({n_samples_per_direction} samples each direction)..."
+    )
 
     # Direction 1: A vs word-salad-B
     salad_B_list = generate_word_salad_texts(B_texts, n_samples=n_samples_per_direction)
@@ -1738,15 +1867,23 @@ def compare_result_similarity(
     salad_A_list = generate_word_salad_texts(A_texts, n_samples=n_samples_per_direction)
 
     # batch all word salad texts into a single embedding call for performance
-    all_salad_texts = [t.strip() for salad_texts in salad_B_list + salad_A_list for t in salad_texts]
+    all_salad_texts = [
+        t.strip() for salad_texts in salad_B_list + salad_A_list for t in salad_texts
+    ]
 
     logger.info(f"Embedding {len(all_salad_texts)} word salad texts in single batch...")
-    all_salad_embeddings = np.asarray(get_embedding(all_salad_texts, model=embedding_model))
+    all_salad_embeddings = np.asarray(
+        get_embedding(all_salad_texts, model=embedding_model)
+    )
 
     # reshape and split: (n_samples, n_themes, embedding_dim)
     n_B_total = n_samples_per_direction * len(B_texts)
-    emb_B_salads = all_salad_embeddings[:n_B_total].reshape(n_samples_per_direction, len(B_texts), -1)
-    emb_A_salads = all_salad_embeddings[n_B_total:].reshape(n_samples_per_direction, len(A_texts), -1)
+    emb_B_salads = all_salad_embeddings[:n_B_total].reshape(
+        n_samples_per_direction, len(B_texts), -1
+    )
+    emb_A_salads = all_salad_embeddings[n_B_total:].reshape(
+        n_samples_per_direction, len(A_texts), -1
+    )
 
     # helper to compute similarity using the selected distance metric
     def compute_similarity(emb_a, emb_b, metric, k_val):
@@ -1758,11 +1895,17 @@ def compare_result_similarity(
             return 1 - angle_mat / 180.0
         elif metric == "shepard":
             theta = np.arccos(np.clip(cos_sim, -1.0, 1.0))
-            return (np.exp(-k_val * theta) - np.exp(-k_val * np.pi)) / (1 - np.exp(-k_val * np.pi))
+            return (np.exp(-k_val * theta) - np.exp(-k_val * np.pi)) / (
+                1 - np.exp(-k_val * np.pi)
+            )
         return cos_sim
 
-    null_cost_matrices_B = [1 - compute_similarity(emb_A, emb, distance, k) for emb in emb_B_salads]
-    null_cost_matrices_A = [1 - compute_similarity(emb, emb_B, distance, k) for emb in emb_A_salads]
+    null_cost_matrices_B = [
+        1 - compute_similarity(emb_A, emb, distance, k) for emb in emb_B_salads
+    ]
+    null_cost_matrices_A = [
+        1 - compute_similarity(emb, emb_B, distance, k) for emb in emb_A_salads
+    ]
 
     # Combine both directions for symmetric null
     null_cost_matrices = null_cost_matrices_B + null_cost_matrices_A
@@ -1770,7 +1913,9 @@ def compare_result_similarity(
     # store word salad samples for display (showing B direction as example)
     word_salad_samples = salad_B_list
 
-    logger.info(f"Generated {len(null_cost_matrices)} null cost matrices ({len(null_cost_matrices_B)} A vs B_salad + {len(null_cost_matrices_A)} A_salad vs B)")
+    logger.info(
+        f"Generated {len(null_cost_matrices)} null cost matrices ({len(null_cost_matrices_B)} A vs B_salad + {len(null_cost_matrices_A)} A_salad vs B)"
+    )
 
     # === COMPUTE OT FOR MULTIPLE K VALUES ===
     # K (reg_m) controls when themes are left unmatched vs forced to align
@@ -1779,10 +1924,22 @@ def compare_result_similarity(
     # K values: fine at low end for elbow detection, coarser at high end
     # 0.025-0.05: very low K | 0.1-1.0: every 0.1 | 1.0-2.0: every 0.5 | 2.0-4.0: every 1.0
     K_VALUES = [
-        0.025, 0.05,
-        0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0,
-        1.5, 2.0,
-        3.0, 4.0
+        0.025,
+        0.05,
+        0.1,
+        0.2,
+        0.3,
+        0.4,
+        0.5,
+        0.6,
+        0.7,
+        0.8,
+        0.9,
+        1.0,
+        1.5,
+        2.0,
+        3.0,
+        4.0,
     ]
     EXTENDED_K_VALUES = [6.0, 8.0, 10.0]
     DEFAULT_K = 0.3
@@ -1810,16 +1967,26 @@ def compare_result_similarity(
         }
         computed_k_values.append(k_val)
 
-        logger.debug(f"K={k_val:.1f}: shared_mass={ot_result['shared_mass']:.3f}, avg_cost={ot_result['avg_cost']:.3f}")
-        logger.debug(f"  Splits from A: mean={split_join_stats['splits_from_a']['mean']:.2f}, max={split_join_stats['splits_from_a']['max']}")
-        logger.debug(f"  Joins to B: mean={split_join_stats['joins_to_b']['mean']:.2f}, max={split_join_stats['joins_to_b']['max']}")
+        logger.debug(
+            f"K={k_val:.1f}: shared_mass={ot_result['shared_mass']:.3f}, avg_cost={ot_result['avg_cost']:.3f}"
+        )
+        logger.debug(
+            f"  Splits from A: mean={split_join_stats['splits_from_a']['mean']:.2f}, max={split_join_stats['splits_from_a']['max']}"
+        )
+        logger.debug(
+            f"  Joins to B: mean={split_join_stats['joins_to_b']['mean']:.2f}, max={split_join_stats['joins_to_b']['max']}"
+        )
 
         # stop early if improvement < 2.5% (curve has plateaued)
         current_shared_mass = ot_result["shared_mass"]
-        improvement = (current_shared_mass - prev_shared_mass) / (prev_shared_mass + 1e-9)
+        improvement = (current_shared_mass - prev_shared_mass) / (
+            prev_shared_mass + 1e-9
+        )
         prev_shared_mass = current_shared_mass
         if improvement < 0.025 and k_val >= DEFAULT_K:
-            logger.info(f"Shared mass improvement {improvement:.1%} < 2.5% at K={k_val}, stopping early")
+            logger.info(
+                f"Shared mass improvement {improvement:.1%} < 2.5% at K={k_val}, stopping early"
+            )
             break
 
     # adaptive extension: if last improvement was still >= 2.5%, add extra K values
@@ -1827,12 +1994,18 @@ def compare_result_similarity(
     last_shared_mass = ot_by_k[computed_k_values[-1]]["ot_result"]["shared_mass"]
     if len(computed_k_values) >= 2:
         second_last_shared = ot_by_k[computed_k_values[-2]]["ot_result"]["shared_mass"]
-        last_improvement = (last_shared_mass - second_last_shared) / (second_last_shared + 1e-9)
+        last_improvement = (last_shared_mass - second_last_shared) / (
+            second_last_shared + 1e-9
+        )
     else:
         last_improvement = 1.0  # assume we need extension if only 1 K value
     if last_improvement >= 0.025:
-        logger.info(f"Last improvement ({last_improvement:.1%}) >= 2.5%, extending K values")
-        for k_val in tqdm(EXTENDED_K_VALUES, desc="Computing OT for extended K", file=sys.stderr):
+        logger.info(
+            f"Last improvement ({last_improvement:.1%}) >= 2.5%, extending K values"
+        )
+        for k_val in tqdm(
+            EXTENDED_K_VALUES, desc="Computing OT for extended K", file=sys.stderr
+        ):
             logger.debug(f"\n--- Computing OT with K={k_val} (extended) ---")
 
             ot_result = compute_ot(
@@ -1850,14 +2023,20 @@ def compare_result_similarity(
             }
             all_k_values.append(k_val)
 
-            logger.debug(f"K={k_val:.1f}: shared_mass={ot_result['shared_mass']:.3f}, avg_cost={ot_result['avg_cost']:.3f}")
+            logger.debug(
+                f"K={k_val:.1f}: shared_mass={ot_result['shared_mass']:.3f}, avg_cost={ot_result['avg_cost']:.3f}"
+            )
 
             # stop early if improvement < 2.5%
             current_shared_mass = ot_result["shared_mass"]
-            improvement = (current_shared_mass - prev_shared_mass) / (prev_shared_mass + 1e-9)
+            improvement = (current_shared_mass - prev_shared_mass) / (
+                prev_shared_mass + 1e-9
+            )
             prev_shared_mass = current_shared_mass
             if improvement < 0.025:
-                logger.info(f"Shared mass improvement {improvement:.1%} < 2.5% at K={k_val}, stopping extension")
+                logger.info(
+                    f"Shared mass improvement {improvement:.1%} < 2.5% at K={k_val}, stopping extension"
+                )
                 break
 
     # PHASE 2: Get color scale from default K and create visualisations
@@ -1876,7 +2055,9 @@ def compare_result_similarity(
     if default_link_costs:
         color_cost_min = min(default_link_costs)
         color_cost_max = max(default_link_costs)
-        logger.info(f"Color scale from default K={DEFAULT_K}: cost range [{color_cost_min:.3f}, {color_cost_max:.3f}] (similarity [{1-color_cost_max:.3f}, {1-color_cost_min:.3f}])")
+        logger.info(
+            f"Color scale from default K={DEFAULT_K}: cost range [{color_cost_min:.3f}, {color_cost_max:.3f}] (similarity [{1-color_cost_max:.3f}, {1-color_cost_min:.3f}])"
+        )
     else:
         color_cost_min, color_cost_max = 0.0, 1.0
 
@@ -1904,8 +2085,12 @@ def compare_result_similarity(
         )
 
         # prepare OT results for serialisation (remove numpy array)
-        ot_serialisable_k = {key: v for key, v in ot_result.items() if key != "transport_plan"}
-        ot_serialisable_k["transport_plan"] = np.round(ot_result["transport_plan"], 4).tolist()
+        ot_serialisable_k = {
+            key: v for key, v in ot_result.items() if key != "transport_plan"
+        }
+        ot_serialisable_k["transport_plan"] = np.round(
+            ot_result["transport_plan"], 4
+        ).tolist()
         ot_serialisable_k["split_join_stats"] = split_join_stats
 
         ot_by_k[k_val] = {
@@ -1917,7 +2102,9 @@ def compare_result_similarity(
 
     # use default K for backward compatibility
     ot_results = ot_by_k[DEFAULT_K]["ot"]
-    ot_results["transport_plan"] = np.array(ot_results["transport_plan"])  # convert back for later use
+    ot_results["transport_plan"] = np.array(
+        ot_results["transport_plan"]
+    )  # convert back for later use
     transport_sankey = ot_by_k[DEFAULT_K]["transport_sankey"]
     transport_heatmap = ot_by_k[DEFAULT_K]["transport_heatmap"]
 
@@ -1938,26 +2125,50 @@ def compare_result_similarity(
     logger.info(f"Chord-based elbow: K={chord_k} (max distance from chord)")
     logger.info(f"Diminishing returns: K={diminishing_k} (slope < 20% of initial)")
     if not plateau_reached:
-        logger.warning("Curve may not have plateaued -- elbow estimates may be less reliable")
+        logger.warning(
+            "Curve may not have plateaued -- elbow estimates may be less reliable"
+        )
 
     # log default K results
     logger.info(f"\n=== Default K={DEFAULT_K} Results ===")
-    logger.info(f"Shared Mass: {ot_results['shared_mass']:.3f} (proportion of mass transported)")
-    logger.info(f"Unmatched Mass: {ot_results['unmatched_mass']:.3f} (novel/missing themes)")
-    logger.info(f"Average Cost: {ot_results['avg_cost']:.3f} (lower = better alignment)")
-    logger.info(f"Regularisation: reg={ot_results['reg']:.4f}, reg_m (K)={ot_results['reg_m']:.4f}")
+    logger.info(
+        f"Shared Mass: {ot_results['shared_mass']:.3f} (proportion of mass transported)"
+    )
+    logger.info(
+        f"Unmatched Mass: {ot_results['unmatched_mass']:.3f} (novel/missing themes)"
+    )
+    logger.info(
+        f"Average Cost: {ot_results['avg_cost']:.3f} (lower = better alignment)"
+    )
+    logger.info(
+        f"Regularisation: reg={ot_results['reg']:.4f}, reg_m (K)={ot_results['reg_m']:.4f}"
+    )
 
     # null comparison with interpretable relative metrics
     if "null_shared_mass_mean" in ot_results:
         logger.info(f"--- Null baseline comparison ---")
-        logger.info(f"Null shared_mass: mean={ot_results['null_shared_mass_mean']:.3f}, 95pct={ot_results['null_shared_mass_95pct']:.3f}")
-        logger.info(f"Shared mass excess: +{ot_results['shared_mass_excess']:.3f} (raw improvement over null)")
-        logger.info(f"Shared mass relative: {ot_results['shared_mass_relative']:.3f} (0=random, 1=perfect)")
-        logger.info(f"Shared mass effect: {ot_results['shared_mass_effect']:.2f} MADs above null")
+        logger.info(
+            f"Null shared_mass: mean={ot_results['null_shared_mass_mean']:.3f}, 95pct={ot_results['null_shared_mass_95pct']:.3f}"
+        )
+        logger.info(
+            f"Shared mass excess: +{ot_results['shared_mass_excess']:.3f} (raw improvement over null)"
+        )
+        logger.info(
+            f"Shared mass relative: {ot_results['shared_mass_relative']:.3f} (0=random, 1=perfect)"
+        )
+        logger.info(
+            f"Shared mass effect: {ot_results['shared_mass_effect']:.2f} MADs above null"
+        )
         logger.info(f"--- Cost metrics ---")
-        logger.info(f"Null avg_cost: mean={ot_results['null_avg_cost_mean']:.3f}, 5pct={ot_results['null_avg_cost_5pct']:.3f}")
-        logger.info(f"Avg cost improvement: {ot_results['avg_cost_improvement']:.3f} (positive = better than null)")
-        logger.info(f"Avg cost relative: {ot_results['avg_cost_relative']:.3f} (0=random, 1=perfect)")
+        logger.info(
+            f"Null avg_cost: mean={ot_results['null_avg_cost_mean']:.3f}, 5pct={ot_results['null_avg_cost_5pct']:.3f}"
+        )
+        logger.info(
+            f"Avg cost improvement: {ot_results['avg_cost_improvement']:.3f} (positive = better than null)"
+        )
+        logger.info(
+            f"Avg cost relative: {ot_results['avg_cost_relative']:.3f} (0=random, 1=perfect)"
+        )
 
     # log all matrices (show legend only once at the start)
     logger.info("\n=== Theme Index Legend ===")
@@ -1968,25 +2179,65 @@ def compare_result_similarity(
     for i, name in enumerate(theme_names_B):
         logger.info(f"  {i}: {name}")
 
-    logger.info("\n=== Cosine Similarity ===\n" + format_similarity_matrix(
-        sim_matrix, theme_names_A, theme_names_B, set_a_name=analysis_name_A, set_b_name=analysis_name_B, show_legend=False
-    ))
+    logger.info(
+        "\n=== Cosine Similarity ===\n"
+        + format_similarity_matrix(
+            sim_matrix,
+            theme_names_A,
+            theme_names_B,
+            set_a_name=analysis_name_A,
+            set_b_name=analysis_name_B,
+            show_legend=False,
+        )
+    )
 
-    logger.info("\n=== Angular Similarity (normalized) ===\n" + format_similarity_matrix(
-        angle_sim, theme_names_A, theme_names_B, set_a_name=analysis_name_A, set_b_name=analysis_name_B, show_legend=False
-    ))
+    logger.info(
+        "\n=== Angular Similarity (normalized) ===\n"
+        + format_similarity_matrix(
+            angle_sim,
+            theme_names_A,
+            theme_names_B,
+            set_a_name=analysis_name_A,
+            set_b_name=analysis_name_B,
+            show_legend=False,
+        )
+    )
 
-    logger.info(f"\n=== Shepard Similarity (k={k}) ===\n" + format_similarity_matrix(
-        shepard_sim, theme_names_A, theme_names_B, set_a_name=analysis_name_A, set_b_name=analysis_name_B, show_legend=False
-    ))
+    logger.info(
+        f"\n=== Shepard Similarity (k={k}) ===\n"
+        + format_similarity_matrix(
+            shepard_sim,
+            theme_names_A,
+            theme_names_B,
+            set_a_name=analysis_name_A,
+            set_b_name=analysis_name_B,
+            show_legend=False,
+        )
+    )
 
-    logger.info("\n=== Percentile-Normalized Shepard ===\n" + format_similarity_matrix(
-        shepard_percentile, theme_names_A, theme_names_B, set_a_name=analysis_name_A, set_b_name=analysis_name_B, show_legend=False
-    ))
+    logger.info(
+        "\n=== Percentile-Normalized Shepard ===\n"
+        + format_similarity_matrix(
+            shepard_percentile,
+            theme_names_A,
+            theme_names_B,
+            set_a_name=analysis_name_A,
+            set_b_name=analysis_name_B,
+            show_legend=False,
+        )
+    )
 
-    logger.info("\n=== Z-Score Normalized Shepard ===\n" + format_similarity_matrix(
-        shepard_z, theme_names_A, theme_names_B, set_a_name=analysis_name_A, set_b_name=analysis_name_B, show_legend=False
-    ))
+    logger.info(
+        "\n=== Z-Score Normalized Shepard ===\n"
+        + format_similarity_matrix(
+            shepard_z,
+            theme_names_A,
+            theme_names_B,
+            set_a_name=analysis_name_A,
+            set_b_name=analysis_name_B,
+            show_legend=False,
+        )
+    )
 
     # === COVERAGE AND FIDELITY use selected_sim for consistency ===
     # All metrics now use the same similarity metric (angular by default)
@@ -2008,10 +2259,14 @@ def compare_result_similarity(
 
     # === FIDELITY METRICS (mean best-match similarity) ===
     # Mean max similarity A→B: for each A theme, find best match in B, then average
-    mean_max_sim_a_to_b = selected_sim.max(axis=1).mean().round(3) if len(emb_A) > 0 else 0
+    mean_max_sim_a_to_b = (
+        selected_sim.max(axis=1).mean().round(3) if len(emb_A) > 0 else 0
+    )
 
     # Mean max similarity B→A: for each B theme, find best match in A, then average
-    mean_max_sim_b_to_a = selected_sim.max(axis=0).mean().round(3) if len(emb_B) > 0 else 0
+    mean_max_sim_b_to_a = (
+        selected_sim.max(axis=0).mean().round(3) if len(emb_B) > 0 else 0
+    )
 
     # Fidelity: harmonic mean of the two directional fidelity scores
     fidelity = (
@@ -2026,24 +2281,44 @@ def compare_result_similarity(
     # Include OT statistics: mass transferred and cost
     P = ot_results["transport_plan"]
 
-    def round_match(d, decimals={"similarity": 3, "mass_transferred": 4, "mass_total": 4, "mass_pct": 1, "cost": 3}):
+    def round_match(
+        d,
+        decimals={
+            "similarity": 3,
+            "mass_transferred": 4,
+            "mass_total": 4,
+            "mass_pct": 1,
+            "cost": 3,
+        },
+    ):
         """Round numeric values in a match dict."""
-        return {k: round(v, decimals.get(k, 3)) if isinstance(v, float) else v for k, v in d.items()}
+        return {
+            k: round(v, decimals.get(k, 3)) if isinstance(v, float) else v
+            for k, v in d.items()
+        }
 
     best_matches_a_to_b = []
     if len(emb_A) > 0 and len(emb_B) > 0:
         for i in range(len(emb_A)):
             best_b_idx = int(selected_sim[i, :].argmax())
             mass_total_out = P[i, :].sum()
-            best_matches_a_to_b.append(round_match({
-                "theme_a_index": i,
-                "theme_b_index": best_b_idx,
-                "similarity": float(selected_sim[i, best_b_idx]),
-                "mass_transferred": float(P[i, best_b_idx]),
-                "mass_total": float(mass_total_out),
-                "mass_pct": float(P[i, best_b_idx] / mass_total_out * 100) if mass_total_out > 0 else 0.0,
-                "cost": float(cost_matrix[i, best_b_idx]),
-            }))
+            best_matches_a_to_b.append(
+                round_match(
+                    {
+                        "theme_a_index": i,
+                        "theme_b_index": best_b_idx,
+                        "similarity": float(selected_sim[i, best_b_idx]),
+                        "mass_transferred": float(P[i, best_b_idx]),
+                        "mass_total": float(mass_total_out),
+                        "mass_pct": (
+                            float(P[i, best_b_idx] / mass_total_out * 100)
+                            if mass_total_out > 0
+                            else 0.0
+                        ),
+                        "cost": float(cost_matrix[i, best_b_idx]),
+                    }
+                )
+            )
         best_matches_a_to_b.sort(key=lambda x: x["similarity"], reverse=True)
 
     # For each theme in B, find the best matching theme in A
@@ -2052,42 +2327,64 @@ def compare_result_similarity(
         for j in range(len(emb_B)):
             best_a_idx = int(selected_sim[:, j].argmax())
             mass_total_in = P[:, j].sum()
-            best_matches_b_to_a.append(round_match({
-                "theme_b_index": j,
-                "theme_a_index": best_a_idx,
-                "similarity": float(selected_sim[best_a_idx, j]),
-                "mass_transferred": float(P[best_a_idx, j]),
-                "mass_total": float(mass_total_in),
-                "mass_pct": float(P[best_a_idx, j] / mass_total_in * 100) if mass_total_in > 0 else 0.0,
-                "cost": float(cost_matrix[best_a_idx, j]),
-            }))
+            best_matches_b_to_a.append(
+                round_match(
+                    {
+                        "theme_b_index": j,
+                        "theme_a_index": best_a_idx,
+                        "similarity": float(selected_sim[best_a_idx, j]),
+                        "mass_transferred": float(P[best_a_idx, j]),
+                        "mass_total": float(mass_total_in),
+                        "mass_pct": (
+                            float(P[best_a_idx, j] / mass_total_in * 100)
+                            if mass_total_in > 0
+                            else 0.0
+                        ),
+                        "cost": float(cost_matrix[best_a_idx, j]),
+                    }
+                )
+            )
         best_matches_b_to_a.sort(key=lambda x: x["similarity"], reverse=True)
 
     # log best matches with OT statistics
-    logger.info(f"\n=== Best Matches (many:many) with OT Statistics (K={DEFAULT_K}) ===")
+    logger.info(
+        f"\n=== Best Matches (many:many) with OT Statistics (K={DEFAULT_K}) ==="
+    )
     logger.info(f"\n{analysis_name_A} → {analysis_name_B}:")
-    logger.info(f"{'Theme A':<30} {'Best Match B':<30} {'Sim':>6} {'Mass':>8} {'%':>6} {'Cov':>6}")
+    logger.info(
+        f"{'Theme A':<30} {'Best Match B':<30} {'Sim':>6} {'Mass':>8} {'%':>6} {'Cov':>6}"
+    )
     logger.info("-" * 90)
     for m in best_matches_a_to_b[:10]:  # top 10
         name_a = theme_names_A[m["theme_a_index"]][:28]
         name_b = theme_names_B[m["theme_b_index"]][:28]
-        logger.info(f"{name_a:<30} {name_b:<30} {m['similarity']:>6.2f} {m['mass_transferred']:>8.4f} {m['mass_pct']:>5.0f}% {m['mass_total']*100:>5.1f}%")
+        logger.info(
+            f"{name_a:<30} {name_b:<30} {m['similarity']:>6.2f} {m['mass_transferred']:>8.4f} {m['mass_pct']:>5.0f}% {m['mass_total']*100:>5.1f}%"
+        )
     if len(best_matches_a_to_b) > 10:
         logger.info(f"... and {len(best_matches_a_to_b) - 10} more")
 
     logger.info(f"\n{analysis_name_B} → {analysis_name_A}:")
-    logger.info(f"{'Theme B':<30} {'Best Match A':<30} {'Sim':>6} {'Mass':>8} {'%':>6} {'Cov':>6}")
+    logger.info(
+        f"{'Theme B':<30} {'Best Match A':<30} {'Sim':>6} {'Mass':>8} {'%':>6} {'Cov':>6}"
+    )
     logger.info("-" * 90)
     for m in best_matches_b_to_a[:10]:  # top 10
         name_b = theme_names_B[m["theme_b_index"]][:28]
         name_a = theme_names_A[m["theme_a_index"]][:28]
-        logger.info(f"{name_b:<30} {name_a:<30} {m['similarity']:>6.2f} {m['mass_transferred']:>8.4f} {m['mass_pct']:>5.0f}% {m['mass_total']*100:>5.1f}%")
+        logger.info(
+            f"{name_b:<30} {name_a:<30} {m['similarity']:>6.2f} {m['mass_transferred']:>8.4f} {m['mass_pct']:>5.0f}% {m['mass_total']*100:>5.1f}%"
+        )
     if len(best_matches_b_to_a) > 10:
         logger.info(f"... and {len(best_matches_b_to_a) - 10} more")
 
     # prepare OT results for serialisation (remove numpy array)
-    ot_serialisable = {key: v for key, v in ot_results.items() if key != "transport_plan"}
-    ot_serialisable["transport_plan"] = np.round(ot_results["transport_plan"], 4).tolist()
+    ot_serialisable = {
+        key: v for key, v in ot_results.items() if key != "transport_plan"
+    }
+    ot_serialisable["transport_plan"] = np.round(
+        ot_results["transport_plan"], 4
+    ).tolist()
 
     return {
         # similarity metric used for coverage, fidelity, OT (for display purposes)
@@ -2147,12 +2444,12 @@ def compare_result_similarity(
         "embeddings_a": {
             "labels": theme_names_A,
             "texts": A_texts,
-            "vectors": emb_A.tolist() if hasattr(emb_A, 'tolist') else list(emb_A),
+            "vectors": emb_A.tolist() if hasattr(emb_A, "tolist") else list(emb_A),
         },
         "embeddings_b": {
             "labels": theme_names_B,
             "texts": B_texts,
-            "vectors": emb_B.tolist() if hasattr(emb_B, 'tolist') else list(emb_B),
+            "vectors": emb_B.tolist() if hasattr(emb_B, "tolist") else list(emb_B),
         },
     }
 
@@ -2207,8 +2504,7 @@ def network_similarity_plot(
 
     # Extract theme labels for display
     theme_sets_for_labels_ = [
-        [theme.label for theme in result.themes]
-        for result in pipeline_results
+        [theme.label for theme in result.themes] for result in pipeline_results
     ]
     theme_sets_for_labels = [i for i in theme_sets_for_labels_ if i]
 
@@ -2424,11 +2720,16 @@ def create_pairwise_heatmap(
         "cosine": ("Cosine Similarity", "similarity_matrix"),
         "angle": ("Angular Similarity", "angle_similarity_matrix"),
         "shepard": (f"Shepard Similarity (k={k})", "shepard_similarity_matrix"),
-        "percentile": ("Percentile-Normalized Shepard", "percentile_normalized_shepard"),
+        "percentile": (
+            "Percentile-Normalized Shepard",
+            "percentile_normalized_shepard",
+        ),
         "z_score": ("Z-Score Normalized Shepard", "z_score_normalized_shepard"),
     }
 
-    metric_label, matrix_key = metric_labels.get(metric_type, ("Cosine Similarity", "similarity_matrix"))
+    metric_label, matrix_key = metric_labels.get(
+        metric_type, ("Cosine Similarity", "similarity_matrix")
+    )
     similarity_matrix = comparison[matrix_key]
 
     # sort alphanumerically for consistency across runs
@@ -2480,9 +2781,7 @@ def create_pairwise_heatmap(
     )
 
     threshold_str = f". Threshold: {threshold}" if use_threshold else ""
-    ax.set_title(
-        f"{metric_label}\n{a.name} vs {b.name}{threshold_str}"
-    )
+    ax.set_title(f"{metric_label}\n{a.name} vs {b.name}{threshold_str}")
     ax.set_xlabel(b.name)
     ax.set_ylabel(a.name)
 
@@ -2588,7 +2887,11 @@ class SimilarityComparator:
 
         # use the selected distance metric for primary heatmaps
         # map distance names to metric_type names (angular -> angle)
-        distance_to_metric = {"angular": "angle", "cosine": "cosine", "shepard": "shepard"}
+        distance_to_metric = {
+            "angular": "angle",
+            "cosine": "cosine",
+            "shepard": "shepard",
+        }
         primary_metric = distance_to_metric.get(distance, "angle")
         heatmaps = heatmaps_by_metric[primary_metric]
 

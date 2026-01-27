@@ -8,7 +8,8 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple, Union
+from typing import (TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple,
+                    Union)
 
 if TYPE_CHECKING:
     from soak.models.progress import ProgressManager
@@ -27,8 +28,9 @@ from soak.error_handlers import (ErrorBehavior, get_error_behavior,
                                  log_error_to_stderr, managed_llm_call,
                                  should_continue_pipeline)
 from soak.models.alignment import trim_span_to_quote
-from soak.models.base import (TrackedItem, get_action_lookup, get_embedding_async,
-                              memory, safe_json_dump, semaphore)
+from soak.models.base import (TrackedItem, get_action_lookup,
+                              get_embedding_async, memory, safe_json_dump,
+                              semaphore)
 from soak.models.text_utils import (ELLIPSIS_RE, create_document_boundaries,
                                     extract_context_window,
                                     find_source_document, is_match_truncated,
@@ -411,14 +413,18 @@ async def verify_quotes_bm25_first(
 
     # Use cached tokenization and token index
     corpus_hash = _hash_bm25_inputs(window_texts, bm25_k1, bm25_b)
-    logger.info(f"Building BM25 index from {len(original_windows)} windows (hash={corpus_hash})...")
+    logger.info(
+        f"Building BM25 index from {len(original_windows)} windows (hash={corpus_hash})..."
+    )
     tokenized, token_index = _cached_build_bm25_index(
         corpus_hash, window_texts, bm25_k1, bm25_b
     )
 
     # BM25Okapi isn't picklable, so recreate from cached tokenized data
     bm25 = BM25Okapi(tokenized, k1=bm25_k1, b=bm25_b)
-    logger.info(f"Built BM25 index and inverted index ({len(token_index)} unique tokens)")
+    logger.info(
+        f"Built BM25 index and inverted index ({len(token_index)} unique tokens)"
+    )
 
     # Build mapping: doc_name -> list of window indices for per-document filtering
     from collections import defaultdict
@@ -553,7 +559,9 @@ async def verify_quotes_bm25_first(
                 head_doc_candidates = doc_window_indices  # Fallback to all doc windows
 
             if len(head_doc_candidates) < len(original_windows):
-                head_candidate_scores = bm25.get_batch_scores(head_tokens, head_doc_candidates)
+                head_candidate_scores = bm25.get_batch_scores(
+                    head_tokens, head_doc_candidates
+                )
                 head_local_idx = int(np.argmax(head_candidate_scores))
                 head_idx = head_doc_candidates[head_local_idx]
                 head_scores = np.zeros(len(original_windows))
@@ -575,7 +583,9 @@ async def verify_quotes_bm25_first(
                 tail_doc_candidates = doc_window_indices  # Fallback to all doc windows
 
             if len(tail_doc_candidates) < len(original_windows):
-                tail_candidate_scores = bm25.get_batch_scores(tail_tokens, tail_doc_candidates)
+                tail_candidate_scores = bm25.get_batch_scores(
+                    tail_tokens, tail_doc_candidates
+                )
                 tail_local_idx = int(np.argmax(tail_candidate_scores))
                 tail_idx = tail_doc_candidates[tail_local_idx]
                 tail_scores = np.zeros(len(original_windows))
@@ -704,7 +714,9 @@ async def verify_quotes_bm25_first(
         texts_to_embed.add(r["_span_truncated"])
 
     unique_texts = list(texts_to_embed)
-    logger.info(f"Phase 2: Computing embeddings for {len(unique_texts)} unique texts...")
+    logger.info(
+        f"Phase 2: Computing embeddings for {len(unique_texts)} unique texts..."
+    )
 
     # Batch embed with progress callback
     if show_progress:
@@ -1220,7 +1232,9 @@ class VerifyQuotes(CompletionDAGNode):
             (df["bm25_score"] < 20) & (df["cosine_similarity"] < 0.7)
         )
         poor_matches = df[poor_match_mask]
-        logger.info(f"Found {len(poor_matches)}/{len(df)} poor matches needing LLM verification")
+        logger.info(
+            f"Found {len(poor_matches)}/{len(df)} poor matches needing LLM verification"
+        )
 
         if len(poor_matches) > 0:
             logger.info(
@@ -1283,13 +1297,15 @@ class VerifyQuotes(CompletionDAGNode):
                                 self._llm_results.append(result["chatter_result"])
 
                                 # Update progress bar with per-node cost if using CostProgressBar
-                                from soak.models.progress import CostProgressBar
+                                from soak.models.progress import \
+                                    CostProgressBar
 
                                 if isinstance(pbar, CostProgressBar):
                                     chatter = result["chatter_result"]
                                     pbar.update_cost(
                                         chatter.fresh_cost,
-                                        chatter.prompt_tokens + chatter.completion_tokens,
+                                        chatter.prompt_tokens
+                                        + chatter.completion_tokens,
                                     )
                     finally:
                         pbar.update(1)
@@ -1304,7 +1320,9 @@ class VerifyQuotes(CompletionDAGNode):
                     )
 
             pbar.close()
-            logger.info(f"LLM existence verification complete for {len(poor_matches)} quotes")
+            logger.info(
+                f"LLM existence verification complete for {len(poor_matches)} quotes"
+            )
 
         # Stage 2: Fairness verification for themes (optional)
         if self.check_fairness and self.verification_type == "theme":
@@ -1409,13 +1427,15 @@ class VerifyQuotes(CompletionDAGNode):
                                 )
 
                                 # Update progress bar with per-node cost if using CostProgressBar
-                                from soak.models.progress import CostProgressBar
+                                from soak.models.progress import \
+                                    CostProgressBar
 
                                 if isinstance(pbar_fairness, CostProgressBar):
                                     chatter = fairness_result["chatter_result"]
                                     pbar_fairness.update_cost(
                                         chatter.fresh_cost,
-                                        chatter.prompt_tokens + chatter.completion_tokens,
+                                        chatter.prompt_tokens
+                                        + chatter.completion_tokens,
                                     )
                     finally:
                         pbar_fairness.update(1)
@@ -1615,15 +1635,23 @@ class VerifyQuotes(CompletionDAGNode):
 
             # Set column widths based on header names
             text_cols = [
-                "extracted_quote", "found_in_original", "source_context",
-                "llm_explanation", "llm_fairness_explanation",
-                "theme_description", "code_description",
+                "extracted_quote",
+                "found_in_original",
+                "source_context",
+                "llm_explanation",
+                "llm_fairness_explanation",
+                "theme_description",
+                "code_description",
             ]
             bool_cols = ["llm_is_contained", "llm_is_fair"]
             name_cols = ["theme", "code_name", "source_doc"]
             num_cols = [
-                "bm25_score", "bm25_ratio", "cosine_similarity",
-                "global_start", "global_end", "match_ratio",
+                "bm25_score",
+                "bm25_ratio",
+                "cosine_similarity",
+                "global_start",
+                "global_end",
+                "match_ratio",
             ]
 
             for col_idx, col_name in enumerate(df.columns):

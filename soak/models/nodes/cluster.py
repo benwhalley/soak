@@ -7,6 +7,7 @@ import sys
 from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 import numpy as np
+from decouple import config as env_config
 from jinja2 import Environment, StrictUndefined
 from pydantic import BaseModel, Field, PrivateAttr
 from tqdm import tqdm
@@ -16,8 +17,6 @@ from soak.models.utils import unwrap_chatter_items
 
 from .base import DAGNode
 from .batch import BatchList
-
-from decouple import config as env_config
 
 MAX_LLM_CONCURRENCY = env_config("SD_MAX_CONCURRENCY", default=20, cast=int)
 
@@ -65,7 +64,9 @@ class HDBSCANMethod(BaseModel):
     name: Literal["hdbscan"] = "hdbscan"
     max_cluster_size: Optional[int] = 100  # hard ceiling, clusters split if larger
     min_cluster_size: int = 2  # hard floor, overrides proportion
-    min_cluster_size_proportion: Optional[float] = None  # goal: e.g., 0.25 = ~4 clusters
+    min_cluster_size_proportion: Optional[float] = (
+        None  # goal: e.g., 0.25 = ~4 clusters
+    )
     min_samples: int = 1
 
     # runtime stats (populated during cluster()) -- not serialized
@@ -99,8 +100,12 @@ class HDBSCANMethod(BaseModel):
         # use max of: fixed min_cluster_size AND proportion-based size
         effective_min_cluster_size = self.min_cluster_size
         if self.min_cluster_size_proportion is not None:
-            proportional_size = max(2, int(n_samples * self.min_cluster_size_proportion))
-            effective_min_cluster_size = max(effective_min_cluster_size, proportional_size)
+            proportional_size = max(
+                2, int(n_samples * self.min_cluster_size_proportion)
+            )
+            effective_min_cluster_size = max(
+                effective_min_cluster_size, proportional_size
+            )
 
         # store for reporting
         self._effective_min_cluster_size = effective_min_cluster_size
@@ -111,7 +116,9 @@ class HDBSCANMethod(BaseModel):
             f"min_samples={self.min_samples}, n_samples={n_samples}"
         )
         embeddings_hash = _hash_embeddings(embeddings)
-        logger.info(f"Running HDBSCAN fit_predict on {n_samples} samples (hash={embeddings_hash})...")
+        logger.info(
+            f"Running HDBSCAN fit_predict on {n_samples} samples (hash={embeddings_hash})..."
+        )
         labels = _cached_hdbscan_fit(
             embeddings_hash, embeddings, effective_min_cluster_size, self.min_samples
         )
@@ -131,7 +138,10 @@ class HDBSCANMethod(BaseModel):
         oversized_count = 0
         oversized_sizes = []
         for label, indices in clusters_by_label.items():
-            if self.max_cluster_size is not None and len(indices) > self.max_cluster_size:
+            if (
+                self.max_cluster_size is not None
+                and len(indices) > self.max_cluster_size
+            ):
                 oversized_count += 1
                 oversized_sizes.append(len(indices))
         self._oversized_count = oversized_count
@@ -196,7 +206,9 @@ class HDBSCANMethod(BaseModel):
                 f"  Max recursion depth ({max_depth}) reached for cluster of {n} items, "
                 f"using random chunking"
             )
-            return self._random_chunk(original_indices, effective_min_cluster_size, seed=seed)
+            return self._random_chunk(
+                original_indices, effective_min_cluster_size, seed=seed
+            )
 
         logger.debug(f"  Splitting oversized cluster: {n} items (depth={depth})")
 
@@ -209,8 +221,12 @@ class HDBSCANMethod(BaseModel):
         # check if it actually split
         unique_labels = set(labels) - {-1}
         if len(unique_labels) <= 1:
-            logger.debug(f"  HDBSCAN won't split {n} items further, using random chunking")
-            return self._random_chunk(original_indices, effective_min_cluster_size, seed=seed)
+            logger.debug(
+                f"  HDBSCAN won't split {n} items further, using random chunking"
+            )
+            return self._random_chunk(
+                original_indices, effective_min_cluster_size, seed=seed
+            )
 
         # group by new labels
         clusters_by_label: Dict[int, List[int]] = {}
@@ -222,7 +238,9 @@ class HDBSCANMethod(BaseModel):
                 clusters_by_label.setdefault(label, []).append(i)
 
         # check if we made meaningful progress (largest cluster should be < 80% of input)
-        largest_cluster_size = max(len(indices) for indices in clusters_by_label.values())
+        largest_cluster_size = max(
+            len(indices) for indices in clusters_by_label.values()
+        )
         if largest_cluster_size > n * 0.8:
             logger.debug(
                 f"  Insufficient split progress: largest sub-cluster is {largest_cluster_size}/{n} "
@@ -433,12 +451,18 @@ class Cluster(DAGNode):
         logger.info("Embeddings computed.")
 
         # map back to full set
-        logger.debug(f"Mapping {len(unique_texts)} unique embeddings back to {len(texts)} items...")
+        logger.debug(
+            f"Mapping {len(unique_texts)} unique embeddings back to {len(texts)} items..."
+        )
         full_embeddings = np.array([unique_embeddings[text_to_idx[t]] for t in texts])
 
         # run clustering
-        logger.info(f"Running HDBSCAN clustering on {len(full_embeddings)} embeddings...")
-        cluster_indices = self.method.cluster(full_embeddings, seed=self.dag.config.seed)
+        logger.info(
+            f"Running HDBSCAN clustering on {len(full_embeddings)} embeddings..."
+        )
+        cluster_indices = self.method.cluster(
+            full_embeddings, seed=self.dag.config.seed
+        )
         logger.info(f"Clustering complete: {len(cluster_indices)} clusters found.")
 
         # build output: one TrackedItem per cluster
@@ -469,8 +493,11 @@ class Cluster(DAGNode):
                 content=cluster_content,
                 id=f"{self.name}__{cluster_key}",
                 sources=[
-                    item.id if isinstance(item, TrackedItem)
-                    else (item.slug if hasattr(item, "slug") else str(idx))
+                    (
+                        item.id
+                        if isinstance(item, TrackedItem)
+                        else (item.slug if hasattr(item, "slug") else str(idx))
+                    )
                     for idx, item in zip(indices, cluster_items)
                 ],
                 metadata={

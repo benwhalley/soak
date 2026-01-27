@@ -58,7 +58,9 @@ class Map(ItemsNode, CompletionDAGNode):
         for item in items:
             if isinstance(item, TrackedItem):
                 # Unpack metadata (contains Excel/CSV column data) into template context
-                boxed_items.append(Box({"input": item.content, "tracked_item": item, **item.metadata}))
+                boxed_items.append(
+                    Box({"input": item.content, "tracked_item": item, **item.metadata})
+                )
             elif isinstance(item, dict):
                 boxed_items.append(Box(item))
             else:
@@ -135,7 +137,9 @@ class Map(ItemsNode, CompletionDAGNode):
                                         **extra_kwargs,
                                     )
                                     # Post-process outputs to populate resolved_quotes/resolved_code_refs
-                                    post_process_chatter_result(results[index], llm_context)
+                                    post_process_chatter_result(
+                                        results[index], llm_context
+                                    )
                             except Exception as e:
                                 # re-raise all other errors to fail the pipeline
                                 logger.error(
@@ -145,7 +149,9 @@ class Map(ItemsNode, CompletionDAGNode):
                             finally:
                                 # Update progress bar on completion
                                 if progress_bar is not None:
-                                    progress_bar.update(getattr(progress_bar, "slots_per_item", 1))
+                                    progress_bar.update(
+                                        getattr(progress_bar, "slots_per_item", 1)
+                                    )
 
                     tg.start_soon(run_and_store)
         finally:

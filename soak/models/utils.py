@@ -120,7 +120,9 @@ def export_slots_as_text_files(result, folder: Path) -> None:
                 # Export Themes to CSV
                 if isinstance(output, Themes):
                     _export_themes_to_csv(output.themes, folder, slot_name)
-                    logger.info(f"Exported {len(output.themes)} themes from slot '{slot_name}' to CSV")
+                    logger.info(
+                        f"Exported {len(output.themes)} themes from slot '{slot_name}' to CSV"
+                    )
                 elif isinstance(output, Theme):
                     _export_themes_to_csv([output], folder, slot_name)
                     logger.info(f"Exported 1 theme from slot '{slot_name}' to CSV")
@@ -128,7 +130,9 @@ def export_slots_as_text_files(result, folder: Path) -> None:
                 # Export Codes to CSV
                 elif isinstance(output, CodeList):
                     _export_codes_to_csv(output.codes, folder, slot_name)
-                    logger.info(f"Exported {len(output.codes)} codes from slot '{slot_name}' to CSV")
+                    logger.info(
+                        f"Exported {len(output.codes)} codes from slot '{slot_name}' to CSV"
+                    )
                 elif isinstance(output, Code):
                     _export_codes_to_csv([output], folder, slot_name)
                     logger.info(f"Exported 1 code from slot '{slot_name}' to CSV")
@@ -270,7 +274,9 @@ def post_process_chatter_result(result, context: Dict[str, Any]) -> None:
                 output_val.post_process(context)
             except Exception as e:
                 # Log but don't fail - post_process errors shouldn't break the pipeline
-                logger.warning(f"post_process failed for {type(output_val).__name__}: {e}")
+                logger.warning(
+                    f"post_process failed for {type(output_val).__name__}: {e}"
+                )
 
 
 def post_process_code_quotes(code: Code, context: Dict[str, Any]):
@@ -708,7 +714,9 @@ def unwrap_chatter_items(items: List[Any], items_field: str) -> List[Any]:
                     unwrapped.append(extracted)
             else:
                 # fallback: keep the item as-is if extraction fails
-                logger.debug(f"Could not extract '{items_field}' from {type(item).__name__}")
+                logger.debug(
+                    f"Could not extract '{items_field}' from {type(item).__name__}"
+                )
                 unwrapped.append(item)
 
     return unwrapped

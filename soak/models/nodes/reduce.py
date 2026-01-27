@@ -46,7 +46,9 @@ class Reduce(DAGNode):
     type: Literal["Reduce"] = "Reduce"
     template: str = "{{input}} "
     exclude_overlap: bool = True  # Exclude overlap by default when joining chunks
-    items_field: Optional[str] = None  # When set, extract items instead of rendering template
+    items_field: Optional[str] = (
+        None  # When set, extract items instead of rendering template
+    )
 
     async def run(
         self,
@@ -177,7 +179,9 @@ class Reduce(DAGNode):
         items = [item for item in items if item is not None]
 
         if not items:
-            logger.warning(f"Reduce '{self.name}': No valid items to reduce (all were None/skipped)")
+            logger.warning(
+                f"Reduce '{self.name}': No valid items to reduce (all were None/skipped)"
+            )
             return ""
 
         rendered = []
@@ -301,4 +305,6 @@ class Reduce(DAGNode):
                 else:
                     # Template mode: write each reduced output
                     for idx, item in enumerate(self.output, 1):
-                        (outputs_folder / f"reduced_{idx:03d}.txt").write_text(str(item))
+                        (outputs_folder / f"reduced_{idx:03d}.txt").write_text(
+                            str(item)
+                        )

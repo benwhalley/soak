@@ -234,7 +234,9 @@ class Filter(ItemsNode, CompletionDAGNode):
                                 raise
                             finally:
                                 if progress_bar is not None:
-                                    progress_bar.update(getattr(progress_bar, "slots_per_item", 1))
+                                    progress_bar.update(
+                                        getattr(progress_bar, "slots_per_item", 1)
+                                    )
 
                     tg.start_soon(run_and_store)
         finally:
