@@ -79,6 +79,52 @@
             .pair-tabs-container { position: static; }
             .k-tabs-container { position: static; }
         }
+
+        /* Lightbox overlay for enlarged images */
+        .lightbox-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 9999;
+            cursor: pointer;
+            justify-content: center;
+            align-items: center;
+        }
+        .lightbox-overlay.active {
+            display: flex;
+        }
+        .lightbox-overlay img {
+            max-width: 95%;
+            max-height: 95%;
+            object-fit: contain;
+            box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
+            border-radius: 4px;
+        }
+        .lightbox-close {
+            position: absolute;
+            top: 20px;
+            right: 30px;
+            color: white;
+            font-size: 36px;
+            font-weight: bold;
+            cursor: pointer;
+            z-index: 10000;
+        }
+        .lightbox-close:hover {
+            color: #ccc;
+        }
+        .lightbox-trigger {
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .lightbox-trigger:hover {
+            transform: scale(1.02);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
     </style>
 </head>
 
@@ -176,6 +222,42 @@
 
     <div class="container main-content">
 
+        {% if text_output %}
+        <!-- Text Output (collapsed) -->
+        <div class="card mb-4 mt-3">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <a class="text-decoration-none" data-toggle="collapse" href="#textOutputPane" role="button" aria-expanded="false" aria-controls="textOutputPane">
+                    <strong>▶ Plain Text Output</strong> <small class="text-muted ml-2">(click to expand, copy for reports)</small>
+                </a>
+                <button class="btn btn-sm btn-outline-secondary" onclick="copyTextOutput()" id="copyTextBtn">
+                    📋 Copy to Clipboard
+                </button>
+            </div>
+            <div class="collapse" id="textOutputPane">
+                <div class="card-body p-0">
+                    <pre id="textOutputContent" class="m-0 p-3" style="background: #f8f9fa; font-size: 0.75rem; max-height: 500px; overflow-y: auto; white-space: pre-wrap; word-wrap: break-word;">{{ text_output }}</pre>
+                </div>
+            </div>
+        </div>
+        <script>
+        function copyTextOutput() {
+            var text = document.getElementById('textOutputContent').innerText;
+            navigator.clipboard.writeText(text).then(function() {
+                var btn = document.getElementById('copyTextBtn');
+                var originalText = btn.innerHTML;
+                btn.innerHTML = '✓ Copied!';
+                btn.classList.remove('btn-outline-secondary');
+                btn.classList.add('btn-success');
+                setTimeout(function() {
+                    btn.innerHTML = originalText;
+                    btn.classList.remove('btn-success');
+                    btn.classList.add('btn-outline-secondary');
+                }, 2000);
+            });
+        }
+        </script>
+        {% endif %}
+
         <div id="analyses" class="analysis-results mt-3">
             <h2 class="mt-4">Analyses Included in Comparison</h2>
 
@@ -240,7 +322,7 @@
 
             <div class="row">
                 <div class="col-md-12">
-                    <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comparison.additional_plots.network_plot.base64 }}" alt="UMAP projection of theme embeddings">
+                    <img class="img-fluid img-thumbnail lightbox-trigger" src="data:image/png;base64,{{ comparison.additional_plots.network_plot.base64 }}" alt="UMAP projection of theme embeddings">
                 </div>
             </div>
 
@@ -279,7 +361,7 @@
                         <div class="card">
                             <div class="card-header bg-primary text-white">Continuous Values</div>
                             <div class="card-body">
-                                <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comp.plots.heatmaps_angle.base64 }}" alt="Angular distance heatmap">
+                                <img class="img-fluid img-thumbnail lightbox-trigger" src="data:image/png;base64,{{ comp.plots.heatmaps_angle.base64 }}" alt="Angular distance heatmap">
                             </div>
                         </div>
                     </div>
@@ -287,7 +369,7 @@
                         <div class="card">
                             <div class="card-header bg-secondary text-white">Binary Match (threshold={{ comparison.config.threshold }})</div>
                             <div class="card-body">
-                                <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comp.plots.thresholded_heatmaps.base64 }}" alt="Thresholded heatmap">
+                                <img class="img-fluid img-thumbnail lightbox-trigger" src="data:image/png;base64,{{ comp.plots.thresholded_heatmaps.base64 }}" alt="Thresholded heatmap">
                             </div>
                         </div>
                     </div>
@@ -297,7 +379,7 @@
                 <!-- SECTION 2: SUMMARY STATISTICS                  -->
                 <!-- ============================================== -->
                 <h4 id="summary-{{ loop.index }}">Summary Statistics</h4>
-                <p class="text-muted small">Thematic analysis doesn't have ground truth, so traditional precision/recall don't apply. Instead, we measure coverage (did themes find matches?) and fidelity (how close are the best matches?). Based on cosine similarity.</p>
+                <p class="text-muted small">Thematic analysis doesn't have ground truth, so traditional precision/recall don't apply. Instead, we measure coverage (did themes find matches?) and fidelity (how close are the best matches?). Based on {{ comp.stats.similarity_metric }} similarity.</p>
                 <div class="row mb-4">
                     <div class="col-md-4">
                         <div class="card">
@@ -307,9 +389,9 @@
                                 <ul class="list-unstyled">
                                     <li><strong>Hit Rate A:</strong> {{ "%.1f"|format(comp.stats.hit_rate_a * 100) }}%</li>
                                     <li><strong>Hit Rate B:</strong> {{ "%.1f"|format(comp.stats.hit_rate_b * 100) }}%</li>
-                                    <li class="mt-2"><strong>Jaccard:</strong> {{ "%.3f"|format(comp.stats.jaccard) }}</li>
+                                    <li class="mt-2"><strong>Pair Match Rate:</strong> {{ "%.3f"|format(comp.stats.jaccard) }} <small class="text-muted">(pairs above threshold / total pairs)</small></li>
                                 </ul>
-                                <p class="small mt-2 text-muted"><em>High hit rates indicate both analyses found similar conceptual territory.</em></p>
+                                <p class="small mt-2 text-muted"><em>High hit rates indicate both analyses found similar conceptual territory. Pair match rate shows the density of above-threshold pairs across all possible theme combinations.</em></p>
                             </div>
                         </div>
                     </div>
@@ -350,9 +432,9 @@
                 <div class="alert alert-secondary small mb-3">
                     <strong>Intuition:</strong> "If I had to explain set B's themes to someone who only knew set A, which single theme in A would each B theme correspond to, with no reuse?"
                     <br><br>
-                    <strong>What this enables:</strong> Hungarian matching makes precision/recall well-defined by removing ambiguity about what counts as a "match". After matching: each pair = one prediction; unmatched A themes = false negatives; unmatched B themes = false positives.
+                    <strong>What this enables:</strong> Hungarian matching removes ambiguity by assigning each theme to at most one partner. Coverage metrics show what proportion of each set found a good match.
                     <br><br>
-                    <strong>Limitation:</strong> This penalises legitimate theme refinement (splitting one theme into two is treated as error). Use OT if you want to reward decomposition.
+                    <strong>Limitation:</strong> This penalises legitimate theme refinement (splitting one theme into two is treated as unmatched). Use OT if you want to allow many-to-many alignment.
                 </div>
 
                 <div class="row mb-4">
@@ -370,7 +452,7 @@
 
                                 {% if comp.stats.hungarian.distribution.n_pairs > 0 %}
                                 <hr>
-                                <p class="small mb-1"><strong>Distribution of {{ comp.stats.hungarian.distribution.n_pairs }} pairs above threshold:</strong></p>
+                                <p class="small mb-1"><strong>Distribution of {{ comp.stats.hungarian.distribution.n_pairs }} optimal pairs:</strong></p>
                                 <ul class="list-unstyled small">
                                     <li>Median: {{ "%.3f"|format(comp.stats.hungarian.distribution.median) }} &nbsp; (Q1: {{ "%.3f"|format(comp.stats.hungarian.distribution.q1) }}, Q3: {{ "%.3f"|format(comp.stats.hungarian.distribution.q3) }})</li>
                                     <li>Range: {{ "%.3f"|format(comp.stats.hungarian.distribution.min) }} -- {{ "%.3f"|format(comp.stats.hungarian.distribution.max) }}</li>
@@ -383,29 +465,32 @@
                     <div class="col-md-6">
                         <div class="card">
                             <div class="card-header bg-secondary text-white">
-                                <strong>Precision / Recall</strong> (use with caution)
+                                <strong>Coverage &amp; Set Overlap</strong>
                             </div>
                             <div class="card-body">
                                 <p class="small text-muted">Based on {{ comp.stats.hungarian.distribution.n_pairs }} matched pairs above threshold ({{ comparison.config.threshold }})</p>
+                                {% set cov_a = comp.stats.hungarian.thresholded_metrics.recall %}
+                                {% set cov_b = comp.stats.hungarian.thresholded_metrics.precision %}
+                                {% set mean_cov = (cov_a + cov_b) / 2 %}
                                 <div class="row text-center">
                                     <div class="col-4">
-                                        <h4 class="mb-0">{{ "%.0f"|format(comp.stats.hungarian.thresholded_metrics.recall * 100) }}%</h4>
-                                        <p class="small text-muted mb-0">Recall</p>
-                                        <p class="small text-muted">(coverage of A)</p>
+                                        <h4 class="mb-0">{{ "%.0f"|format(cov_a * 100) }}%</h4>
+                                        <p class="small text-muted mb-0">Coverage A</p>
+                                        <p class="small text-muted">(A themes matched)</p>
                                     </div>
                                     <div class="col-4">
-                                        <h4 class="mb-0">{{ "%.0f"|format(comp.stats.hungarian.thresholded_metrics.precision * 100) }}%</h4>
-                                        <p class="small text-muted mb-0">Precision</p>
-                                        <p class="small text-muted">(coverage of B)</p>
+                                        <h4 class="mb-0">{{ "%.0f"|format(cov_b * 100) }}%</h4>
+                                        <p class="small text-muted mb-0">Coverage B</p>
+                                        <p class="small text-muted">(B themes matched)</p>
                                     </div>
                                     <div class="col-4">
                                         <h4 class="mb-0">{{ "%.3f"|format(comp.stats.hungarian.thresholded_metrics.true_jaccard) }}</h4>
-                                        <p class="small text-muted mb-0">Jaccard</p>
-                                        <p class="small text-muted">(for Raza)</p>
+                                        <p class="small text-muted mb-0">Jaccard Index</p>
+                                        <p class="small text-muted">(set overlap)</p>
                                     </div>
                                 </div>
                                 <hr>
-                                <p class="small mb-0"><strong>Caution:</strong> These metrics penalise over-splitting (hurts precision) and under-coverage (hurts recall). Only meaningful if you assume themes should map 1-to-1.</p>
+                                <p class="small mb-0"><strong>Jaccard Index</strong> = matched / (|A| + |B| - matched). Measures overlap between theme sets after 1:1 assignment. Higher = more themes found good partners.</p>
                             </div>
                         </div>
                     </div>
@@ -469,6 +554,32 @@
                                 📊 Scree
                             </a>
                         </li>
+                        {% if comp.stats.paraphrase_baseline %}
+                        <li class="nav-item" role="presentation">
+                            <a class="nav-link"
+                               id="ot-paraphrases-tab-{{ loop.index }}"
+                               data-toggle="tab"
+                               href="#ot-paraphrases-{{ loop.index }}"
+                               role="tab"
+                               aria-controls="ot-paraphrases-{{ loop.index }}"
+                               aria-selected="false">
+                                📝 Paraphrases
+                            </a>
+                        </li>
+                        {% endif %}
+                        {% if comp.stats.word_salad_samples %}
+                        <li class="nav-item" role="presentation">
+                            <a class="nav-link"
+                               id="ot-wordsalad-tab-{{ loop.index }}"
+                               data-toggle="tab"
+                               href="#ot-wordsalad-{{ loop.index }}"
+                               role="tab"
+                               aria-controls="ot-wordsalad-{{ loop.index }}"
+                               aria-selected="false">
+                                🥗 Word Salad
+                            </a>
+                        </li>
+                        {% endif %}
                         {% for k_val in comp.stats.k_values %}
                         <li class="nav-item" role="presentation">
                             <a class="nav-link{% if k_val == comp.stats.default_k %} active{% endif %}"
@@ -478,7 +589,7 @@
                                role="tab"
                                aria-controls="ot-k-{{ k_val|replace('.', '-') }}-{{ loop.index }}"
                                aria-selected="{{ 'true' if k_val == comp.stats.default_k else 'false' }}">
-                                K={{ "%.2f"|format(k_val) }}{% if k_val == comp.stats.default_k %} ★{% endif %}{% if k_val == comp.stats.elbow_k %} ◆{% endif %}
+                                K={{ "%.2f"|format(k_val) }}{% if k_val == comp.stats.default_k %} ■{% endif %}{% if k_val == comp.stats.chord_k %} ◆{% endif %}{% if k_val == comp.stats.diminishing_k %} ▲{% endif %}
                             </a>
                         </li>
                         {% endfor %}
@@ -492,20 +603,52 @@
                          role="tabpanel"
                          aria-labelledby="ot-scree-tab-{{ loop.index }}">
 
-                        <div class="card mb-4">
-                            <div class="card-header bg-info text-white">
-                                <strong>Shared Mass vs K (Scree Plot)</strong>
-                            </div>
-                            <div class="card-body">
-                                <p class="text-muted">This plot shows how shared mass changes as the K parameter varies. Two elbow detection methods are shown: (1) chord-based finds the point furthest above the line connecting first and last values in log(K) space; (2) diminishing returns finds where slope drops below 20% of initial slope.</p>
-                                <div class="alert alert-info">
-                                    <strong>■ Default K={{ "%.2f"|format(comp.stats.default_k) }}</strong> &nbsp;|&nbsp;
-                                    <strong>◆ Chord elbow K={{ "%.2f"|format(comp.stats.chord_k) }}</strong> &nbsp;|&nbsp;
-                                    <strong>▲ Dim. returns K={{ "%.2f"|format(comp.stats.diminishing_k) }}</strong>
-                                    {% if not comp.stats.plateau_reached %}<br><em class="text-warning">⚠ Curve may not have plateaued -- elbow estimates may be less reliable</em>{% endif %}
+                        <div class="alert alert-info mb-3">
+                            <strong>■ Default K={{ "%.2f"|format(comp.stats.default_k) }}</strong> &nbsp;|&nbsp;
+                            <strong>◆ Chord elbow K={{ "%.2f"|format(comp.stats.chord_k) }}</strong> &nbsp;|&nbsp;
+                            <strong>▲ Dim. returns K={{ "%.2f"|format(comp.stats.diminishing_k) }}</strong>
+                            {% if not comp.stats.plateau_reached %}<br><em class="text-warning">⚠ Curve may not have plateaued -- elbow estimates may be less reliable</em>{% endif %}
+                        </div>
+                        <p class="text-muted small">These plots show how shared mass and alignment change as K varies. Baseline curves show the paraphrase ceiling (green, best case) and word-salad floor (red, random baseline) -- both also vary with K because the OT mass penalty affects all comparisons equally.</p>
+
+                        <div class="row mb-4">
+                            <div class="col-md-4">
+                                <div class="card h-100">
+                                    <div class="card-header bg-primary text-white">
+                                        <strong>Shared Mass vs K</strong>
+                                    </div>
+                                    <div class="card-body">
+                                        <img class="img-fluid img-thumbnail lightbox-trigger" src="data:image/png;base64,{{ comp.stats.shared_mass_scree.base64 }}" alt="Shared mass scree plot" style="cursor: pointer;">
+                                        <p class="small text-muted mt-2 mb-0">How much thematic content is matched. Higher = more themes matched. Elbow markers: ◆ chord, ▲ dim. returns.</p>
+                                    </div>
                                 </div>
-                                <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comp.stats.shared_mass_scree.base64 }}" alt="Shared mass scree plot">
                             </div>
+                            {% if comp.stats.alignment_scree %}
+                            <div class="col-md-4">
+                                <div class="card h-100">
+                                    <div class="card-header bg-success text-white">
+                                        <strong>Semantic Alignment vs K</strong>
+                                    </div>
+                                    <div class="card-body">
+                                        <img class="img-fluid img-thumbnail lightbox-trigger" src="data:image/png;base64,{{ comp.stats.alignment_scree.base64 }}" alt="Alignment scree plot" style="cursor: pointer;">
+                                        <p class="small text-muted mt-2 mb-0">Quality of matches (1 - cost). Higher = better semantic similarity between matched themes.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
+                            {% if comp.stats.splits_joins_scree %}
+                            <div class="col-md-4">
+                                <div class="card h-100">
+                                    <div class="card-header bg-warning text-dark">
+                                        <strong>Splits/Joins vs K</strong>
+                                    </div>
+                                    <div class="card-body">
+                                        <img class="img-fluid img-thumbnail lightbox-trigger" src="data:image/png;base64,{{ comp.stats.splits_joins_scree.base64 }}" alt="Splits/joins scree plot" style="cursor: pointer;">
+                                        <p class="small text-muted mt-2 mb-0">Average targets per theme. 1.0 = perfect 1:1 matching. Higher = more many-to-many relationships.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            {% endif %}
                         </div>
 
                         <div class="card mb-4">
@@ -519,34 +662,152 @@
                                             <tr>
                                                 <th>K</th>
                                                 <th>Shared Mass</th>
-                                                <th>Unmatched</th>
-                                                <th>Avg Cost</th>
-                                                <th>Splits (mean)</th>
-                                                <th>Joins (mean)</th>
-                                                <th>Relative Score</th>
+                                                <th>Alignment</th>
+                                                <th title="% of paraphrase ceiling for shared mass">Mass % ceiling</th>
+                                                <th title="% of paraphrase ceiling for alignment">Align % ceiling</th>
+                                                <th title="Average number of targets per theme (1.0 = all 1:1 matches)">Splits/Joins</th>
                                             </tr>
                                         </thead>
                                         <tbody>
                                             {% for k_val in comp.stats.k_values %}
                                             {% set ot_k = comp.stats.ot_by_k[k_val] %}
-                                            <tr{% if k_val == comp.stats.default_k %} class="table-primary"{% elif k_val == comp.stats.elbow_k %} class="table-warning"{% endif %}>
-                                                <td><strong>{{ "%.2f"|format(k_val) }}{% if k_val == comp.stats.default_k %} ★{% endif %}{% if k_val == comp.stats.elbow_k %} ◆{% endif %}</strong></td>
+                                            <tr{% if k_val == comp.stats.default_k %} class="table-primary"{% elif k_val == comp.stats.chord_k %} class="table-warning"{% elif k_val == comp.stats.diminishing_k %} class="table-info"{% endif %}>
+                                                <td><strong>{{ "%.2f"|format(k_val) }}{% if k_val == comp.stats.default_k %} ■{% endif %}{% if k_val == comp.stats.chord_k %} ◆{% endif %}{% if k_val == comp.stats.diminishing_k %} ▲{% endif %}</strong></td>
                                                 <td>{{ "%.1f"|format(ot_k.ot.shared_mass * 100) }}%</td>
-                                                <td>{{ "%.1f"|format(ot_k.ot.unmatched_mass * 100) }}%</td>
-                                                <td>{{ "%.3f"|format(ot_k.ot.avg_cost) }}</td>
-                                                <td>{{ "%.2f"|format(ot_k.split_join_stats.splits_from_a.mean) }}</td>
-                                                <td>{{ "%.2f"|format(ot_k.split_join_stats.joins_to_b.mean) }}</td>
-                                                <td>{% if ot_k.ot.shared_mass_relative is defined %}{{ "%.2f"|format(ot_k.ot.shared_mass_relative) }}{% else %}-{% endif %}</td>
+                                                <td>{% if ot_k.ot.alignment_observed is defined %}{{ "%.2f"|format(ot_k.ot.alignment_observed) }}{% else %}{{ "%.2f"|format(1 - ot_k.ot.avg_cost) }}{% endif %}</td>
+                                                <td>{% if ot_k.ot.shared_mass_pct_of_ceiling is defined %}<strong>{{ "%.0f"|format(ot_k.ot.shared_mass_pct_of_ceiling * 100) }}%</strong>{% elif ot_k.ot.shared_mass_relative is defined %}{{ "%.0f"|format(ot_k.ot.shared_mass_relative * 100) }}%{% else %}-{% endif %}</td>
+                                                <td>{% if ot_k.ot.alignment_pct_of_ceiling is defined %}<strong>{{ "%.0f"|format(ot_k.ot.alignment_pct_of_ceiling * 100) }}%</strong>{% elif ot_k.ot.avg_cost_relative is defined %}{{ "%.0f"|format(ot_k.ot.avg_cost_relative * 100) }}%{% else %}-{% endif %}</td>
+                                                <td>{{ "%.1f"|format((ot_k.split_join_stats.splits_from_a.mean + ot_k.split_join_stats.joins_to_b.mean) / 2) }}</td>
                                             </tr>
                                             {% endfor %}
                                         </tbody>
                                     </table>
                                 </div>
-                                <p class="small text-muted mt-2">★ = Default K value. Higher K = stronger penalty for unmatching = more mass forced to transport. Lower K = more permissive, allowing themes to remain unmatched.</p>
+                                <p class="small text-muted mt-2">■ = Default K, ◆ = Chord elbow, ▲ = Dim. returns. <strong>% of ceiling</strong> = how close to paraphrase baseline (100% = as good as identical meaning). Higher K forces more transport; lower K allows more unmatched themes.</p>
                             </div>
                         </div>
 
                     </div>
+
+                    <!-- Paraphrases tab pane -->
+                    {% if comp.stats.paraphrase_baseline %}
+                    <div class="tab-pane fade"
+                         id="ot-paraphrases-{{ loop.index }}"
+                         role="tabpanel"
+                         aria-labelledby="ot-paraphrases-tab-{{ loop.index }}">
+
+                        <div class="card mb-4">
+                            <div class="card-header bg-info text-white">
+                                <strong>Paraphrase Baseline</strong>
+                            </div>
+                            <div class="card-body">
+                                <p class="text-muted">LLM-generated paraphrases of each theme establish a realistic upper bound for alignment. Paraphrases capture the same meaning in different words -- this represents the best achievable similarity between semantically equivalent analyses.</p>
+
+                                <div class="row mb-4">
+                                    <div class="col-md-6">
+                                        <h6>Baseline Statistics</h6>
+                                        <ul class="list-unstyled">
+                                            <li><strong>Mean self-similarity:</strong> {{ "%.3f"|format(comp.stats.paraphrase_baseline.paraphrase_similarity_mean) }}</li>
+                                            <li><strong>Std dev:</strong> {{ "%.3f"|format(comp.stats.paraphrase_baseline.paraphrase_similarity_std) }}</li>
+                                            <li><strong>Model:</strong> {{ comp.stats.paraphrase_baseline.metadata.model }}</li>
+                                            <li><strong>Paraphrases per theme:</strong> {{ comp.stats.paraphrase_baseline.metadata.n_paraphrases }}</li>
+                                        </ul>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <h6>Interpretation</h6>
+                                        <p class="small text-muted mb-0">The paraphrase ceiling represents the best realistic case -- comparing themes to their own LLM paraphrases (same meaning, different words). If observed alignment reaches this level, the analyses are semantically equivalent.</p>
+                                    </div>
+                                </div>
+
+                                <h6>{{ comp.a.name }} -- Sample Themes with Paraphrases</h6>
+                                <div class="mb-4" style="max-height: 400px; overflow-y: auto;">
+                                    {% for sample in comp.stats.paraphrase_baseline.samples_a %}
+                                    <div class="card mb-2">
+                                        <div class="card-body py-2">
+                                            <strong class="small">Original:</strong>
+                                            <div class="text-monospace mb-2" style="font-size: 0.85rem;">{{ sample.original }}</div>
+                                            <strong class="small text-muted">Paraphrases (self-similarity: {{ "%.3f"|format(sample.similarity) }}):</strong>
+                                            <div class="mt-1">
+                                                {% for para in sample.paraphrases %}
+                                                <div class="text-monospace mb-1" style="font-size: 0.8rem; color: #666;"><span class="badge badge-info mr-1">{{ loop.index }}</span> {{ para }}</div>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+
+                                <h6>{{ comp.b.name }} -- Sample Themes with Paraphrases</h6>
+                                <div style="max-height: 400px; overflow-y: auto;">
+                                    {% for sample in comp.stats.paraphrase_baseline.samples_b %}
+                                    <div class="card mb-2">
+                                        <div class="card-body py-2">
+                                            <strong class="small">Original:</strong>
+                                            <div class="text-monospace mb-2" style="font-size: 0.85rem;">{{ sample.original }}</div>
+                                            <strong class="small text-muted">Paraphrases (self-similarity: {{ "%.3f"|format(sample.similarity) }}):</strong>
+                                            <div class="mt-1">
+                                                {% for para in sample.paraphrases %}
+                                                <div class="text-monospace mb-1" style="font-size: 0.8rem; color: #666;"><span class="badge badge-info mr-1">{{ loop.index }}</span> {{ para }}</div>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Word Salad tab pane -->
+                    {% if comp.stats.word_salad_samples %}
+                    <div class="tab-pane fade"
+                         id="ot-wordsalad-{{ loop.index }}"
+                         role="tabpanel"
+                         aria-labelledby="ot-wordsalad-tab-{{ loop.index }}">
+
+                        <div class="card mb-4">
+                            <div class="card-header bg-danger text-white">
+                                <strong>Word Salad Baseline (Random Floor)</strong>
+                            </div>
+                            <div class="card-body">
+                                <p class="text-muted">Word salad is generated by randomly shuffling words from themes, destroying semantic meaning. This represents what you'd expect from random text with similar vocabulary -- a floor below which alignment cannot meaningfully fall.</p>
+
+                                <div class="row mb-4">
+                                    <div class="col-md-6">
+                                        <h6>Generation Method</h6>
+                                        <ul class="list-unstyled small">
+                                            <li><strong>Samples generated:</strong> {{ comp.stats.word_salad_samples|length }}</li>
+                                            <li><strong>Themes per sample:</strong> {{ comp.stats.word_salad_samples[0]|length }}</li>
+                                            <li><strong>Method:</strong> Words randomly shuffled while preserving theme length</li>
+                                        </ul>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <h6>Interpretation</h6>
+                                        <p class="small text-muted mb-0">If observed alignment is close to the word-salad floor, the themes may not share meaningful semantic content. The further above this baseline, the more genuine the semantic similarity.</p>
+                                    </div>
+                                </div>
+
+                                <h6>All {{ comp.stats.word_salad_samples|length }} Word Salad Samples</h6>
+                                <p class="small text-muted">Each sample contains {{ comp.stats.word_salad_samples[0]|length }} scrambled "themes" (matching B's theme count). Words from B's themes are randomly shuffled while preserving length.</p>
+                                <div style="max-height: 500px; overflow-y: auto;">
+                                    {% for sample_idx, sample in enumerate(comp.stats.word_salad_samples) %}
+                                    <div class="card mb-2">
+                                        <div class="card-header py-1 bg-light">
+                                            <strong class="small">Sample {{ sample_idx + 1 }}</strong>
+                                        </div>
+                                        <div class="card-body py-2">
+                                            {% for text in sample %}
+                                            <div class="text-monospace mb-1" style="font-size: 0.75rem;"><span class="badge badge-secondary mr-1">{{ loop.index }}</span> {{ text }}</div>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                    {% endfor %}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endif %}
 
                     {% for k_val in comp.stats.k_values %}
                     {% set ot_k = comp.stats.ot_by_k[k_val] %}
@@ -559,51 +820,73 @@
                             <div class="col-md-6">
                                 <div class="card border-primary">
                                     <div class="card-header bg-primary text-white">
-                                        <strong>Shared Mass{% if ot_k.ot.shared_mass_relative is defined %} (Relative to Null){% endif %}</strong>
+                                        <strong>Shared Mass</strong>
                                     </div>
                                     <div class="card-body">
-                                        <div class="row">
-                                            {% if ot_k.ot.shared_mass_relative is defined %}
-                                            <div class="col-4 text-center border-end">
-                                                <h2 class="text-success mb-0">{{ "%.1f"|format(ot_k.ot.shared_mass * 100) }}%</h2>
-                                                <p class="small text-muted mb-0">Shared Mass</p>
-                                            </div>
-                                            <div class="col-4 text-center border-end">
-                                                <h2 class="text-primary mb-0">{{ "%.2f"|format(ot_k.ot.shared_mass_relative) }}</h2>
-                                                <p class="small text-muted mb-0">Relative</p>
-                                                <p class="small mb-0"><em>0=random, 1=perfect</em></p>
-                                            </div>
-                                            <div class="col-4">
-                                                <ul class="list-unstyled small mb-0">
-                                                    <li><strong>Null:</strong> {{ "%.1f"|format(ot_k.ot.null_shared_mass_mean * 100) }}%</li>
-                                                    <li><strong>Excess:</strong> +{{ "%.1f"|format(ot_k.ot.shared_mass_excess * 100) }}%</li>
-                                                    <li><strong>Effect:</strong> {{ "%.1f"|format(ot_k.ot.shared_mass_effect) }}σ</li>
+                                        {% if ot_k.ot.shared_mass_pct_of_ceiling is defined %}
+                                        <div class="text-center mb-3">
+                                            <h2 class="text-primary mb-0">{{ "%.0f"|format(ot_k.ot.shared_mass_pct_of_ceiling * 100) }}%</h2>
+                                            <p class="text-muted mb-0">of paraphrase ceiling</p>
+                                            <p class="small text-muted"><em>best-case: identical meaning, different words</em></p>
+                                        </div>
+                                        <hr>
+                                        <div class="row small">
+                                            <div class="col-6">
+                                                <ul class="list-unstyled mb-0">
+                                                    <li><strong>Observed:</strong> {{ "%.1f"|format(ot_k.ot.shared_mass * 100) }}%</li>
+                                                    <li><strong>Paraphrase ceiling:</strong> {{ "%.1f"|format(ot_k.ot.paraphrase_upper_bound * 100) }}%</li>
+                                                    <li><strong>Word-salad floor:</strong> {{ "%.1f"|format(ot_k.ot.null_shared_mass_mean * 100) }}%</li>
                                                 </ul>
                                             </div>
-                                            {% else %}
-                                            <div class="col-6 text-center">
-                                                <h2 class="text-primary">{{ "%.1f"|format(ot_k.ot.shared_mass * 100) }}%</h2>
-                                                <p class="small text-muted mb-0">Shared Mass</p>
+                                            <div class="col-6">
+                                                <ul class="list-unstyled mb-0">
+                                                    <li><strong>vs word-salad:</strong> {{ "%.0f"|format(ot_k.ot.shared_mass_improvement_vs_null * 100) }}% of possible improvement</li>
+                                                    <li><strong>Effect size:</strong> {{ "%.1f"|format(ot_k.ot.shared_mass_effect) }} MADs</li>
+                                                </ul>
+                                            </div>
+                                        </div>
+                                        {% elif ot_k.ot.shared_mass_relative is defined %}
+                                        <div class="text-center mb-3">
+                                            <h2 class="text-primary mb-0">{{ "%.1f"|format(ot_k.ot.shared_mass * 100) }}%</h2>
+                                            <p class="text-muted mb-0">shared mass</p>
+                                        </div>
+                                        <hr>
+                                        <div class="row small">
+                                            <div class="col-6">
+                                                <ul class="list-unstyled mb-0">
+                                                    <li><strong>Word-salad floor:</strong> {{ "%.1f"|format(ot_k.ot.null_shared_mass_mean * 100) }}%</li>
+                                                    <li><strong>vs word-salad:</strong> +{{ "%.1f"|format(ot_k.ot.shared_mass_excess * 100) }}pp</li>
+                                                </ul>
                                             </div>
                                             <div class="col-6">
-                                                <p class="small text-muted mb-0"><em>Null baseline not computed for this K value.</em></p>
+                                                <ul class="list-unstyled mb-0">
+                                                    <li><strong>Effect size:</strong> {{ "%.1f"|format(ot_k.ot.shared_mass_effect) }} MADs</li>
+                                                </ul>
                                             </div>
-                                            {% endif %}
                                         </div>
-                                        {% if ot_k.ot.shared_mass_relative is defined %}
-                                        <a class="small text-muted" data-toggle="collapse" href="#sharedMassMethodNote-{{ loop.index }}-{{ k_val|replace('.', '-') }}" role="button" aria-expanded="false">
-                                            ▶ Calculation and interpretation
+                                        <p class="small text-muted mt-2 mb-0"><em>Paraphrase baseline not available -- showing raw metrics.</em></p>
+                                        {% else %}
+                                        <div class="text-center">
+                                            <h2 class="text-primary">{{ "%.1f"|format(ot_k.ot.shared_mass * 100) }}%</h2>
+                                            <p class="small text-muted mb-0">Shared Mass</p>
+                                        </div>
+                                        {% endif %}
+                                        <a class="small text-muted mt-2 d-block" data-toggle="collapse" href="#sharedMassMethodNote-{{ loop.index }}-{{ k_val|replace('.', '-') }}" role="button" aria-expanded="false">
+                                            ▶ How to interpret
                                         </a>
                                         <div class="collapse" id="sharedMassMethodNote-{{ loop.index }}-{{ k_val|replace('.', '-') }}">
                                             <div class="alert alert-light small mt-2 mb-0">
-                                                <p class="mb-2"><strong>Relative shared mass.</strong> This metric quantifies alignment quality relative to a null baseline of semantically unstructured text. The relative score is computed as:</p>
-                                                <p class="mb-2 text-center"><code>relative = (observed - null_mean) / (1.0 - null_mean)</code></p>
-                                                <p class="mb-2">where <em>observed</em> is the shared mass from the actual comparison, <em>null_mean</em> is the mean shared mass from N=100 null comparisons (using word-salad permutations), and 1.0 represents the theoretical maximum (perfect alignment). The metric thus represents the proportion of possible improvement over random that was achieved.</p>
-                                                <p class="mb-2"><strong>Null distribution.</strong> Null comparisons are generated by randomly permuting words within each theme's embedded text while preserving word count. This destroys semantic coherence while maintaining surface-level statistical properties. Both directions are tested (A vs B<sub>salad</sub> and A<sub>salad</sub> vs B) to ensure the null is symmetric.</p>
-                                                <p class="mb-0"><strong>Interpretation guidelines.</strong> The thresholds (0.3 = meaningful, 0.5 = good, 0.7 = strong) are heuristic guidelines rather than validated cutoffs. They provide rough orientation but should be interpreted in the context of the specific domain and research question. A relative score of 0.3 indicates the observed alignment captures approximately 30% of the maximum possible improvement over chance -- whether this constitutes "meaningful" structure depends on the application.</p>
+                                                {% if ot_k.ot.shared_mass_relative_paraphrase is defined %}
+                                                <p class="mb-2"><strong>% of paraphrase ceiling</strong> (headline) = <code>observed / ceiling</code>. Shows what fraction of the best-case alignment was achieved. 100% would mean alignment as good as comparing themes to their own paraphrases.</p>
+                                                <p class="mb-2"><strong>% of possible improvement</strong> (vs word-salad) = <code>(observed - floor) / (ceiling - floor)</code>. Shows progress from random baseline toward the ceiling -- how much better than chance, relative to the best case.</p>
+                                                <p class="mb-2"><strong>Paraphrase ceiling</strong> is computed by generating LLM paraphrases of each theme (same meaning, different words) and measuring their self-similarity.</p>
+                                                <p class="mb-0"><strong>Word-salad floor</strong> is computed by randomly shuffling words from each theme, destroying semantic meaning. This represents what you'd expect from random text with similar vocabulary.</p>
+                                                {% else %}
+                                                <p class="mb-2"><strong>Word-salad comparison</strong> tests whether observed alignment exceeds what you'd expect from random text. Word-salad is generated by shuffling words from themes, destroying semantic meaning.</p>
+                                                <p class="mb-0"><strong>Effect size</strong> shows how many MADs (median absolute deviations) above the word-salad baseline the observed value falls.</p>
+                                                {% endif %}
                                             </div>
                                         </div>
-                                        {% endif %}
                                     </div>
                                 </div>
                             </div>
@@ -611,106 +894,370 @@
                             <div class="col-md-6">
                                 <div class="card border-success">
                                     <div class="card-header bg-success text-white">
-                                        <strong>Average Cost{% if ot_k.ot.avg_cost_relative is defined %} (Relative to Null){% endif %}</strong>
+                                        <strong>Semantic Alignment</strong>
                                     </div>
                                     <div class="card-body">
-                                        <div class="row">
-                                            <div class="col-6 text-center">
-                                                {% if ot_k.ot.avg_cost_relative is defined %}
-                                                <h2 class="text-success">{{ "%.2f"|format(ot_k.ot.avg_cost_relative) }}</h2>
-                                                <p class="small text-muted mb-0">Relative Score</p>
-                                                <p class="small"><em>0 = random, 1 = perfect</em></p>
-                                                {% else %}
-                                                <h2 class="text-success">{{ "%.3f"|format(ot_k.ot.avg_cost) }}</h2>
-                                                <p class="small text-muted mb-0">Average Cost</p>
-                                                {% endif %}
+                                        {% if ot_k.ot.alignment_pct_of_ceiling is defined %}
+                                        <div class="text-center mb-3">
+                                            <h2 class="text-success mb-0">{{ "%.0f"|format(ot_k.ot.alignment_pct_of_ceiling * 100) }}%</h2>
+                                            <p class="text-muted mb-0">of paraphrase ceiling</p>
+                                            <p class="small text-muted"><em>quality of theme-to-theme matches</em></p>
+                                        </div>
+                                        <hr>
+                                        <div class="row small">
+                                            <div class="col-6">
+                                                <ul class="list-unstyled mb-0">
+                                                    <li><strong>Observed:</strong> {{ "%.2f"|format(ot_k.ot.alignment_observed) }}</li>
+                                                    <li><strong>Paraphrase ceiling:</strong> {{ "%.2f"|format(ot_k.ot.alignment_paraphrase_ceiling) }}</li>
+                                                    <li><strong>Word-salad floor:</strong> {{ "%.2f"|format(ot_k.ot.alignment_null_floor) }}</li>
+                                                </ul>
                                             </div>
                                             <div class="col-6">
-                                                <ul class="list-unstyled small">
-                                                    <li><strong>Observed:</strong> {{ "%.3f"|format(ot_k.ot.avg_cost) }}</li>
-                                                    {% if ot_k.ot.null_avg_cost_mean is defined %}
-                                                    <li><strong>Null mean:</strong> {{ "%.3f"|format(ot_k.ot.null_avg_cost_mean) }}</li>
-                                                    <li><strong>Improvement:</strong> {{ "%.3f"|format(ot_k.ot.avg_cost_improvement) }}</li>
-                                                    {% endif %}
+                                                <ul class="list-unstyled mb-0">
+                                                    <li><strong>vs word-salad:</strong> {{ "%.0f"|format(ot_k.ot.alignment_improvement_vs_null * 100) }}% of possible improvement</li>
                                                 </ul>
                                             </div>
                                         </div>
-                                        {% if ot_k.ot.avg_cost_relative is defined %}
-                                        <a class="small text-muted" data-toggle="collapse" href="#avgCostMethodNote-{{ loop.index }}-{{ k_val|replace('.', '-') }}" role="button" aria-expanded="false">
-                                            ▶ Calculation and interpretation
-                                        </a>
-                                        <div class="collapse" id="avgCostMethodNote-{{ loop.index }}-{{ k_val|replace('.', '-') }}">
-                                            <div class="alert alert-light small mt-2 mb-0">
-                                                <p class="mb-2"><strong>Relative average cost.</strong> This metric quantifies the quality of theme-to-theme alignments relative to a null baseline. The relative score is computed as:</p>
-                                                <p class="mb-2 text-center"><code>relative = (null_mean - observed) / null_mean</code></p>
-                                                <p class="mb-2">where <em>observed</em> is the mass-weighted average transport cost (1 - cosine similarity) from the actual comparison, and <em>null_mean</em> is the mean average cost from null comparisons. The metric represents the proportional reduction in transport cost compared to random alignment.</p>
-                                                <p class="mb-2"><strong>Relationship to shared mass.</strong> Average cost and shared mass capture complementary aspects of alignment quality. Shared mass measures <em>how much</em> of the thematic content could be matched; average cost measures <em>how well</em> matched themes align semantically. High shared mass with high average cost suggests forced alignments between dissimilar themes; low shared mass with low average cost suggests selective matching of only the best correspondences.</p>
-                                                <p class="mb-0"><strong>Interpretation.</strong> The score ranges from 0 (no improvement over random) to 1 (perfect alignment with zero cost). There are no validated cutoffs for this metric. A score of 0.22, for example, indicates transport costs were 22% lower than expected under the null hypothesis of random semantic structure. Whether this represents meaningful alignment depends on the domain, the granularity of themes, and the research question.</p>
+                                        {% elif ot_k.ot.avg_cost_relative is defined %}
+                                        {% set fallback_alignment = 1 - ot_k.ot.avg_cost %}
+                                        {% set fallback_floor = 1 - ot_k.ot.null_avg_cost_mean %}
+                                        <div class="text-center mb-3">
+                                            <h2 class="text-success mb-0">{{ "%.1f"|format(fallback_alignment * 100) }}%</h2>
+                                            <p class="text-muted mb-0">alignment (1 - cost)</p>
+                                        </div>
+                                        <hr>
+                                        <div class="row small">
+                                            <div class="col-12">
+                                                <ul class="list-unstyled mb-0">
+                                                    <li><strong>Word-salad floor:</strong> {{ "%.1f"|format(fallback_floor * 100) }}%</li>
+                                                    <li><strong>vs word-salad:</strong> +{{ "%.1f"|format((fallback_alignment - fallback_floor) * 100) }}pp better</li>
+                                                </ul>
                                             </div>
                                         </div>
+                                        <p class="small text-muted mt-2 mb-0"><em>Paraphrase baseline not available -- showing raw alignment vs word-salad floor.</em></p>
                                         {% else %}
-                                        <p class="small mt-2 mb-0 text-muted"><em>Null baseline comparison only computed for default K={{ "%.1f"|format(comp.stats.default_k) }}.</em></p>
+                                        <div class="text-center">
+                                            <h2 class="text-success">{{ "%.3f"|format(ot_k.ot.avg_cost) }}</h2>
+                                            <p class="small text-muted mb-0">Average Cost</p>
+                                        </div>
                                         {% endif %}
+                                        <a class="small text-muted mt-2 d-block" data-toggle="collapse" href="#alignmentMethodNote-{{ loop.index }}-{{ k_val|replace('.', '-') }}" role="button" aria-expanded="false">
+                                            ▶ How to interpret
+                                        </a>
+                                        <div class="collapse" id="alignmentMethodNote-{{ loop.index }}-{{ k_val|replace('.', '-') }}">
+                                            <div class="alert alert-light small mt-2 mb-0">
+                                                {% if ot_k.ot.alignment_pct_of_ceiling is defined %}
+                                                <p class="mb-2"><strong>Semantic alignment</strong> measures the quality of theme-to-theme matches (computed as 1 - transport cost). Higher alignment = better semantic similarity between matched themes.</p>
+                                                <p class="mb-2"><strong>% of paraphrase ceiling</strong> (headline) = <code>observed / ceiling</code>. Shows what fraction of the best-case alignment was achieved. 100% would mean matches as semantically close as paraphrases.</p>
+                                                <p class="mb-2"><strong>% of possible improvement</strong> (vs word-salad) = <code>(observed - floor) / (ceiling - floor)</code>. Shows progress from random baseline toward the ceiling.</p>
+                                                <p class="mb-0"><strong>Paraphrase ceiling</strong> = alignment when comparing themes to their own paraphrases. <strong>Word-salad floor</strong> = alignment when comparing to randomly shuffled words.</p>
+                                                {% else %}
+                                                <p class="mb-2"><strong>Semantic alignment</strong> measures how well matched themes relate to each other. Higher = better semantic similarity.</p>
+                                                {% endif %}
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
                         </div>
 
                         <div class="row mb-4">
-                            <div class="col-md-4">
-                                <div class="card">
-                                    <div class="card-header">Unmatched Mass</div>
-                                    <div class="card-body">
-                                        <h4 class="text-center text-warning">{{ "%.1f"|format(ot_k.ot.unmatched_mass * 100) }}%</h4>
-                                        <p class="small"><strong>Interpretation:</strong> Proportion of theme-mass that couldn't find a good match.</p>
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
+                            <div class="col-md-6">
                                 <div class="card">
                                     <div class="card-header">Splits from A</div>
                                     <div class="card-body">
                                         <p class="small text-muted mb-2">Themes in A flowing to multiple themes in B</p>
-                                        <ul class="list-unstyled small mb-0">
-                                            <li><strong>Mean:</strong> {{ "%.2f"|format(ot_k.split_join_stats.splits_from_a.mean) }}</li>
-                                            <li><strong>Median:</strong> {{ "%.1f"|format(ot_k.split_join_stats.splits_from_a.median) }}</li>
-                                            <li><strong>Mode:</strong> {{ ot_k.split_join_stats.splits_from_a.mode }}</li>
-                                            <li><strong>Max:</strong> {{ ot_k.split_join_stats.splits_from_a.max }}</li>
-                                            <li><strong>Themes with >1 target:</strong> {{ ot_k.split_join_stats.splits_from_a.n_multiple }}/{{ ot_k.split_join_stats.splits_from_a.total }} ({{ "%.0f"|format(ot_k.split_join_stats.splits_from_a.pct_multiple * 100) }}%)</li>
-                                        </ul>
-                                        {% if ot_k.split_join_stats.splits_from_a.counts %}
-                                        <hr class="my-2">
-                                        <p class="small text-muted mb-1"><strong>Distribution:</strong></p>
-                                        <div class="small">
-                                            {% for n, count in ot_k.split_join_stats.splits_from_a.counts.items() %}
-                                            <span class="badge badge-secondary mr-1">{{ n }}→{{ count }}</span>
-                                            {% endfor %}
+                                        <div class="row">
+                                            <div class="col-6">
+                                                <ul class="list-unstyled small mb-0">
+                                                    <li><strong>Mean:</strong> {{ "%.2f"|format(ot_k.split_join_stats.splits_from_a.mean) }}</li>
+                                                    <li><strong>Median:</strong> {{ "%.1f"|format(ot_k.split_join_stats.splits_from_a.median) }}</li>
+                                                    <li><strong>Mode:</strong> {{ ot_k.split_join_stats.splits_from_a.mode }}</li>
+                                                    <li><strong>Max:</strong> {{ ot_k.split_join_stats.splits_from_a.max }}</li>
+                                                    <li><strong>Themes with >1 target:</strong> {{ ot_k.split_join_stats.splits_from_a.n_multiple }}/{{ ot_k.split_join_stats.splits_from_a.total }} ({{ "%.0f"|format(ot_k.split_join_stats.splits_from_a.pct_multiple * 100) }}%)</li>
+                                                </ul>
+                                            </div>
+                                            {% if ot_k.split_join_stats.splits_from_a.counts %}
+                                            <div class="col-6">
+                                                <p class="small text-muted mb-1"><strong>Distribution</strong> <span class="text-muted">(# targets → # themes)</span></p>
+                                                <div class="small" style="font-family: monospace;">
+                                                    {% set max_count = ot_k.split_join_stats.splits_from_a.counts.values()|max %}
+                                                    {% for n, count in ot_k.split_join_stats.splits_from_a.counts.items() %}
+                                                    <div class="d-flex align-items-center mb-1">
+                                                        <span style="width: 20px; text-align: right;">{{ n }}</span>
+                                                        <span class="mx-1">│</span>
+                                                        <span style="background: #6c757d; height: 12px; width: {{ (count / max_count * 60)|int }}px; display: inline-block; border-radius: 2px;"></span>
+                                                        <span class="text-muted ml-1">({{ count }})</span>
+                                                    </div>
+                                                    {% endfor %}
+                                                </div>
+                                            </div>
+                                            {% endif %}
                                         </div>
-                                        {% endif %}
                                     </div>
                                 </div>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-6">
                                 <div class="card">
                                     <div class="card-header">Joins to B</div>
                                     <div class="card-body">
                                         <p class="small text-muted mb-2">Themes in B receiving from multiple themes in A</p>
-                                        <ul class="list-unstyled small mb-0">
-                                            <li><strong>Mean:</strong> {{ "%.2f"|format(ot_k.split_join_stats.joins_to_b.mean) }}</li>
-                                            <li><strong>Median:</strong> {{ "%.1f"|format(ot_k.split_join_stats.joins_to_b.median) }}</li>
-                                            <li><strong>Mode:</strong> {{ ot_k.split_join_stats.joins_to_b.mode }}</li>
-                                            <li><strong>Max:</strong> {{ ot_k.split_join_stats.joins_to_b.max }}</li>
-                                            <li><strong>Themes with >1 source:</strong> {{ ot_k.split_join_stats.joins_to_b.n_multiple }}/{{ ot_k.split_join_stats.joins_to_b.total }} ({{ "%.0f"|format(ot_k.split_join_stats.joins_to_b.pct_multiple * 100) }}%)</li>
-                                        </ul>
-                                        {% if ot_k.split_join_stats.joins_to_b.counts %}
-                                        <hr class="my-2">
-                                        <p class="small text-muted mb-1"><strong>Distribution:</strong></p>
-                                        <div class="small">
-                                            {% for n, count in ot_k.split_join_stats.joins_to_b.counts.items() %}
-                                            <span class="badge badge-secondary mr-1">{{ n }}→{{ count }}</span>
-                                            {% endfor %}
+                                        <div class="row">
+                                            <div class="col-6">
+                                                <ul class="list-unstyled small mb-0">
+                                                    <li><strong>Mean:</strong> {{ "%.2f"|format(ot_k.split_join_stats.joins_to_b.mean) }}</li>
+                                                    <li><strong>Median:</strong> {{ "%.1f"|format(ot_k.split_join_stats.joins_to_b.median) }}</li>
+                                                    <li><strong>Mode:</strong> {{ ot_k.split_join_stats.joins_to_b.mode }}</li>
+                                                    <li><strong>Max:</strong> {{ ot_k.split_join_stats.joins_to_b.max }}</li>
+                                                    <li><strong>Themes with >1 source:</strong> {{ ot_k.split_join_stats.joins_to_b.n_multiple }}/{{ ot_k.split_join_stats.joins_to_b.total }} ({{ "%.0f"|format(ot_k.split_join_stats.joins_to_b.pct_multiple * 100) }}%)</li>
+                                                </ul>
+                                            </div>
+                                            {% if ot_k.split_join_stats.joins_to_b.counts %}
+                                            <div class="col-6">
+                                                <p class="small text-muted mb-1"><strong>Distribution</strong> <span class="text-muted">(# sources → # themes)</span></p>
+                                                <div class="small" style="font-family: monospace;">
+                                                    {% set max_count = ot_k.split_join_stats.joins_to_b.counts.values()|max %}
+                                                    {% for n, count in ot_k.split_join_stats.joins_to_b.counts.items() %}
+                                                    <div class="d-flex align-items-center mb-1">
+                                                        <span style="width: 20px; text-align: right;">{{ n }}</span>
+                                                        <span class="mx-1">│</span>
+                                                        <span style="background: #6c757d; height: 12px; width: {{ (count / max_count * 60)|int }}px; display: inline-block; border-radius: 2px;"></span>
+                                                        <span class="text-muted ml-1">({{ count }})</span>
+                                                    </div>
+                                                    {% endfor %}
+                                                </div>
+                                            </div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Baseline Comparison for K={{ "%.2f"|format(k_val) }} -->
+                        <div class="card mb-4">
+                            <div class="card-header">
+                                <strong>Baseline Comparison (K={{ "%.2f"|format(k_val) }})</strong>
+                            </div>
+                            <div class="card-body">
+                                <div class="alert alert-light border mb-4">
+                                    <p class="mb-0"><strong>How we calibrate alignment:</strong> To interpret the observed alignment, we compare against two reference points. The <em>floor</em> is a null baseline -- random "word-salad" sentences constructed from words in the themes, representing what we'd see by chance. The <em>ceiling</em> is a best-case baseline -- LLM-generated paraphrases that retain the original meaning but use different wording, representing the maximum similarity we'd expect between genuinely equivalent themes.</p>
+                                </div>
+                                <!-- Summary cards for shared mass and alignment -->
+                                {% if comp.stats.paraphrase_baseline and ot_k.ot.shared_mass_pct_of_ceiling is defined %}
+                                <div class="row mb-4">
+                                    <div class="col-md-6">
+                                        <div class="alert alert-success mb-0 h-100">
+                                            <h6 class="text-uppercase text-muted mb-1" style="font-size: 0.7rem;">Shared Mass</h6>
+                                            <h5 class="mb-2">
+                                                <strong>{{ "%.0f"|format(ot_k.ot.shared_mass_pct_of_ceiling * 100) }}%</strong> of paraphrase ceiling
+                                            </h5>
+                                            <p class="small mb-2">The observed shared mass ({{ "%.1f"|format(ot_k.ot.shared_mass * 100) }}%) is {{ "%.0f"|format(ot_k.ot.shared_mass_pct_of_ceiling * 100) }}% of the paraphrase ceiling ({{ "%.1f"|format(ot_k.ot.paraphrase_upper_bound * 100) }}%).</p>
+                                            <p class="small mb-0">vs word-salad ({{ "%.1f"|format(ot_k.ot.null_shared_mass_mean * 100) }}%): <strong>{{ "%.0f"|format(ot_k.ot.shared_mass_improvement_vs_null * 100) }}%</strong> of possible improvement over word-salad.</p>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="alert alert-primary mb-0 h-100">
+                                            <h6 class="text-uppercase text-muted mb-1" style="font-size: 0.7rem;">Alignment Quality</h6>
+                                            {% set alignment_obs = ot_k.ot.alignment_observed if ot_k.ot.alignment_observed is defined else (1 - ot_k.ot.avg_cost) %}
+                                            {% set alignment_ceiling = ot_k.ot.alignment_paraphrase_ceiling if ot_k.ot.alignment_paraphrase_ceiling is defined else none %}
+                                            {% set alignment_floor = ot_k.ot.alignment_null_floor if ot_k.ot.alignment_null_floor is defined else (1 - ot_k.ot.null_avg_cost_mean) %}
+                                            {% if ot_k.ot.alignment_pct_of_ceiling is defined %}
+                                            <h5 class="mb-2">
+                                                <strong>{{ "%.0f"|format(ot_k.ot.alignment_pct_of_ceiling * 100) }}%</strong> of paraphrase ceiling
+                                            </h5>
+                                            <p class="small mb-2">The observed alignment ({{ "%.1f"|format(alignment_obs * 100) }}%) is {{ "%.0f"|format(ot_k.ot.alignment_pct_of_ceiling * 100) }}% of the paraphrase ceiling ({{ "%.1f"|format(alignment_ceiling * 100) }}%).</p>
+                                            {% if ot_k.ot.alignment_improvement_vs_null is defined %}
+                                            <p class="small mb-0">vs word-salad ({{ "%.1f"|format(alignment_floor * 100) }}%): <strong>{{ "%.0f"|format(ot_k.ot.alignment_improvement_vs_null * 100) }}%</strong> of possible improvement over word-salad.</p>
+                                            {% endif %}
+                                            {% else %}
+                                            <h5 class="mb-2">
+                                                <strong>{{ "%.1f"|format(alignment_obs * 100) }}%</strong> observed
+                                            </h5>
+                                            <p class="small mb-0">Alignment data not available for this K value.</p>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                                {% endif %}
+
+                                <div class="row">
+                                    <div class="col-md-6">
+                                        <h6>Raw Values (K={{ "%.2f"|format(k_val) }})</h6>
+                                        <table class="table table-sm table-bordered">
+                                            <thead>
+                                                <tr>
+                                                    <th class="bg-light">Baseline</th>
+                                                    <th class="text-right text-white" style="background-color: #28a745;">Shared Mass</th>
+                                                    <th class="text-right text-white" style="background-color: #007bff;">Alignment</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                {% if comp.stats.paraphrase_baseline %}
+                                                <tr>
+                                                    <td class="bg-light"><strong>Paraphrase ceiling</strong> <small class="text-muted">(best realistic)</small></td>
+                                                    <td class="text-right" style="background-color: rgba(40, 167, 69, 0.1);">{{ "%.1f"|format(ot_k.ot.paraphrase_upper_bound * 100) }}%</td>
+                                                    <td class="text-right" style="background-color: rgba(0, 123, 255, 0.1);">{% if ot_k.ot.alignment_paraphrase_ceiling is defined %}{{ "%.2f"|format(ot_k.ot.alignment_paraphrase_ceiling) }}{% else %}-{% endif %}</td>
+                                                </tr>
+                                                {% endif %}
+                                                <tr>
+                                                    <td class="bg-light"><strong>Observed</strong> <small class="text-muted">(A ↔ B)</small></td>
+                                                    <td class="text-right" style="background-color: rgba(40, 167, 69, 0.2);"><strong>{{ "%.1f"|format(ot_k.ot.shared_mass * 100) }}%</strong></td>
+                                                    <td class="text-right" style="background-color: rgba(0, 123, 255, 0.2);"><strong>{% if ot_k.ot.alignment_observed is defined %}{{ "%.2f"|format(ot_k.ot.alignment_observed) }}{% else %}{{ "%.2f"|format(1 - ot_k.ot.avg_cost) }}{% endif %}</strong></td>
+                                                </tr>
+                                                <tr>
+                                                    <td class="bg-light"><strong>Word-salad floor</strong> <small class="text-muted">(random)</small></td>
+                                                    <td class="text-right" style="background-color: rgba(40, 167, 69, 0.1);">{{ "%.1f"|format(ot_k.ot.null_shared_mass_mean * 100) }}%</td>
+                                                    <td class="text-right" style="background-color: rgba(0, 123, 255, 0.1);">{% if ot_k.ot.alignment_null_floor is defined %}{{ "%.2f"|format(ot_k.ot.alignment_null_floor) }}{% else %}{{ "%.2f"|format(1 - ot_k.ot.null_avg_cost_mean) }}{% endif %}</td>
+                                                </tr>
+                                                {% if comp.stats.paraphrase_baseline %}
+                                                <tr>
+                                                    <td class="bg-light"><strong>% of ceiling</strong> <small class="text-muted">(observed/ceiling)</small></td>
+                                                    <td class="text-right" style="background-color: rgba(40, 167, 69, 0.25);">
+                                                        {% if ot_k.ot.shared_mass_pct_of_ceiling is defined %}
+                                                        <strong>{{ "%.0f"|format(ot_k.ot.shared_mass_pct_of_ceiling * 100) }}%</strong>
+                                                        {% else %}-{% endif %}
+                                                    </td>
+                                                    <td class="text-right" style="background-color: rgba(0, 123, 255, 0.25);">
+                                                        {% if ot_k.ot.alignment_pct_of_ceiling is defined %}
+                                                        <strong>{{ "%.0f"|format(ot_k.ot.alignment_pct_of_ceiling * 100) }}%</strong>
+                                                        {% else %}-{% endif %}
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td class="bg-light"><strong>% of possible improvement</strong> <small class="text-muted">(from word-salad floor)</small></td>
+                                                    <td class="text-right" style="background-color: rgba(40, 167, 69, 0.15);">
+                                                        {% if ot_k.ot.shared_mass_improvement_vs_null is defined %}
+                                                        {{ "%.0f"|format(ot_k.ot.shared_mass_improvement_vs_null * 100) }}%
+                                                        {% else %}-{% endif %}
+                                                    </td>
+                                                    <td class="text-right" style="background-color: rgba(0, 123, 255, 0.15);">
+                                                        {% if ot_k.ot.alignment_improvement_vs_null is defined %}
+                                                        {{ "%.0f"|format(ot_k.ot.alignment_improvement_vs_null * 100) }}%
+                                                        {% else %}-{% endif %}
+                                                    </td>
+                                                </tr>
+                                                {% endif %}
+                                            </tbody>
+                                        </table>
+                                        <p class="small text-muted"><span class="badge badge-success">Shared Mass</span> How much thematic content could be matched between the two analyses. Higher = more overlap.</p>
+                                        <p class="small text-muted"><span class="badge badge-primary">Alignment</span> Quality of theme-to-theme matches (1 - transport cost). Higher = better semantic similarity between matched themes.</p>
+                                        <p class="small text-muted"><strong>Paraphrase ceiling:</strong> The best realistic case -- comparing themes to their own LLM paraphrases (same meaning, different words).</p>
+                                        <p class="small text-muted"><strong>Word-salad floor:</strong> Random baseline -- comparing to shuffled words with no semantic meaning.</p>
+                                        {% if comp.stats.word_salad_samples %}
+                                        <div class="mt-2">
+                                            <a class="small text-muted" data-toggle="collapse" href="#wordSaladSamples-{{ loop.index }}-{{ k_val|replace('.', '-') }}" role="button" aria-expanded="false" aria-controls="wordSaladSamples-{{ loop.index }}-{{ k_val|replace('.', '-') }}">
+                                                ▶ Show all {{ comp.stats.word_salad_samples|length }} word salad samples used
+                                            </a>
+                                            <div class="collapse" id="wordSaladSamples-{{ loop.index }}-{{ k_val|replace('.', '-') }}">
+                                                <div class="card card-body mt-2 bg-light" style="max-height: 400px; overflow-y: auto;">
+                                                    <p class="small text-muted mb-2">Each sample contains {{ comp.stats.word_salad_samples[0]|length }} scrambled "themes" (matching B's theme count). Words from B's themes are randomly shuffled while preserving length.</p>
+                                                    {% for sample_idx, sample in enumerate(comp.stats.word_salad_samples) %}
+                                                    <div class="mb-3 pb-2 {% if not loop.last %}border-bottom{% endif %}">
+                                                        <strong class="small text-muted">Sample {{ sample_idx + 1 }}:</strong>
+                                                        <div class="mt-1">
+                                                            {% for text in sample %}
+                                                            <div class="text-monospace mb-1" style="font-size: 0.7rem;"><span class="badge badge-secondary mr-1">{{ loop.index }}</span> {{ text }}</div>
+                                                            {% endfor %}
+                                                        </div>
+                                                    </div>
+                                                    {% endfor %}
+                                                </div>
+                                            </div>
                                         </div>
                                         {% endif %}
+
+                                        {% if comp.stats.paraphrase_baseline %}
+                                        <div class="mt-3">
+                                            <h6>Paraphrase Upper Bound</h6>
+                                            <p class="small text-muted">LLM-generated paraphrases of each theme establish a realistic upper bound for alignment. Paraphrases capture the same meaning in different words -- this represents the best achievable similarity between semantically equivalent analyses.</p>
+                                            <ul class="list-unstyled small">
+                                                <li><strong>Mean self-similarity:</strong> {{ "%.3f"|format(comp.stats.paraphrase_baseline.paraphrase_similarity_mean) }} <small class="text-muted">(paraphrase ceiling)</small></li>
+                                                <li><strong>Std dev:</strong> {{ "%.3f"|format(comp.stats.paraphrase_baseline.paraphrase_similarity_std) }}</li>
+                                                <li><strong>Model:</strong> {{ comp.stats.paraphrase_baseline.metadata.model }}</li>
+                                                <li><strong>Paraphrases per theme:</strong> {{ comp.stats.paraphrase_baseline.metadata.n_paraphrases }}</li>
+                                            </ul>
+                                            <a class="small text-muted" data-toggle="collapse" href="#paraphraseSamples-{{ loop.index }}-{{ k_val|replace('.', '-') }}" role="button" aria-expanded="false" aria-controls="paraphraseSamples-{{ loop.index }}-{{ k_val|replace('.', '-') }}">
+                                                ▶ Show sample paraphrases
+                                            </a>
+                                            <div class="collapse" id="paraphraseSamples-{{ loop.index }}-{{ k_val|replace('.', '-') }}">
+                                                <div class="card card-body mt-2 bg-light" style="max-height: 500px; overflow-y: auto;">
+                                                    <p class="small text-muted mb-2">Sample themes with their LLM-generated paraphrases. Self-similarity shown for each theme (similarity between original and paraphrases).</p>
+                                                    <h6 class="small text-muted">{{ comp.a.name }}:</h6>
+                                                    {% for sample in comp.stats.paraphrase_baseline.samples_a[:3] %}
+                                                    <div class="mb-3 pb-2 {% if not loop.last %}border-bottom{% endif %}">
+                                                        <strong class="small">Original:</strong>
+                                                        <div class="text-monospace mb-1" style="font-size: 0.75rem; color: #333;">{{ sample.original }}</div>
+                                                        <strong class="small text-muted">Paraphrases (self-sim: {{ "%.3f"|format(sample.similarity) }}):</strong>
+                                                        <div class="mt-1">
+                                                            {% for para in sample.paraphrases %}
+                                                            <div class="text-monospace mb-1" style="font-size: 0.7rem; color: #666;"><span class="badge badge-info mr-1">{{ loop.index }}</span> {{ para }}</div>
+                                                            {% endfor %}
+                                                        </div>
+                                                    </div>
+                                                    {% endfor %}
+                                                    <h6 class="small text-muted mt-3">{{ comp.b.name }}:</h6>
+                                                    {% for sample in comp.stats.paraphrase_baseline.samples_b[:3] %}
+                                                    <div class="mb-3 pb-2 {% if not loop.last %}border-bottom{% endif %}">
+                                                        <strong class="small">Original:</strong>
+                                                        <div class="text-monospace mb-1" style="font-size: 0.75rem; color: #333;">{{ sample.original }}</div>
+                                                        <strong class="small text-muted">Paraphrases (self-sim: {{ "%.3f"|format(sample.similarity) }}):</strong>
+                                                        <div class="mt-1">
+                                                            {% for para in sample.paraphrases %}
+                                                            <div class="text-monospace mb-1" style="font-size: 0.7rem; color: #666;"><span class="badge badge-info mr-1">{{ loop.index }}</span> {{ para }}</div>
+                                                            {% endfor %}
+                                                        </div>
+                                                    </div>
+                                                    {% endfor %}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {% endif %}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <h6>Effect Sizes</h6>
+                                        <p class="small text-muted">How far is the observed value from the baselines? Measured in MADs (median absolute deviations).</p>
+                                        <table class="table table-sm table-bordered small">
+                                            <thead class="thead-light">
+                                                <tr>
+                                                    <th>Metric</th>
+                                                    <th class="text-right">MADs above floor</th>
+                                                    <th class="text-right">MADs below ceiling</th>
+                                                </tr>
+                                            </thead>
+                                            <tbody>
+                                                <tr>
+                                                    <td>Shared Mass</td>
+                                                    <td class="text-right text-success">+{{ "%.1f"|format(ot_k.ot.shared_mass_effect) }}</td>
+                                                    <td class="text-right text-danger">
+                                                        {% if ot_k.ot.paraphrase_upper_bound is defined and comp.stats.paraphrase_baseline and comp.stats.paraphrase_baseline.paraphrase_similarity_std > 0 %}
+                                                        -{{ "%.1f"|format((ot_k.ot.paraphrase_upper_bound - ot_k.ot.shared_mass) / comp.stats.paraphrase_baseline.paraphrase_similarity_std) }}
+                                                        {% else %}-{% endif %}
+                                                    </td>
+                                                </tr>
+                                                <tr>
+                                                    <td>Alignment</td>
+                                                    <td class="text-right text-success">
+                                                        {% if ot_k.ot.avg_cost_effect is defined %}+{{ "%.1f"|format(ot_k.ot.avg_cost_effect) }}{% else %}-{% endif %}
+                                                    </td>
+                                                    <td class="text-right text-danger">
+                                                        {% if ot_k.ot.paraphrase_cost_lower_bound is defined and comp.stats.paraphrase_baseline and comp.stats.paraphrase_baseline.paraphrase_similarity_std > 0 %}
+                                                        {% set observed_alignment = 1 - ot_k.ot.avg_cost %}
+                                                        {% set ceiling_alignment = 1 - ot_k.ot.paraphrase_cost_lower_bound %}
+                                                        -{{ "%.1f"|format((ceiling_alignment - observed_alignment) / comp.stats.paraphrase_baseline.paraphrase_similarity_std) }}
+                                                        {% else %}-{% endif %}
+                                                    </td>
+                                                </tr>
+                                            </tbody>
+                                        </table>
+                                        <p class="small text-muted"><strong>MADs above floor:</strong> How many MADs above word-salad baseline (higher = more distinct from random).</p>
+                                        <p class="small text-muted"><strong>MADs below ceiling:</strong> How many MADs below paraphrase ceiling (lower = closer to ideal).</p>
+                                        <p class="small text-muted mt-2"><em>Note: MAD (median absolute deviation) is a robust measure of spread, less sensitive to outliers than standard deviation. Do not compare effect sizes across analyses with different embedding lengths.</em></p>
+                                        <h6 class="mt-3">Embedding Metadata</h6>
+                                        <ul class="list-unstyled small text-muted">
+                                            <li>Mean embedding length A: {{ "%.1f"|format(comp.stats.mean_embedding_words_a) }} words</li>
+                                            <li>Mean embedding length B: {{ "%.1f"|format(comp.stats.mean_embedding_words_b) }} words</li>
+                                        </ul>
                                     </div>
                                 </div>
                             </div>
@@ -748,7 +1295,7 @@
                                     <div class="col-md-12">
                                         <h6>Transport Plan Heatmap</h6>
                                         <p class="small text-muted">Each cell shows percentage of transported mass flowing from A to B theme. Values sum to 100%.</p>
-                                        <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ ot_k.transport_heatmap.base64 }}" alt="Transport heatmap">
+                                        <img class="img-fluid img-thumbnail lightbox-trigger" src="data:image/png;base64,{{ ot_k.transport_heatmap.base64 }}" alt="Transport heatmap">
                                     </div>
                                 </div>
                             </div>
@@ -807,75 +1354,6 @@
                     {% endfor %}
                 </div>
 
-                <!-- Null baseline and embedding metadata (shared across K values) -->
-                <div class="card mb-4">
-                    <div class="card-header">
-                        <strong>Null Baseline Comparison</strong>
-                    </div>
-                    <div class="card-body">
-                        <div class="row">
-                            <div class="col-md-6">
-                                <h6>Shared Mass Comparison (Default K={{ "%.1f"|format(comp.stats.default_k) }})</h6>
-                                <table class="table table-sm table-bordered">
-                                    <tbody>
-                                        <tr>
-                                            <td><strong>A ↔ B (observed)</strong></td>
-                                            <td class="text-right"><span class="badge bg-success">{{ "%.1f"|format(comp.stats.ot.shared_mass * 100) }}%</span></td>
-                                        </tr>
-                                        <tr>
-                                            <td><strong>A ↔ B<sub>salad</sub> (null mean)</strong></td>
-                                            <td class="text-right"><span class="badge bg-secondary">{{ "%.1f"|format(comp.stats.ot.null_shared_mass_mean * 100) }}%</span></td>
-                                        </tr>
-                                        <tr class="table-light">
-                                            <td><strong>Relative improvement</strong></td>
-                                            <td class="text-right"><span class="badge bg-primary">{{ "%.2f"|format(comp.stats.ot.shared_mass_relative) }}</span> <small class="text-muted">(0=random, 1=perfect)</small></td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                                <p class="small text-muted"><strong>Symmetric null:</strong> Both A and B themes are independently scrambled into "word salad" strings. Null combines A vs B<sub>salad</sub> and A<sub>salad</sub> vs B (N=50 each direction, 100 total). This tests whether <em>both</em> sets have real semantic content.</p>
-                                {% if comp.stats.word_salad_samples %}
-                                <div class="mt-2">
-                                    <a class="small text-muted" data-toggle="collapse" href="#wordSaladSamples-{{ loop.index }}" role="button" aria-expanded="false" aria-controls="wordSaladSamples-{{ loop.index }}">
-                                        ▶ Show all {{ comp.stats.word_salad_samples|length }} word salad samples used
-                                    </a>
-                                    <div class="collapse" id="wordSaladSamples-{{ loop.index }}">
-                                        <div class="card card-body mt-2 bg-light" style="max-height: 400px; overflow-y: auto;">
-                                            <p class="small text-muted mb-2">Each sample contains {{ comp.stats.word_salad_samples[0]|length }} scrambled "themes" (matching B's theme count). Words from B's themes are randomly shuffled while preserving length.</p>
-                                            {% for sample_idx, sample in enumerate(comp.stats.word_salad_samples) %}
-                                            <div class="mb-3 pb-2 {% if not loop.last %}border-bottom{% endif %}">
-                                                <strong class="small text-muted">Sample {{ sample_idx + 1 }}:</strong>
-                                                <div class="mt-1">
-                                                    {% for text in sample %}
-                                                    <div class="text-monospace mb-1" style="font-size: 0.7rem;"><span class="badge badge-secondary mr-1">{{ loop.index }}</span> {{ text }}</div>
-                                                    {% endfor %}
-                                                </div>
-                                            </div>
-                                            {% endfor %}
-                                        </div>
-                                    </div>
-                                </div>
-                                {% endif %}
-                            </div>
-                            <div class="col-md-6">
-                                <h6>Secondary Metrics (Effect Sizes)</h6>
-                                <p class="small text-muted">Effect sizes use MAD (median absolute deviation) for robustness. <strong>Do not compare across analyses with different embedding lengths.</strong></p>
-                                <ul class="list-unstyled small">
-                                    <li>Shared mass effect: {{ "%.2f"|format(comp.stats.ot.shared_mass_effect) }} MADs above null</li>
-                                    {% if comp.stats.ot.avg_cost_effect is defined %}
-                                    <li>Avg cost effect: {{ "%.2f"|format(comp.stats.ot.avg_cost_effect) }} MADs better than null</li>
-                                    {% endif %}
-                                </ul>
-                                <h6 class="mt-3">Embedding Metadata</h6>
-                                <ul class="list-unstyled small text-muted">
-                                    <li>Mean embedding length A: {{ "%.1f"|format(comp.stats.mean_embedding_words_a) }} words</li>
-                                    <li>Mean embedding length B: {{ "%.1f"|format(comp.stats.mean_embedding_words_b) }} words</li>
-                                </ul>
-                                <p class="small mt-2"><em>Longer embeddings → more stable null → inflated effect sizes. Use relative metrics for cross-analysis comparisons.</em></p>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
                 <hr>
 
                 <h4 id="best-matches-{{ loop.index }}">Best Matches (many:many)</h4>
@@ -894,9 +1372,8 @@
                                             <th width=30%>Theme in {{ comp.a.name }}</th>
                                             <th width=30%>Best Match in {{ comp.b.name }}</th>
                                             <th title="Embedding similarity">Sim</th>
-                                            <th title="Mass transferred to this match (OT)">Mass</th>
-                                            <th title="% of theme's total mass going to this match">%</th>
-                                            <th title="Total mass transferred from this theme (coverage)">Coverage</th>
+                                            <th title="% of theme's total mass going to this match">% Mass Transferred</th>
+                                            <th title="Total mass transferred from this theme">Coverage</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -913,7 +1390,6 @@
                                                 {{ theme_b.embedded_string }}
                                             </td>
                                             <td class="small">{{ "%.2f"|format(match.similarity) }}</td>
-                                            <td class="small">{{ "%.3f"|format(match.mass_transferred) }}</td>
                                             <td class="small">{{ "%.0f"|format(match.mass_pct) }}%</td>
                                             <td class="small">{{ "%.1f"|format(match.mass_total * 100) }}%</td>
                                         </tr>
@@ -939,9 +1415,8 @@
                                             <th width=30%>Theme in {{ comp.b.name }}</th>
                                             <th width=30%>Best Match in {{ comp.a.name }}</th>
                                             <th title="Embedding similarity">Sim</th>
-                                            <th title="Mass transferred to this match (OT)">Mass</th>
-                                            <th title="% of theme's total received mass from this match">%</th>
-                                            <th title="Total mass received by this theme (coverage)">Coverage</th>
+                                            <th title="% of theme's total received mass from this match">% Mass Transferred</th>
+                                            <th title="Total mass received by this theme">Coverage</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -958,7 +1433,6 @@
                                                 {{ theme_a.embedded_string }}
                                             </td>
                                             <td class="small">{{ "%.2f"|format(match.similarity) }}</td>
-                                            <td class="small">{{ "%.3f"|format(match.mass_transferred) }}</td>
                                             <td class="small">{{ "%.0f"|format(match.mass_pct) }}%</td>
                                             <td class="small">{{ "%.1f"|format(match.mass_total * 100) }}%</td>
                                         </tr>
@@ -988,7 +1462,7 @@
                             <div class="card-body">
                                 <p class="small text-muted">Exponential decay on angular distance. Cognitively realistic similarity function.</p>
                                 <p class="small"><strong>Within-set baseline:</strong> Mean = {{ "%.3f"|format(comp.stats.within_set_stats.mean) }}, SD = {{ "%.3f"|format(comp.stats.within_set_stats.std) }}</p>
-                                <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comp.plots.heatmaps_shepard.base64 }}" alt="Shepard similarity heatmap">
+                                <img class="img-fluid img-thumbnail lightbox-trigger" src="data:image/png;base64,{{ comp.plots.heatmaps_shepard.base64 }}" alt="Shepard similarity heatmap">
                             </div>
                         </div>
                     </div>
@@ -1001,7 +1475,7 @@
                             </div>
                             <div class="card-body">
                                 <p class="small text-muted">Cross-set similarity relative to within-set distribution. 0.80 = more similar than 80% of within-set pairs.</p>
-                                <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comp.plots.heatmaps_percentile.base64 }}" alt="Percentile-normalized heatmap">
+                                <img class="img-fluid img-thumbnail lightbox-trigger" src="data:image/png;base64,{{ comp.plots.heatmaps_percentile.base64 }}" alt="Percentile-normalized heatmap">
                             </div>
                         </div>
                     </div>
@@ -1014,7 +1488,7 @@
                             </div>
                             <div class="card-body">
                                 <p class="small text-muted">Standard deviations above/below typical within-set similarity. Useful for identifying outliers.</p>
-                                <img class="img-fluid img-thumbnail" src="data:image/png;base64,{{ comp.plots.heatmaps_z_score.base64 }}" alt="Z-score normalized heatmap">
+                                <img class="img-fluid img-thumbnail lightbox-trigger" src="data:image/png;base64,{{ comp.plots.heatmaps_z_score.base64 }}" alt="Z-score normalized heatmap">
                             </div>
                         </div>
                     </div>
@@ -1058,5 +1532,45 @@
             <p class="mb-0">Generated by <strong>soak</strong> v{{ soak_version | default('unknown') }}</p>
         </footer>
     </div>
+
+    <!-- Lightbox overlay for enlarged images -->
+    <div class="lightbox-overlay" id="lightbox">
+        <span class="lightbox-close">&times;</span>
+        <img src="" alt="Enlarged view" id="lightbox-img">
+    </div>
+
+    <script>
+    // Lightbox functionality
+    (function() {
+        const lightbox = document.getElementById('lightbox');
+        const lightboxImg = document.getElementById('lightbox-img');
+        const closeBtn = lightbox.querySelector('.lightbox-close');
+
+        // Open lightbox when clicking on trigger images
+        document.querySelectorAll('.lightbox-trigger').forEach(function(img) {
+            img.addEventListener('click', function() {
+                lightboxImg.src = this.src;
+                lightbox.classList.add('active');
+                document.body.style.overflow = 'hidden';
+            });
+        });
+
+        // Close lightbox when clicking overlay or close button
+        lightbox.addEventListener('click', function(e) {
+            if (e.target === lightbox || e.target === closeBtn) {
+                lightbox.classList.remove('active');
+                document.body.style.overflow = '';
+            }
+        });
+
+        // Close on Escape key
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && lightbox.classList.contains('active')) {
+                lightbox.classList.remove('active');
+                document.body.style.overflow = '';
+            }
+        });
+    })();
+    </script>
 </body>
 </html>
