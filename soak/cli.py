@@ -9,9 +9,17 @@ import pdb
 import shutil
 import sys
 import traceback
+import warnings
 from pathlib import Path
 
 import typer
+
+# suppress litellm's unawaited coroutine warning (benign, occurs on event loop shutdown)
+warnings.filterwarnings(
+    "ignore",
+    message="coroutine 'Logging.async_success_handler' was never awaited",
+    category=RuntimeWarning,
+)
 
 app = typer.Typer(name="soak")
 
@@ -844,6 +852,20 @@ def _print_comparison_stats(
     default_k = result.get("default_k", 0.25)
     elbow_k = result.get("elbow_k")
 
+    # show baseline reference values
+    paraphrase_baseline = result.get("paraphrase_baseline")
+    if paraphrase_baseline:
+        ceiling_sim = paraphrase_baseline.get("paraphrase_similarity_mean", 0)
+        ceiling_align = 1 - paraphrase_baseline.get("paraphrase_cost_mean", 0)
+        lines.append(f"  Baselines:")
+        lines.append(f"    Paraphrase ceiling:   {ceiling_sim:.1%} shared mass, {ceiling_align:.1%} alignment")
+        # get word-salad floor from default K's OT data
+        if default_k in ot_by_k:
+            default_ot = ot_by_k[default_k]["ot"]
+            floor_sim = default_ot.get("null_shared_mass_mean", 0)
+            floor_align = 1 - default_ot.get("null_avg_cost_mean", 0)
+            lines.append(f"    Word-salad floor:     {floor_sim:.1%} shared mass, {floor_align:.1%} alignment")
+
     # determine which K values to show
     if ot_k_values:
         display_k_values = ot_k_values
@@ -864,15 +886,43 @@ def _print_comparison_stats(
 
             lines.append(f"")
             lines.append(f"  K = {k_val}{marker}")
-            lines.append(
-                f"    Shared Mass:     {ot_data.get('shared_mass', 0):.3f}  (mass transported)"
-            )
-            rel = ot_data.get("shared_mass_relative", 0)
-            lines.append(f"    Shared Mass Rel: {rel:.3f}  (0=random, 1=perfect)")
-            lines.append(
-                f"    Avg Cost:        {ot_data.get('avg_cost', 0):.3f}  (lower = better)"
-            )
-            lines.append(f"    Unmatched Mass:  {ot_data.get('unmatched_mass', 0):.3f}")
+
+            # shared mass metrics
+            shared_mass = ot_data.get('shared_mass', 0)
+            null_shared_mass = ot_data.get('null_shared_mass_mean')
+            paraphrase_ceiling = ot_data.get('paraphrase_upper_bound')
+
+            if paraphrase_ceiling is not None and null_shared_mass is not None:
+                lines.append(f"    Shared Mass:          {shared_mass:.1%}  (floor: {null_shared_mass:.1%}, ceiling: {paraphrase_ceiling:.1%})")
+            else:
+                lines.append(f"    Shared Mass:          {shared_mass:.1%}")
+
+            # paraphrase-scaled metrics (if available)
+            pct_ceiling = ot_data.get('shared_mass_pct_of_ceiling')
+            pct_improvement = ot_data.get('shared_mass_improvement_vs_null')
+            if pct_ceiling is not None:
+                lines.append(f"      % of ceiling:       {pct_ceiling:.0%}  (vs paraphrase upper bound)")
+            if pct_improvement is not None:
+                lines.append(f"      vs word-salad:      {pct_improvement:.0%} better, relative to ceiling")
+
+            # semantic alignment (1 - cost, so higher = better)
+            avg_cost = ot_data.get('avg_cost', 0)
+            alignment = 1 - avg_cost
+            alignment_ceiling = ot_data.get('alignment_paraphrase_ceiling')
+            alignment_floor = ot_data.get('alignment_null_floor')
+
+            if alignment_ceiling is not None and alignment_floor is not None:
+                lines.append(f"    Semantic Alignment:   {alignment:.1%}  (floor: {alignment_floor:.1%}, ceiling: {alignment_ceiling:.1%})")
+            else:
+                lines.append(f"    Semantic Alignment:   {alignment:.1%}  (quality of matches)")
+
+            # alignment paraphrase-scaled metrics
+            align_pct_ceiling = ot_data.get('alignment_pct_of_ceiling')
+            align_improvement = ot_data.get('alignment_improvement_vs_null')
+            if align_pct_ceiling is not None:
+                lines.append(f"      % of ceiling:       {align_pct_ceiling:.0%}  (vs paraphrase upper bound)")
+            if align_improvement is not None:
+                lines.append(f"      vs word-salad:      {align_improvement:.0%} better, relative to ceiling")
 
     if elbow_k:
         lines.append(f"")
@@ -1141,6 +1191,23 @@ def compare(
         envvar="SOAK_LLM_LABELS_MODEL",
         help="Model to use for generating labels (default: gpt-4.1-mini)",
     ),
+    no_paraphrase_bound: bool = typer.Option(
+        False,
+        "--no-paraphrase-bound",
+        help="Disable paraphrase-based upper bound for relative metrics",
+    ),
+    n_paraphrases: int = typer.Option(
+        7,
+        "--n-paraphrases",
+        envvar="SOAK_N_PARAPHRASES",
+        help="Number of paraphrases per theme for upper bound baseline (default: 7)",
+    ),
+    paraphrase_model: str = typer.Option(
+        None,
+        "--paraphrase-model",
+        envvar="SOAK_PARAPHRASE_MODEL",
+        help="Model for paraphrase generation (default: gpt-4.1-mini)",
+    ),
 ):
     """Compare analyses or string lists and generate comparison statistics.
 
@@ -1293,6 +1360,9 @@ def compare(
                 "k": shepard_k,
                 "reg_m": ot_k,
                 "distance": similarity,
+                "compute_paraphrase_bound": not no_paraphrase_bound,
+                "n_paraphrases": n_paraphrases,
+                "paraphrase_model": paraphrase_model,
             },
         )
 
@@ -1338,7 +1408,9 @@ def compare(
                 env.globals["enumerate"] = enumerate
                 template = env.get_template("comparison.html")
                 html_content = template.render(
-                    comparison=comparison, soak_version=get_soak_version()
+                    comparison=comparison,
+                    soak_version=get_soak_version(),
+                    text_output="\n\n".join(all_stats_text),
                 )
                 with open(output_path, "w", encoding="utf-8") as f:
                     f.write(html_content)
@@ -1427,6 +1499,9 @@ def compare(
                 "k": shepard_k,
                 "reg_m": ot_k,
                 "distance": similarity,
+                "compute_paraphrase_bound": not no_paraphrase_bound,
+                "n_paraphrases": n_paraphrases,
+                "paraphrase_model": paraphrase_model,
             },
         )
 
@@ -1472,7 +1547,9 @@ def compare(
             env.globals["enumerate"] = enumerate
             template = env.get_template("comparison.html")
             html_content = template.render(
-                comparison=comparison, soak_version=get_soak_version()
+                comparison=comparison,
+                soak_version=get_soak_version(),
+                text_output="\n\n".join(all_stats_text),
             )
 
             with open(output_path, "w", encoding="utf-8") as f:

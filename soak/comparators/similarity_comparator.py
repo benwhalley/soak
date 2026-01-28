@@ -365,6 +365,335 @@ def generate_word_salad_texts(
     return results
 
 
+async def _generate_paraphrases_for_theme(
+    theme_text: str,
+    n_paraphrases: int,
+    model_name: str,
+    credentials: "LLMCredentials",
+) -> List[str]:
+    """Generate paraphrases for a single theme using LLM.
+
+    Args:
+        theme_text: The theme text to paraphrase
+        n_paraphrases: Number of paraphrases to generate
+        model_name: LLM model name
+        credentials: LLM credentials
+
+    Returns:
+        List of n_paraphrases alternative phrasings
+    """
+    from jinja2 import StrictUndefined, Template
+    from struckdown import LLM, chatter_async
+
+    # load prompt template from .sd file
+    prompt_path = Path(__file__).parent.parent / "pipelines" / "paraphrase_theme.sd"
+    prompt_template = prompt_path.read_text()
+
+    # render template with context
+    template = Template(prompt_template, undefined=StrictUndefined)
+    prompt = template.render(theme_text=theme_text, n_paraphrases=n_paraphrases)
+
+    llm = LLM(model_name=model_name)
+
+    try:
+        result = await chatter_async(
+            multipart_prompt=prompt,
+            model=llm,
+            credentials=credentials,
+        )
+
+        # extract paraphrases from result
+        if hasattr(result, "outputs") and "alternative_phrasing" in result.outputs:
+            paraphrases = result.outputs["alternative_phrasing"]
+            if isinstance(paraphrases, list):
+                return paraphrases
+            elif hasattr(paraphrases, "alternative_phrasing"):
+                return paraphrases.alternative_phrasing
+
+        logger.warning(f"Paraphrase generation returned unexpected format for theme: {theme_text[:50]}...")
+        return [theme_text] * n_paraphrases  # fallback to original
+
+    except Exception as e:
+        logger.warning(f"Paraphrase generation failed for theme: {theme_text[:50]}... Error: {e}")
+        return [theme_text] * n_paraphrases  # fallback to original
+
+
+async def generate_paraphrase_texts(
+    theme_texts: List[str],
+    n_paraphrases: int = 7,
+    model_name: Optional[str] = None,
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
+) -> Tuple[List[List[str]], Dict[str, Any]]:
+    """Generate LLM paraphrases of themes for realistic upper bound baseline.
+
+    Each theme gets n_paraphrases alternative phrasings that preserve meaning
+    but vary wording. This establishes what similarity we'd expect if two
+    analyses captured identical concepts but expressed them differently.
+
+    Args:
+        theme_texts: Original theme strings (e.g., "name: description")
+        n_paraphrases: Number of paraphrases per theme (default: 7)
+        model_name: LLM model for paraphrase generation (default: gpt-4.1-mini)
+        api_key: API key (uses LLM_API_KEY env var if not provided)
+        base_url: API base URL (uses LLM_API_BASE env var if not provided)
+
+    Returns:
+        Tuple of:
+        - List of n_themes lists, each containing n_paraphrases strings
+        - Metadata dict with model_name, n_paraphrases, etc.
+    """
+    import asyncio
+    from struckdown import LLMCredentials
+
+    if model_name is None:
+        model_name = "gpt-4.1-mini"
+
+    # create credentials - use env vars if api_key not explicitly provided
+    if api_key is not None:
+        credentials = LLMCredentials(api_key=api_key, base_url=base_url)
+    else:
+        credentials = LLMCredentials()  # uses LLM_API_KEY and LLM_API_BASE env vars
+
+    # generate paraphrases for all themes concurrently
+    tasks = [
+        _generate_paraphrases_for_theme(text, n_paraphrases, model_name, credentials)
+        for text in theme_texts
+    ]
+    results = await asyncio.gather(*tasks)
+
+    metadata = {
+        "model_name": model_name,
+        "n_paraphrases": n_paraphrases,
+        "n_themes": len(theme_texts),
+    }
+
+    return list(results), metadata
+
+
+def prepare_paraphrase_cost_matrix(
+    theme_texts: List[str],
+    theme_embeddings: np.ndarray,
+    paraphrases: List[List[str]],
+    embedding_model: str = "text-embedding-3-large",
+    distance: str = "angular",
+    shepard_k: float = 1.0,
+) -> Dict[str, Any]:
+    """Prepare paraphrase cost matrix for OT computation (without running OT).
+
+    Embeds paraphrases, selects the best paraphrase per theme (highest similarity,
+    excluding identical strings), and computes the cost matrix.
+    The cost matrix can then be used to run OT at different K values.
+
+    Args:
+        theme_texts: Original theme strings
+        theme_embeddings: Pre-computed embeddings for theme_texts (n_themes x dim)
+        paraphrases: List of paraphrase lists from generate_paraphrase_texts
+        embedding_model: Model for embedding paraphrases
+        distance: Distance metric (angular, cosine, shepard)
+        shepard_k: Shepard k parameter if distance="shepard"
+
+    Returns:
+        Dictionary with:
+        - cost_matrix: n×n cost matrix for OT
+        - sim_matrix: n×n similarity matrix
+        - per_theme_similarities: best paraphrase similarity per theme (max, excluding sim >= 1)
+        - samples: sample themes with paraphrases for display
+    """
+    from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similarity
+
+    if not paraphrases or not theme_texts:
+        return None
+
+    # ensure theme_embeddings is a numpy array
+    theme_embeddings = np.asarray(theme_embeddings)
+    n_themes = len(theme_texts)
+
+    # flatten all paraphrases for batch embedding
+    all_paraphrase_texts = []
+    for para_list in paraphrases:
+        for para in para_list:
+            all_paraphrase_texts.append(para)
+
+    # embed all paraphrases in single batch
+    logger.info(f"Embedding {len(all_paraphrase_texts)} paraphrase texts...")
+    all_paraphrase_embeddings = np.asarray(
+        get_embedding(all_paraphrase_texts, model=embedding_model)
+    )
+
+    # for each theme, select the best paraphrase (highest similarity, excluding sim >= 1.0)
+    # this aligns with how comparisons work: we find the best match for each theme
+    n_paraphrases_per_theme = len(paraphrases[0]) if paraphrases else 0
+    best_paraphrase_embeddings = np.zeros_like(theme_embeddings)
+
+    for theme_idx in range(n_themes):
+        start_idx = theme_idx * n_paraphrases_per_theme
+        end_idx = start_idx + n_paraphrases_per_theme
+        para_embs = all_paraphrase_embeddings[start_idx:end_idx]
+
+        # compute similarities to each paraphrase
+        theme_emb = theme_embeddings[theme_idx].reshape(1, -1)
+        para_sims = sklearn_cosine_similarity(theme_emb, para_embs)[0]
+
+        # find best paraphrase (excluding identical strings with sim >= 1.0)
+        valid_indices = [j for j, s in enumerate(para_sims) if s < 0.9999]
+        if valid_indices:
+            best_idx = max(valid_indices, key=lambda j: para_sims[j])
+            best_paraphrase_embeddings[theme_idx] = para_embs[best_idx]
+        else:
+            # all paraphrases were identical, use average as fallback
+            avg_emb = para_embs.mean(axis=0)
+            avg_emb = avg_emb / np.linalg.norm(avg_emb)
+            best_paraphrase_embeddings[theme_idx] = avg_emb
+
+    # compute similarity matrix between original and best paraphrase embeddings
+    cos_sim_matrix = sklearn_cosine_similarity(theme_embeddings, best_paraphrase_embeddings)
+
+    # convert to selected distance metric
+    if distance == "cosine":
+        sim_matrix = cos_sim_matrix
+    elif distance == "angular":
+        angles = np.degrees(np.arccos(np.clip(cos_sim_matrix, -1.0, 1.0)))
+        sim_matrix = 1 - angles / 180.0
+    elif distance == "shepard":
+        thetas = np.arccos(np.clip(cos_sim_matrix, -1.0, 1.0))
+        sim_matrix = (np.exp(-shepard_k * thetas) - np.exp(-shepard_k * np.pi)) / (
+            1 - np.exp(-shepard_k * np.pi)
+        )
+    else:
+        sim_matrix = cos_sim_matrix
+
+    # compute cost matrix for OT
+    cost_matrix = 1.0 - sim_matrix
+
+    # compute per-theme similarities using max of individual paraphrases (excluding sim >= 1.0)
+    # this aligns with how comparison works: for each theme, find best match
+    per_theme_similarities = []
+    samples = []
+
+    for i in range(n_themes):
+        start_idx = i * n_paraphrases_per_theme
+        end_idx = start_idx + n_paraphrases_per_theme
+        para_embs = all_paraphrase_embeddings[start_idx:end_idx]
+
+        theme_emb = theme_embeddings[i].reshape(1, -1)
+        para_sims = sklearn_cosine_similarity(theme_emb, para_embs)[0]
+        if distance == "angular":
+            angles = np.degrees(np.arccos(np.clip(para_sims, -1.0, 1.0)))
+            para_sims = 1 - angles / 180.0
+
+        # filter out identical strings (sim >= 1.0) and take max of remaining
+        valid_sims = [s for s in para_sims if s < 0.9999]
+        if valid_sims:
+            best_sim = max(valid_sims)
+        else:
+            # all paraphrases were identical to original, use the averaged embedding similarity
+            best_sim = float(sim_matrix[i, i])
+
+        per_theme_similarities.append(best_sim)
+
+        # create samples for display (first few themes)
+        if i < 5:
+            samples.append({
+                "original": theme_texts[i],
+                "paraphrases": paraphrases[i],
+                "similarity": best_sim,
+            })
+
+    return {
+        "cost_matrix": cost_matrix,
+        "sim_matrix": sim_matrix,
+        "per_theme_similarities": per_theme_similarities,
+        "samples": samples,
+    }
+
+
+def compute_paraphrase_ot_at_k(
+    cost_matrix: np.ndarray,
+    reg_m: float,
+) -> Dict[str, float]:
+    """Run OT on paraphrase cost matrix at a specific K value.
+
+    Args:
+        cost_matrix: Pre-computed cost matrix from prepare_paraphrase_cost_matrix
+        reg_m: OT mass penalty K
+
+    Returns:
+        Dictionary with shared_mass and avg_cost for this K
+    """
+    ot_result = compute_ot(
+        cost_matrix=cost_matrix,
+        null_cost_matrices=None,
+        mode="unbalanced",
+        reg=0.01,
+        reg_m=reg_m,
+    )
+
+    return {
+        "shared_mass": ot_result.get("shared_mass", 1.0),
+        "avg_cost": ot_result.get("avg_cost", 0.0),
+    }
+
+
+def compute_paraphrase_baseline(
+    theme_texts: List[str],
+    theme_embeddings: np.ndarray,
+    paraphrases: List[List[str]],
+    embedding_model: str = "text-embedding-3-large",
+    distance: str = "angular",
+    shepard_k: float = 1.0,
+    reg_m: float = 0.4,
+) -> Dict[str, Any]:
+    """Compute paraphrase-based upper bound using OT between themes and paraphrases.
+
+    This is a convenience wrapper that prepares the cost matrix and runs OT at a single K.
+    For K-specific baselines, use prepare_paraphrase_cost_matrix + compute_paraphrase_ot_at_k.
+
+    Args:
+        theme_texts: Original theme strings
+        theme_embeddings: Pre-computed embeddings for theme_texts (n_themes x dim)
+        paraphrases: List of paraphrase lists from generate_paraphrase_texts
+        embedding_model: Model for embedding paraphrases
+        distance: Distance metric (angular, cosine, shepard)
+        shepard_k: Shepard k parameter if distance="shepard"
+        reg_m: OT mass penalty K
+
+    Returns:
+        Dictionary with OT-based metrics and samples for display
+    """
+    prep = prepare_paraphrase_cost_matrix(
+        theme_texts, theme_embeddings, paraphrases,
+        embedding_model, distance, shepard_k
+    )
+
+    if prep is None:
+        return {
+            "paraphrase_similarity_mean": 1.0,
+            "paraphrase_similarity_std": 0.0,
+            "paraphrase_similarity_per_theme": [],
+            "paraphrase_cost_mean": 0.0,
+            "samples": [],
+        }
+
+    ot_metrics = compute_paraphrase_ot_at_k(prep["cost_matrix"], reg_m)
+
+    std_similarity = float(np.std(prep["per_theme_similarities"]))
+
+    logger.info(
+        f"Paraphrase OT baseline (K={reg_m}): shared_mass={ot_metrics['shared_mass']:.1%}, "
+        f"avg_cost={ot_metrics['avg_cost']:.2f}"
+    )
+
+    return {
+        "paraphrase_similarity_mean": ot_metrics["shared_mass"],
+        "paraphrase_similarity_std": std_similarity,
+        "paraphrase_similarity_per_theme": prep["per_theme_similarities"],
+        "paraphrase_cost_mean": ot_metrics["avg_cost"],
+        "samples": prep["samples"],
+        "cost_matrix": prep["cost_matrix"],  # include for K-specific computation
+    }
+
+
 def compute_split_join_stats(
     transport_plan,
     threshold_ratio: float = 0.01,
@@ -624,15 +953,15 @@ def hungarian_matching(
     soft_recall = float(all_sims.sum()) / max(n_A, n_B)
     soft_f1 = 2 * soft_precision * soft_recall / (soft_precision + soft_recall + 1e-9)
 
-    # === DISTRIBUTION STATS (for matched pairs above threshold) ===
-    if len(matched_sims) > 0:
+    # === DISTRIBUTION STATS (for all optimal pairs) ===
+    if len(all_sims) > 0:
         distribution = {
-            "min": float(matched_sims.min()),
-            "q1": float(np.percentile(matched_sims, 25)),
-            "median": float(np.median(matched_sims)),
-            "q3": float(np.percentile(matched_sims, 75)),
-            "max": float(matched_sims.max()),
-            "n_pairs": len(matched_sims),
+            "min": float(all_sims.min()),
+            "q1": float(np.percentile(all_sims, 25)),
+            "median": float(np.median(all_sims)),
+            "q3": float(np.percentile(all_sims, 75)),
+            "max": float(all_sims.max()),
+            "n_pairs": len(all_sims),
         }
     else:
         distribution = {
@@ -1009,7 +1338,7 @@ def create_transport_sankey(
         bgcolor="white",
         bordercolor="#ccc",
         font=dict(
-            family=_PRINT_FONT_STACK,
+            family=_FONT_STACK,
             size=12,
             color="black",
         ),
@@ -1136,7 +1465,7 @@ def create_transport_sankey(
     fig.update_layout(
         title_text="",
         font=dict(
-            family=_PRINT_FONT_STACK,
+            family=_FONT_STACK,
             size=9,
         ),
         width=1100,
@@ -1151,7 +1480,7 @@ def create_transport_sankey(
             bgcolor="rgba(255, 255, 255, 1)",
             bordercolor="rgba(200, 200, 200, 1)",
             font=dict(
-                family=_PRINT_FONT_STACK,
+                family=_FONT_STACK,
                 size=12,
                 color="rgba(0, 0, 0, 1)",
             ),
@@ -1167,7 +1496,7 @@ def create_transport_sankey(
 
     # add download buttons below the chart
     download_buttons_html = """
-<div style="text-align: center; margin: 20px 0; font-family: Helvetica Neue, Helvetica, Arial, sans-serif;">
+<div style="text-align: center; margin: 20px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Ubuntu, Cantarell, 'Helvetica Neue', sans-serif;">
     <span style="margin-right: 10px; color: #666; font-size: 13px;">Download:</span>
     <button onclick="downloadSankey('svg')" style="
         padding: 8px 16px; margin: 0 5px; cursor: pointer;
@@ -1276,7 +1605,7 @@ def create_transport_heatmap(
     else:
         P_pct = P * 100
     logger.info(
-        f"Transport heatmap: max={P_pct.max():.1f}%, sum={P_pct.sum():.1f}% (shared_mass={shared_mass:.3f})"
+        f"Transport heatmap: max={P_pct.max():.1f}%, sum={P_pct.sum():.1f}% (shared_mass={shared_mass:.1%})"
     )
 
     fig_height = max(6, n_A * 0.4)
@@ -1479,6 +1808,8 @@ def create_shared_mass_scree_plot(
     """Create scree plot showing shared mass across different K values.
 
     Shows both chord-based elbow and diminishing returns points for K selection.
+    Baseline curves (paraphrase ceiling and word-salad floor) are extracted from
+    ot_by_k for each K value and plotted as reference envelopes.
 
     Args:
         ot_by_k: Dictionary mapping K values to OT results
@@ -1503,6 +1834,20 @@ def create_shared_mass_scree_plot(
     # extract shared mass for each K
     shared_masses = [ot_by_k[k]["ot"]["shared_mass"] * 100 for k in k_values]
 
+    # extract baseline values for each K (if available)
+    paraphrase_ceilings = []
+    word_salad_floors = []
+    for k in k_values:
+        ot_data = ot_by_k[k]["ot"]
+        ceiling = ot_data.get("paraphrase_upper_bound")
+        floor = ot_data.get("null_shared_mass_mean")
+        paraphrase_ceilings.append(ceiling * 100 if ceiling is not None else None)
+        word_salad_floors.append(floor * 100 if floor is not None else None)
+
+    # check if we have baseline data
+    has_ceiling = any(c is not None for c in paraphrase_ceilings)
+    has_floor = any(f is not None for f in word_salad_floors)
+
     # find both elbow points
     elbow_points = find_elbow_points(k_values, shared_masses)
     chord_idx = elbow_points["chord_idx"]
@@ -1522,7 +1867,6 @@ def create_shared_mass_scree_plot(
 
     # plot shared mass curve
     ax.plot(k_values, shared_masses, "o-", color="#27ae60", linewidth=2, markersize=6)
-    ax.fill_between(k_values, shared_masses, alpha=0.2, color="#27ae60")
 
     # draw chord line in log(K) space (appears curved in linear K space)
     eps = 1e-12
@@ -1550,8 +1894,8 @@ def create_shared_mass_scree_plot(
     if not plateau_reached:
         title += " (curve may not have plateaued)"
     ax.set_title(title, fontsize=12)
-    ax.set_xlim(-0.05, max(k_values) * 1.05)
-    ax.set_ylim(min(shared_masses) * 0.9, 100)
+    ax.set_xlim(min(k_values), max(k_values))
+    ax.set_ylim(0, 100)
     ax.grid(True, alpha=0.3)
     ax.axhline(y=100, color="gray", linestyle="--", alpha=0.5)
 
@@ -1569,7 +1913,7 @@ def create_shared_mass_scree_plot(
     )
     ax.axvline(x=chord_k, color="#9b59b6", linestyle=":", alpha=0.7)
 
-    # highlight diminishing returns point (open orange circle, on top)
+    # highlight diminishing returns point (open orange triangle, on top)
     # always show, even when overlapping - open marker makes overlap visible
     ax.scatter(
         [diminishing_k],
@@ -1577,7 +1921,7 @@ def create_shared_mass_scree_plot(
         facecolors="none",
         s=200,
         zorder=6,
-        marker="o",
+        marker="^",
         edgecolors="#e67e22",
         linewidths=3,
         label=f"Dim. returns (K={diminishing_k})",
@@ -1600,6 +1944,36 @@ def create_shared_mass_scree_plot(
             label=f"Default (K={default_k})",
         )
         ax.axvline(x=default_k, color="#3498db", linestyle=":", alpha=0.7)
+
+    # add baseline reference curves (varying with K)
+    if has_ceiling:
+        valid_k_ceiling = [k for k, c in zip(k_values, paraphrase_ceilings) if c is not None]
+        valid_ceiling = [c for c in paraphrase_ceilings if c is not None]
+        if valid_ceiling:
+            ax.plot(
+                valid_k_ceiling,
+                valid_ceiling,
+                "--",
+                color="#2ecc71",
+                linewidth=2,
+                alpha=0.8,
+                label="Paraphrase ceiling",
+            )
+            ax.fill_between(valid_k_ceiling, valid_ceiling, 100, alpha=0.1, color="#999999")
+    if has_floor:
+        valid_k_floor = [k for k, f in zip(k_values, word_salad_floors) if f is not None]
+        valid_floor = [f for f in word_salad_floors if f is not None]
+        if valid_floor:
+            ax.plot(
+                valid_k_floor,
+                valid_floor,
+                "--",
+                color="#e74c3c",
+                linewidth=2,
+                alpha=0.8,
+                label="Word-salad floor",
+            )
+            ax.fill_between(valid_k_floor, 0, valid_floor, alpha=0.1, color="#999999")
 
     ax.legend(loc="lower right", fontsize=9)
 
@@ -1637,6 +2011,304 @@ def create_shared_mass_scree_plot(
     }
 
 
+def create_alignment_scree_plot(
+    ot_by_k: Dict[float, Dict],
+    k_values: List[float],
+    analysis_name_a: str = "A",
+    analysis_name_b: str = "B",
+    default_k: float = 0.25,
+) -> Dict[str, Any]:
+    """Create scree plot showing alignment (1 - cost) across different K values.
+
+    Baseline curves (paraphrase ceiling and word-salad floor) are extracted from
+    ot_by_k for each K value and plotted as reference envelopes.
+
+    Args:
+        ot_by_k: Dictionary mapping K values to OT results
+        k_values: List of K values used
+        analysis_name_a: Name of analysis A
+        analysis_name_b: Name of analysis B
+        default_k: The default K value to highlight
+
+    Returns:
+        Dictionary with:
+        - image: Base64ImageFile containing the alignment scree plot
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    # extract alignment (1 - cost) for each K
+    alignments = [(1 - ot_by_k[k]["ot"]["avg_cost"]) for k in k_values]
+
+    # extract baseline alignment values for each K (if available)
+    paraphrase_ceilings = []
+    word_salad_floors = []
+    for k in k_values:
+        ot_data = ot_by_k[k]["ot"]
+        ceiling = ot_data.get("alignment_paraphrase_ceiling")
+        floor = ot_data.get("alignment_null_floor")
+        paraphrase_ceilings.append(ceiling if ceiling is not None else None)
+        word_salad_floors.append(floor if floor is not None else None)
+
+    has_ceiling = any(c is not None for c in paraphrase_ceilings)
+    has_floor = any(f is not None for f in word_salad_floors)
+
+    # find default K index for highlighting
+    default_idx = k_values.index(default_k) if default_k in k_values else None
+
+    plt.close("all")
+    fig, ax = plt.subplots(1, 1, figsize=(8, 5))
+
+    # plot alignment curve
+    ax.plot(k_values, alignments, "o-", color="#3498db", linewidth=2, markersize=6)
+    ax.fill_between(k_values, alignments, alpha=0.2, color="#3498db")
+
+    ax.set_xlabel("K (Mass Penalty)", fontsize=11)
+    ax.set_ylabel("Alignment (1 - cost)", fontsize=11)
+    ax.set_title(
+        f"Semantic Alignment vs K\n{analysis_name_a} ↔ {analysis_name_b}", fontsize=12
+    )
+    ax.set_xlim(min(k_values), max(k_values))
+    # set y-axis to floor - 2% to ceiling + 2% (max 100) for better visual scaling
+    y_floor = min([f for f in word_salad_floors if f is not None]) if has_floor else min(alignments)
+    y_ceiling = max([c for c in paraphrase_ceilings if c is not None]) if has_ceiling else max(alignments)
+    y_min = max(0, y_floor - 0.02)
+    y_max = min(1, y_ceiling + 0.02)
+    ax.set_ylim(y_min, y_max)
+    ax.grid(True, alpha=0.3)
+
+    # add baseline reference curves (varying with K)
+    if has_ceiling:
+        valid_k_ceiling = [k for k, c in zip(k_values, paraphrase_ceilings) if c is not None]
+        valid_ceiling = [c for c in paraphrase_ceilings if c is not None]
+        if valid_ceiling:
+            ax.plot(
+                valid_k_ceiling,
+                valid_ceiling,
+                "--",
+                color="#2ecc71",
+                linewidth=2,
+                alpha=0.8,
+                label="Paraphrase ceiling",
+            )
+            ax.fill_between(valid_k_ceiling, valid_ceiling, 1.0, alpha=0.1, color="#2ecc71")
+    if has_floor:
+        valid_k_floor = [k for k, f in zip(k_values, word_salad_floors) if f is not None]
+        valid_floor = [f for f in word_salad_floors if f is not None]
+        if valid_floor:
+            ax.plot(
+                valid_k_floor,
+                valid_floor,
+                "--",
+                color="#e74c3c",
+                linewidth=2,
+                alpha=0.8,
+                label="Word-salad floor",
+            )
+            ax.fill_between(valid_k_floor, 0, valid_floor, alpha=0.1, color="#e74c3c")
+
+    # highlight default K
+    if default_idx is not None:
+        default_align = alignments[default_idx]
+        ax.scatter(
+            [default_k],
+            [default_align],
+            color="#3498db",
+            s=150,
+            zorder=5,
+            marker="s",
+            edgecolors="white",
+            linewidths=2,
+            label=f"Default (K={default_k})",
+        )
+        ax.axvline(x=default_k, color="#3498db", linestyle=":", alpha=0.7)
+
+    ax.legend(loc="lower right", fontsize=9)
+
+    # annotate some points
+    for i, (k, align) in enumerate(zip(k_values, alignments)):
+        if default_idx is not None and i == default_idx:
+            continue
+        if i == 0 or i == len(k_values) - 1 or i % 4 == 0:
+            ax.annotate(
+                f"{align:.1f}%",
+                (k, align),
+                textcoords="offset points",
+                xytext=(0, -15),
+                ha="center",
+                fontsize=8,
+            )
+
+    fig.tight_layout()
+
+    buffer = BytesIO()
+    fig.savefig(buffer, dpi=150, bbox_inches="tight", format="png")
+    plt.close(fig)
+    buffer.seek(0)
+
+    return {
+        "image": Base64ImageFile(buffer, name="alignment_scree.png"),
+    }
+
+
+def create_splits_joins_scree_plot(
+    ot_by_k: Dict[float, Dict],
+    k_values: List[float],
+    analysis_name_a: str = "A",
+    analysis_name_b: str = "B",
+    default_k: float = 0.25,
+) -> Dict[str, Any]:
+    """Create scree plot showing average splits/joins across different K values.
+
+    Args:
+        ot_by_k: Dictionary mapping K values to OT results (must include split_join_stats)
+        k_values: List of K values used
+        analysis_name_a: Name of analysis A
+        analysis_name_b: Name of analysis B
+        default_k: The default K value to highlight
+
+    Returns:
+        Dictionary with:
+        - image: Base64ImageFile containing the splits/joins scree plot
+    """
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    # extract average splits/joins for each K (average of splits_from_a and joins_to_b means)
+    splits_joins = []
+    for k in k_values:
+        stats = ot_by_k[k].get("split_join_stats", {})
+        splits_mean = stats.get("splits_from_a", {}).get("mean", 1.0)
+        joins_mean = stats.get("joins_to_b", {}).get("mean", 1.0)
+        splits_joins.append((splits_mean + joins_mean) / 2)
+
+    # extract baseline splits/joins for each K (if available)
+    paraphrase_ceilings = []
+    word_salad_floors = []
+    for k in k_values:
+        ot_data = ot_by_k[k].get("ot", ot_by_k[k])
+        ceiling = ot_data.get("paraphrase_splits_joins_mean")
+        floor = ot_data.get("null_splits_joins_mean")
+        paraphrase_ceilings.append(ceiling if ceiling is not None else None)
+        word_salad_floors.append(floor if floor is not None else None)
+
+    has_ceiling = any(c is not None for c in paraphrase_ceilings)
+    has_floor = any(f is not None for f in word_salad_floors)
+
+    # find default K index for highlighting
+    default_idx = k_values.index(default_k) if default_k in k_values else None
+
+    plt.close("all")
+    fig, ax = plt.subplots(1, 1, figsize=(8, 5))
+
+    # plot splits/joins curve
+    ax.plot(k_values, splits_joins, "o-", color="#9b59b6", linewidth=2, markersize=6)
+
+    ax.set_xlabel("K (Mass Penalty)", fontsize=11)
+    ax.set_ylabel("Avg Splits/Joins per Theme", fontsize=11)
+    ax.set_title(
+        f"Splits/Joins vs K\n{analysis_name_a} ↔ {analysis_name_b}", fontsize=12
+    )
+    ax.set_xlim(min(k_values), max(k_values))
+
+    # set y-axis with some padding
+    y_min_data = min(splits_joins)
+    y_max_data = max(splits_joins)
+    if has_floor:
+        floor_vals = [f for f in word_salad_floors if f is not None]
+        if floor_vals:
+            y_max_data = max(y_max_data, max(floor_vals))
+    if has_ceiling:
+        ceiling_vals = [c for c in paraphrase_ceilings if c is not None]
+        if ceiling_vals:
+            y_min_data = min(y_min_data, min(ceiling_vals))
+
+    y_range = y_max_data - y_min_data
+    ax.set_ylim(max(0.9, y_min_data - y_range * 0.1), y_max_data + y_range * 0.1)
+    ax.grid(True, alpha=0.3)
+
+    # add baseline reference curves (varying with K) if available
+    if has_ceiling:
+        valid_k_ceiling = [k for k, c in zip(k_values, paraphrase_ceilings) if c is not None]
+        valid_ceiling = [c for c in paraphrase_ceilings if c is not None]
+        if valid_ceiling:
+            ax.plot(
+                valid_k_ceiling,
+                valid_ceiling,
+                "--",
+                color="#2ecc71",
+                linewidth=2,
+                alpha=0.8,
+                label="Paraphrase ceiling",
+            )
+            ax.fill_between(valid_k_ceiling, 0.9, valid_ceiling, alpha=0.1, color="#999999")
+    if has_floor:
+        valid_k_floor = [k for k, f in zip(k_values, word_salad_floors) if f is not None]
+        valid_floor = [f for f in word_salad_floors if f is not None]
+        if valid_floor:
+            ax.plot(
+                valid_k_floor,
+                valid_floor,
+                "--",
+                color="#e74c3c",
+                linewidth=2,
+                alpha=0.8,
+                label="Word-salad floor",
+            )
+            # shade above floor (worse = more splits/joins for random)
+            ax.fill_between(valid_k_floor, valid_floor, y_max_data + y_range * 0.1, alpha=0.1, color="#999999")
+
+    # highlight default K
+    if default_idx is not None:
+        default_sj = splits_joins[default_idx]
+        ax.scatter(
+            [default_k],
+            [default_sj],
+            color="#3498db",
+            s=150,
+            zorder=5,
+            marker="s",
+            edgecolors="white",
+            linewidths=2,
+            label=f"Default (K={default_k})",
+        )
+        ax.axvline(x=default_k, color="#3498db", linestyle=":", alpha=0.7)
+
+    ax.legend(loc="upper right", fontsize=9)
+
+    # add reference line at 1.0 (perfect 1:1 matching)
+    ax.axhline(y=1.0, color="gray", linestyle="--", alpha=0.5, label="Perfect 1:1")
+
+    # annotate some points
+    for i, (k, sj) in enumerate(zip(k_values, splits_joins)):
+        if default_idx is not None and i == default_idx:
+            continue
+        if i == 0 or i == len(k_values) - 1 or i % 4 == 0:
+            ax.annotate(
+                f"{sj:.2f}",
+                (k, sj),
+                textcoords="offset points",
+                xytext=(0, -15),
+                ha="center",
+                fontsize=8,
+            )
+
+    fig.tight_layout()
+
+    buffer = BytesIO()
+    fig.savefig(buffer, dpi=150, bbox_inches="tight", format="png")
+    plt.close(fig)
+    buffer.seek(0)
+
+    return {
+        "image": Base64ImageFile(buffer, name="splits_joins_scree.png"),
+    }
+
+
 def compare_result_similarity(
     A: QualitativeAnalysis,
     B: QualitativeAnalysis,
@@ -1647,6 +2319,11 @@ def compare_result_similarity(
     reg_m: float = 0.2,
     n_null_samples: int = 100,
     distance: str = "angular",
+    compute_paraphrase_bound: bool = True,
+    n_paraphrases: int = 7,
+    paraphrase_model: Optional[str] = None,
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
 ) -> Dict[str, Any]:
     """
     Compare two sets of theme embeddings.
@@ -1684,6 +2361,11 @@ def compare_result_similarity(
                    satisfies the triangle inequality and avoids high-similarity compression.
                  - "cosine": Raw cosine similarity. Not a proper metric.
                  - "shepard": Shepard similarity with exponential decay controlled by k.
+        compute_paraphrase_bound: Generate LLM paraphrases for realistic upper bound (default: True)
+        n_paraphrases: Number of paraphrases per theme (default: 7)
+        paraphrase_model: LLM model for paraphrase generation (default: gpt-4.1-mini)
+        api_key: API key for LLM (uses LLM_API_KEY env var if not provided)
+        base_url: API base URL (uses LLM_API_BASE env var if not provided)
 
     Returns:
         Dictionary with similarity metrics including:
@@ -1917,6 +2599,85 @@ def compare_result_similarity(
         f"Generated {len(null_cost_matrices)} null cost matrices ({len(null_cost_matrices_B)} A vs B_salad + {len(null_cost_matrices_A)} A_salad vs B)"
     )
 
+    # === PARAPHRASE UPPER BOUND BASELINE ===
+    # Generate LLM paraphrases to establish a realistic upper bound for relative metrics.
+    # This represents what similarity we'd expect if two analyses captured identical
+    # concepts but expressed them with different wording.
+    paraphrase_baseline = None
+    paraphrase_upper_bound = None
+    paraphrase_cost_lower_bound = None
+    paraphrase_cost_matrix_A = None
+    paraphrase_cost_matrix_B = None
+
+    if compute_paraphrase_bound:
+        import asyncio
+
+        logger.info(f"Generating paraphrase upper bound baseline ({n_paraphrases} paraphrases per theme)...")
+
+        try:
+            # generate paraphrases for both sets (symmetric like word-salad)
+            paraphrases_A, meta_A = asyncio.run(
+                generate_paraphrase_texts(
+                    A_texts,
+                    n_paraphrases=n_paraphrases,
+                    model_name=paraphrase_model,
+                    api_key=api_key,
+                    base_url=base_url,
+                )
+            )
+            paraphrases_B, meta_B = asyncio.run(
+                generate_paraphrase_texts(
+                    B_texts,
+                    n_paraphrases=n_paraphrases,
+                    model_name=paraphrase_model,
+                    api_key=api_key,
+                    base_url=base_url,
+                )
+            )
+
+            # compute paraphrase cost matrices (embed once, use for all K values)
+            baseline_A = compute_paraphrase_baseline(
+                A_texts, emb_A, paraphrases_A,
+                embedding_model=embedding_model,
+                distance=distance,
+                shepard_k=k,
+                reg_m=0.3,  # initial K for logging, will recompute per-K
+            )
+            baseline_B = compute_paraphrase_baseline(
+                B_texts, emb_B, paraphrases_B,
+                embedding_model=embedding_model,
+                distance=distance,
+                shepard_k=k,
+                reg_m=0.3,
+            )
+
+            # store cost matrices for K-specific baseline computation
+            paraphrase_cost_matrix_A = baseline_A.get("cost_matrix")
+            paraphrase_cost_matrix_B = baseline_B.get("cost_matrix")
+
+            # store baseline info for display (samples, metadata)
+            # OT metrics will be computed per-K in the loop
+            paraphrase_baseline = {
+                "paraphrase_similarity_mean": None,  # computed per-K
+                "paraphrase_similarity_std": (
+                    baseline_A["paraphrase_similarity_std"] +
+                    baseline_B["paraphrase_similarity_std"]
+                ) / 2,
+                "paraphrase_cost_mean": None,  # computed per-K
+                "samples_a": baseline_A["samples"],
+                "samples_b": baseline_B["samples"],
+                "metadata": {
+                    "model": paraphrase_model or "gpt-4.1-mini",
+                    "n_paraphrases": n_paraphrases,
+                },
+            }
+
+            logger.info("Paraphrase cost matrices prepared for K-specific OT computation")
+
+        except Exception as e:
+            logger.warning(f"Paraphrase baseline generation failed: {e}")
+            logger.warning("Continuing without paraphrase upper bound")
+
     # === COMPUTE OT FOR MULTIPLE K VALUES ===
     # K (reg_m) controls when themes are left unmatched vs forced to align
     # Higher K = stronger penalty for unmatching = more mass forced to transport
@@ -1968,7 +2729,7 @@ def compare_result_similarity(
         computed_k_values.append(k_val)
 
         logger.debug(
-            f"K={k_val:.1f}: shared_mass={ot_result['shared_mass']:.3f}, avg_cost={ot_result['avg_cost']:.3f}"
+            f"K={k_val:.1f}: shared_mass={ot_result['shared_mass']:.1%}, avg_cost={ot_result['avg_cost']:.2f}"
         )
         logger.debug(
             f"  Splits from A: mean={split_join_stats['splits_from_a']['mean']:.2f}, max={split_join_stats['splits_from_a']['max']}"
@@ -2093,6 +2854,88 @@ def compare_result_similarity(
         ).tolist()
         ot_serialisable_k["split_join_stats"] = split_join_stats
 
+        # compute K-specific paraphrase baselines
+        paraphrase_upper_bound_k = None
+        paraphrase_cost_lower_bound_k = None
+        if paraphrase_cost_matrix_A is not None and paraphrase_cost_matrix_B is not None:
+            # run OT on paraphrase cost matrices at this K
+            para_ot_A = compute_paraphrase_ot_at_k(paraphrase_cost_matrix_A, reg_m=k_val)
+            para_ot_B = compute_paraphrase_ot_at_k(paraphrase_cost_matrix_B, reg_m=k_val)
+            # average for symmetric baseline
+            paraphrase_upper_bound_k = (para_ot_A["shared_mass"] + para_ot_B["shared_mass"]) / 2
+            paraphrase_cost_lower_bound_k = (para_ot_A["avg_cost"] + para_ot_B["avg_cost"]) / 2
+
+            # update paraphrase_baseline with K-specific values for default K
+            if k_val == DEFAULT_K and paraphrase_baseline is not None:
+                paraphrase_baseline["paraphrase_similarity_mean"] = paraphrase_upper_bound_k
+                paraphrase_baseline["paraphrase_cost_mean"] = paraphrase_cost_lower_bound_k
+
+        # add paraphrase-scaled metrics if paraphrase baseline available
+        if paraphrase_upper_bound_k is not None:
+            null_mean = ot_serialisable_k.get("null_shared_mass_mean", 0.0)
+            shared_mass = ot_serialisable_k.get("shared_mass", 0.0)
+
+            # shared_mass_pct_of_ceiling: observed / paraphrase (absolute % of best case)
+            if paraphrase_upper_bound_k > 0:
+                ot_serialisable_k["shared_mass_pct_of_ceiling"] = float(
+                    shared_mass / paraphrase_upper_bound_k
+                )
+            else:
+                ot_serialisable_k["shared_mass_pct_of_ceiling"] = 0.0
+
+            # shared_mass_improvement_vs_null: (observed - null) / (paraphrase - null)
+            # how much of the possible improvement from word-salad to paraphrase was achieved
+            if paraphrase_upper_bound_k > null_mean:
+                ot_serialisable_k["shared_mass_improvement_vs_null"] = float(
+                    (shared_mass - null_mean) / (paraphrase_upper_bound_k - null_mean)
+                )
+            else:
+                ot_serialisable_k["shared_mass_improvement_vs_null"] = 0.0
+
+            # keep old name for backward compatibility
+            ot_serialisable_k["shared_mass_relative_paraphrase"] = ot_serialisable_k["shared_mass_improvement_vs_null"]
+
+            # convert cost to alignment (1 - cost) so higher is always better
+            # this makes interpretation consistent with shared mass
+            if paraphrase_cost_lower_bound_k is not None:
+                null_cost_mean = ot_serialisable_k.get("null_avg_cost_mean", 1.0)
+                avg_cost = ot_serialisable_k.get("avg_cost", 1.0)
+
+                # convert to alignment (similarity) - higher is better
+                observed_alignment = 1.0 - avg_cost
+                paraphrase_alignment = 1.0 - paraphrase_cost_lower_bound_k  # ceiling (best)
+                null_alignment = 1.0 - null_cost_mean  # floor (worst)
+
+                ot_serialisable_k["alignment_observed"] = observed_alignment
+                ot_serialisable_k["alignment_paraphrase_ceiling"] = paraphrase_alignment
+                ot_serialisable_k["alignment_null_floor"] = null_alignment
+
+                # alignment_pct_of_ceiling: observed / paraphrase (absolute % of best case)
+                if paraphrase_alignment > 0:
+                    ot_serialisable_k["alignment_pct_of_ceiling"] = float(
+                        observed_alignment / paraphrase_alignment
+                    )
+                else:
+                    ot_serialisable_k["alignment_pct_of_ceiling"] = 0.0
+
+                # alignment_improvement_vs_null: (observed - null) / (paraphrase - null)
+                # how much of the possible improvement from word-salad to paraphrase was achieved
+                if paraphrase_alignment > null_alignment:
+                    ot_serialisable_k["alignment_improvement_vs_null"] = float(
+                        (observed_alignment - null_alignment) / (paraphrase_alignment - null_alignment)
+                    )
+                else:
+                    ot_serialisable_k["alignment_improvement_vs_null"] = 0.0
+
+                # keep old names for backward compatibility
+                ot_serialisable_k["avg_cost_pct_of_floor"] = ot_serialisable_k["alignment_pct_of_ceiling"]
+                ot_serialisable_k["avg_cost_improvement_vs_null"] = ot_serialisable_k["alignment_improvement_vs_null"]
+                ot_serialisable_k["avg_cost_relative_paraphrase"] = ot_serialisable_k["alignment_improvement_vs_null"]
+
+            # store the K-specific bounds for display
+            ot_serialisable_k["paraphrase_upper_bound"] = paraphrase_upper_bound_k
+            ot_serialisable_k["paraphrase_cost_lower_bound"] = paraphrase_cost_lower_bound_k
+
         ot_by_k[k_val] = {
             "ot": ot_serialisable_k,
             "transport_sankey": transport_sankey_k,
@@ -2108,7 +2951,7 @@ def compare_result_similarity(
     transport_sankey = ot_by_k[DEFAULT_K]["transport_sankey"]
     transport_heatmap = ot_by_k[DEFAULT_K]["transport_heatmap"]
 
-    # generate scree plot showing shared mass vs K (with distance-to-chord elbow detection)
+    # generate scree plots (baselines extracted from ot_by_k for each K)
     scree_result = create_shared_mass_scree_plot(
         ot_by_k,
         all_k_values,
@@ -2121,6 +2964,24 @@ def compare_result_similarity(
     diminishing_k = scree_result["diminishing_k"]
     plateau_reached = scree_result["plateau_reached"]
 
+    alignment_scree_result = create_alignment_scree_plot(
+        ot_by_k,
+        all_k_values,
+        analysis_name_a=analysis_name_A,
+        analysis_name_b=analysis_name_B,
+        default_k=DEFAULT_K,
+    )
+    alignment_scree = alignment_scree_result["image"]
+
+    splits_joins_scree_result = create_splits_joins_scree_plot(
+        ot_by_k,
+        all_k_values,
+        analysis_name_a=analysis_name_A,
+        analysis_name_b=analysis_name_B,
+        default_k=DEFAULT_K,
+    )
+    splits_joins_scree = splits_joins_scree_result["image"]
+
     logger.info(f"\n=== Elbow Detection ===")
     logger.info(f"Chord-based elbow: K={chord_k} (max distance from chord)")
     logger.info(f"Diminishing returns: K={diminishing_k} (slope < 20% of initial)")
@@ -2132,13 +2993,13 @@ def compare_result_similarity(
     # log default K results
     logger.info(f"\n=== Default K={DEFAULT_K} Results ===")
     logger.info(
-        f"Shared Mass: {ot_results['shared_mass']:.3f} (proportion of mass transported)"
+        f"Shared Mass: {ot_results['shared_mass']:.1%} (proportion of mass transported)"
     )
     logger.info(
-        f"Unmatched Mass: {ot_results['unmatched_mass']:.3f} (novel/missing themes)"
+        f"Unmatched Mass: {ot_results['unmatched_mass']:.1%} (novel/missing themes)"
     )
     logger.info(
-        f"Average Cost: {ot_results['avg_cost']:.3f} (lower = better alignment)"
+        f"Average Cost: {ot_results['avg_cost']:.2f} (lower = better alignment)"
     )
     logger.info(
         f"Regularisation: reg={ot_results['reg']:.4f}, reg_m (K)={ot_results['reg_m']:.4f}"
@@ -2148,26 +3009,26 @@ def compare_result_similarity(
     if "null_shared_mass_mean" in ot_results:
         logger.info(f"--- Null baseline comparison ---")
         logger.info(
-            f"Null shared_mass: mean={ot_results['null_shared_mass_mean']:.3f}, 95pct={ot_results['null_shared_mass_95pct']:.3f}"
+            f"Null shared_mass: mean={ot_results['null_shared_mass_mean']:.1%}, 95pct={ot_results['null_shared_mass_95pct']:.1%}"
         )
         logger.info(
-            f"Shared mass excess: +{ot_results['shared_mass_excess']:.3f} (raw improvement over null)"
+            f"Shared mass excess: +{ot_results['shared_mass_excess']:.1%} (raw improvement over null)"
         )
         logger.info(
-            f"Shared mass relative: {ot_results['shared_mass_relative']:.3f} (0=random, 1=perfect)"
+            f"Shared mass relative: {ot_results['shared_mass_relative']:.1%} (0=random, 1=perfect)"
         )
         logger.info(
             f"Shared mass effect: {ot_results['shared_mass_effect']:.2f} MADs above null"
         )
         logger.info(f"--- Cost metrics ---")
         logger.info(
-            f"Null avg_cost: mean={ot_results['null_avg_cost_mean']:.3f}, 5pct={ot_results['null_avg_cost_5pct']:.3f}"
+            f"Null avg_cost: mean={ot_results['null_avg_cost_mean']:.2f}, 5pct={ot_results['null_avg_cost_5pct']:.2f}"
         )
         logger.info(
-            f"Avg cost improvement: {ot_results['avg_cost_improvement']:.3f} (positive = better than null)"
+            f"Avg cost improvement: {ot_results['avg_cost_improvement']:.2f} (positive = better than null)"
         )
         logger.info(
-            f"Avg cost relative: {ot_results['avg_cost_relative']:.3f} (0=random, 1=perfect)"
+            f"Avg cost relative: {ot_results['avg_cost_relative']:.2f} (0=random, 1=perfect)"
         )
 
     # log all matrices (show legend only once at the start)
@@ -2430,8 +3291,10 @@ def compare_result_similarity(
         # color scale range (from default K, used across all K plots)
         "color_sim_min": round(1 - color_cost_max, 3),
         "color_sim_max": round(1 - color_cost_min, 3),
-        # Scree plot of shared mass vs K
+        # Scree plots of metrics vs K
         "shared_mass_scree": shared_mass_scree,
+        "alignment_scree": alignment_scree,
+        "splits_joins_scree": splits_joins_scree,
         # best matches
         "best_matches_a_to_b": best_matches_a_to_b,
         "best_matches_b_to_a": best_matches_b_to_a,
@@ -2440,6 +3303,8 @@ def compare_result_similarity(
         "mean_embedding_words_b": mean_embedding_len_B,
         # all word salad samples used in null baseline
         "word_salad_samples": word_salad_samples,
+        # paraphrase baseline for upper bound scaling
+        "paraphrase_baseline": paraphrase_baseline,
         # raw embeddings for export (with labels)
         "embeddings_a": {
             "labels": theme_names_A,
@@ -2826,6 +3691,12 @@ class SimilarityComparator:
         k = config.get("k", 1.0)
         reg_m = config.get("reg_m", 0.2)
         distance = config.get("distance", "angular")
+        # paraphrase baseline parameters
+        compute_paraphrase_bound = config.get("compute_paraphrase_bound", True)
+        n_paraphrases = config.get("n_paraphrases", 3)
+        paraphrase_model = config.get("paraphrase_model", None)
+        api_key = config.get("api_key", None)
+        base_url = config.get("base_url", None)
 
         # Set labels on all themes once at the beginning (only if not already set)
         for result in pipeline_results:
@@ -2861,6 +3732,11 @@ class SimilarityComparator:
                 k=k,
                 reg_m=reg_m,
                 distance=distance,
+                compute_paraphrase_bound=compute_paraphrase_bound,
+                n_paraphrases=n_paraphrases,
+                paraphrase_model=paraphrase_model,
+                api_key=api_key,
+                base_url=base_url,
             )
             for i, j in result_combinations
         ]
