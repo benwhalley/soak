@@ -582,13 +582,13 @@
                         {% endif %}
                         {% for k_val in comp.stats.k_values %}
                         <li class="nav-item" role="presentation">
-                            <a class="nav-link{% if k_val == comp.stats.default_k %} active{% endif %}"
+                            <a class="nav-link{% if k_val == comp.stats.chord_k %} active{% endif %}"
                                id="ot-k-{{ k_val|replace('.', '-') }}-tab-{{ loop.index }}"
                                data-toggle="tab"
                                href="#ot-k-{{ k_val|replace('.', '-') }}-{{ loop.index }}"
                                role="tab"
                                aria-controls="ot-k-{{ k_val|replace('.', '-') }}-{{ loop.index }}"
-                               aria-selected="{{ 'true' if k_val == comp.stats.default_k else 'false' }}">
+                               aria-selected="{{ 'true' if k_val == comp.stats.chord_k else 'false' }}">
                                 K={{ "%.2f"|format(k_val) }}{% if k_val == comp.stats.default_k %} ■{% endif %}{% if k_val == comp.stats.chord_k %} ◆{% endif %}{% if k_val == comp.stats.diminishing_k %} ▲{% endif %}
                             </a>
                         </li>
@@ -605,7 +605,7 @@
 
                         <div class="alert alert-info mb-3">
                             <strong>■ Default K={{ "%.2f"|format(comp.stats.default_k) }}</strong> &nbsp;|&nbsp;
-                            <strong>◆ Chord elbow K={{ "%.2f"|format(comp.stats.chord_k) }}</strong> &nbsp;|&nbsp;
+                            <strong>◆ Max curvature K={{ "%.2f"|format(comp.stats.chord_k) }}</strong> &nbsp;|&nbsp;
                             <strong>▲ Dim. returns K={{ "%.2f"|format(comp.stats.diminishing_k) }}</strong>
                             {% if not comp.stats.plateau_reached %}<br><em class="text-warning">⚠ Curve may not have plateaued -- elbow estimates may be less reliable</em>{% endif %}
                         </div>
@@ -619,7 +619,7 @@
                                     </div>
                                     <div class="card-body">
                                         <img class="img-fluid img-thumbnail lightbox-trigger" src="data:image/png;base64,{{ comp.stats.shared_mass_scree.base64 }}" alt="Shared mass scree plot" style="cursor: pointer;">
-                                        <p class="small text-muted mt-2 mb-0">How much thematic content is matched. Higher = more themes matched. Elbow markers: ◆ chord, ▲ dim. returns.</p>
+                                        <p class="small text-muted mt-2 mb-0">How much thematic content is matched. Higher = more themes matched. Elbow markers: ◆ max curvature, ▲ dim. returns.</p>
                                     </div>
                                 </div>
                             </div>
@@ -683,7 +683,7 @@
                                         </tbody>
                                     </table>
                                 </div>
-                                <p class="small text-muted mt-2">■ = Default K, ◆ = Chord elbow, ▲ = Dim. returns. <strong>% of ceiling</strong> = how close to paraphrase baseline (100% = as good as identical meaning). Higher K forces more transport; lower K allows more unmatched themes.</p>
+                                <p class="small text-muted mt-2">■ = Default K, ◆ = Max curvature, ▲ = Dim. returns. <strong>% of ceiling</strong> = how close to paraphrase baseline (100% = as good as identical meaning). Higher K forces more transport; lower K allows more unmatched themes.</p>
                             </div>
                         </div>
 
@@ -707,8 +707,8 @@
                                     <div class="col-md-6">
                                         <h6>Baseline Statistics</h6>
                                         <ul class="list-unstyled">
-                                            <li><strong>Mean self-similarity:</strong> {{ "%.3f"|format(comp.stats.paraphrase_baseline.paraphrase_similarity_mean) }}</li>
-                                            <li><strong>Std dev:</strong> {{ "%.3f"|format(comp.stats.paraphrase_baseline.paraphrase_similarity_std) }}</li>
+                                            <li><strong>Mean self-similarity:</strong> {{ "%.3f"|format(comp.stats.paraphrase_baseline.paraphrase_similarity_mean) if comp.stats.paraphrase_baseline.paraphrase_similarity_mean is not none else "N/A" }}</li>
+                                            <li><strong>Std dev:</strong> {{ "%.3f"|format(comp.stats.paraphrase_baseline.paraphrase_similarity_std) if comp.stats.paraphrase_baseline.paraphrase_similarity_std is not none else "N/A" }}</li>
                                             <li><strong>Model:</strong> {{ comp.stats.paraphrase_baseline.metadata.model }}</li>
                                             <li><strong>Paraphrases per theme:</strong> {{ comp.stats.paraphrase_baseline.metadata.n_paraphrases }}</li>
                                         </ul>
@@ -811,7 +811,7 @@
 
                     {% for k_val in comp.stats.k_values %}
                     {% set ot_k = comp.stats.ot_by_k[k_val] %}
-                    <div class="tab-pane fade{% if k_val == comp.stats.default_k %} show active{% endif %}"
+                    <div class="tab-pane fade{% if k_val == comp.stats.chord_k %} show active{% endif %}"
                          id="ot-k-{{ k_val|replace('.', '-') }}-{{ loop.index }}"
                          role="tabpanel"
                          aria-labelledby="ot-k-{{ k_val|replace('.', '-') }}-tab-{{ loop.index }}">
@@ -825,9 +825,30 @@
                                     <div class="card-body">
                                         {% if ot_k.ot.shared_mass_pct_of_ceiling is defined %}
                                         <div class="text-center mb-3">
-                                            <h2 class="text-primary mb-0">{{ "%.0f"|format(ot_k.ot.shared_mass_pct_of_ceiling * 100) }}%</h2>
+
+                                            <div class="row">
+                                                <div class="col">
+                                            <h2 class="text-primary mb-0">
+                                                {{ "%.0f"|format(ot_k.ot.shared_mass * 100) }}%
+                                            </h2>
+                                            <p class="text-muted mb-0">of total</p>
+                                        
+                                            </div>
+                                            
+                                            <div class="col">
+                                            
+                                                <h2 class="text-primary mb-0">
+                                                {{ "%.0f"|format(ot_k.ot.shared_mass_pct_of_ceiling * 100) }}%
+                                            </h2>
                                             <p class="text-muted mb-0">of paraphrase ceiling</p>
                                             <p class="small text-muted"><em>best-case: identical meaning, different words</em></p>
+                                            
+                                            </div>
+                                        
+                                            </div>
+                                            
+                                            
+                                            
                                         </div>
                                         <hr>
                                         <div class="row small">
@@ -841,7 +862,7 @@
                                             <div class="col-6">
                                                 <ul class="list-unstyled mb-0">
                                                     <li><strong>vs word-salad:</strong> {{ "%.0f"|format(ot_k.ot.shared_mass_improvement_vs_null * 100) }}% of possible improvement</li>
-                                                    <li><strong>Effect size:</strong> {{ "%.1f"|format(ot_k.ot.shared_mass_effect) }} MADs</li>
+                                                    <li><strong>Effect size:</strong> {{ "%.1f"|format(ot_k.ot.shared_mass_effect) }} MADs above word-salad</li>
                                                 </ul>
                                             </div>
                                         </div>
@@ -860,7 +881,7 @@
                                             </div>
                                             <div class="col-6">
                                                 <ul class="list-unstyled mb-0">
-                                                    <li><strong>Effect size:</strong> {{ "%.1f"|format(ot_k.ot.shared_mass_effect) }} MADs</li>
+                                                    <li><strong>Effect size:</strong> {{ "%.1f"|format(ot_k.ot.shared_mass_effect) }} MADs above word-salad</li>
                                                 </ul>
                                             </div>
                                         </div>
@@ -879,11 +900,12 @@
                                                 {% if ot_k.ot.shared_mass_relative_paraphrase is defined %}
                                                 <p class="mb-2"><strong>% of paraphrase ceiling</strong> (headline) = <code>observed / ceiling</code>. Shows what fraction of the best-case alignment was achieved. 100% would mean alignment as good as comparing themes to their own paraphrases.</p>
                                                 <p class="mb-2"><strong>% of possible improvement</strong> (vs word-salad) = <code>(observed - floor) / (ceiling - floor)</code>. Shows progress from random baseline toward the ceiling -- how much better than chance, relative to the best case.</p>
+                                                <p class="mb-2"><strong>Effect size</strong> shows how many MADs (median absolute deviations) above the word-salad baseline the observed value falls. This measures how distinct the observed alignment is from random text -- higher values indicate more meaningful semantic similarity.</p>
                                                 <p class="mb-2"><strong>Paraphrase ceiling</strong> is computed by generating LLM paraphrases of each theme (same meaning, different words) and measuring their self-similarity.</p>
                                                 <p class="mb-0"><strong>Word-salad floor</strong> is computed by randomly shuffling words from each theme, destroying semantic meaning. This represents what you'd expect from random text with similar vocabulary.</p>
                                                 {% else %}
                                                 <p class="mb-2"><strong>Word-salad comparison</strong> tests whether observed alignment exceeds what you'd expect from random text. Word-salad is generated by shuffling words from themes, destroying semantic meaning.</p>
-                                                <p class="mb-0"><strong>Effect size</strong> shows how many MADs (median absolute deviations) above the word-salad baseline the observed value falls.</p>
+                                                <p class="mb-0"><strong>Effect size</strong> shows how many MADs (median absolute deviations) above the word-salad baseline the observed value falls. This measures how distinct the observed alignment is from random text.</p>
                                                 {% endif %}
                                             </div>
                                         </div>
@@ -901,20 +923,21 @@
                                         <div class="text-center mb-3">
                                             <h2 class="text-success mb-0">{{ "%.0f"|format(ot_k.ot.alignment_pct_of_ceiling * 100) }}%</h2>
                                             <p class="text-muted mb-0">of paraphrase ceiling</p>
-                                            <p class="small text-muted"><em>quality of theme-to-theme matches</em></p>
+                                            <p class="small text-muted"><em>best-case: identical meaning, different words</em></p>
                                         </div>
                                         <hr>
                                         <div class="row small">
                                             <div class="col-6">
                                                 <ul class="list-unstyled mb-0">
-                                                    <li><strong>Observed:</strong> {{ "%.2f"|format(ot_k.ot.alignment_observed) }}</li>
-                                                    <li><strong>Paraphrase ceiling:</strong> {{ "%.2f"|format(ot_k.ot.alignment_paraphrase_ceiling) }}</li>
-                                                    <li><strong>Word-salad floor:</strong> {{ "%.2f"|format(ot_k.ot.alignment_null_floor) }}</li>
+                                                    <li><strong>Observed:</strong> {{ "%.1f"|format(ot_k.ot.alignment_observed * 100) }}%</li>
+                                                    <li><strong>Paraphrase ceiling:</strong> {{ "%.1f"|format(ot_k.ot.alignment_paraphrase_ceiling * 100) }}%</li>
+                                                    <li><strong>Word-salad floor:</strong> {{ "%.1f"|format(ot_k.ot.alignment_null_floor * 100) }}%</li>
                                                 </ul>
                                             </div>
                                             <div class="col-6">
                                                 <ul class="list-unstyled mb-0">
                                                     <li><strong>vs word-salad:</strong> {{ "%.0f"|format(ot_k.ot.alignment_improvement_vs_null * 100) }}% of possible improvement</li>
+                                                    <li><strong>Effect size:</strong> {{ "%.1f"|format(ot_k.ot.alignment_effect) }} MADs above word-salad</li>
                                                 </ul>
                                             </div>
                                         </div>
@@ -927,10 +950,16 @@
                                         </div>
                                         <hr>
                                         <div class="row small">
-                                            <div class="col-12">
+                                            <div class="col-6">
                                                 <ul class="list-unstyled mb-0">
+                                                    <li><strong>Observed:</strong> {{ "%.1f"|format(fallback_alignment * 100) }}%</li>
                                                     <li><strong>Word-salad floor:</strong> {{ "%.1f"|format(fallback_floor * 100) }}%</li>
+                                                </ul>
+                                            </div>
+                                            <div class="col-6">
+                                                <ul class="list-unstyled mb-0">
                                                     <li><strong>vs word-salad:</strong> +{{ "%.1f"|format((fallback_alignment - fallback_floor) * 100) }}pp better</li>
+                                                    <li><strong>Effect size:</strong> {{ "%.1f"|format(ot_k.ot.avg_cost_effect) }} MADs above word-salad</li>
                                                 </ul>
                                             </div>
                                         </div>
@@ -950,9 +979,11 @@
                                                 <p class="mb-2"><strong>Semantic alignment</strong> measures the quality of theme-to-theme matches (computed as 1 - transport cost). Higher alignment = better semantic similarity between matched themes.</p>
                                                 <p class="mb-2"><strong>% of paraphrase ceiling</strong> (headline) = <code>observed / ceiling</code>. Shows what fraction of the best-case alignment was achieved. 100% would mean matches as semantically close as paraphrases.</p>
                                                 <p class="mb-2"><strong>% of possible improvement</strong> (vs word-salad) = <code>(observed - floor) / (ceiling - floor)</code>. Shows progress from random baseline toward the ceiling.</p>
-                                                <p class="mb-0"><strong>Paraphrase ceiling</strong> = alignment when comparing themes to their own paraphrases. <strong>Word-salad floor</strong> = alignment when comparing to randomly shuffled words.</p>
+                                                <p class="mb-2"><strong>Effect size</strong> shows how many MADs (median absolute deviations) above the word-salad baseline the observed value falls. This measures how distinct the observed alignment is from random text -- higher values indicate more meaningful semantic similarity.</p>
+                                                <p class="mb-0"><strong>Paraphrase ceiling</strong> = alignment when comparing themes to their own paraphrases. <strong>Word-salad floor</strong> = alignment when comparing to randomly shuffled words (no semantic meaning).</p>
                                                 {% else %}
                                                 <p class="mb-2"><strong>Semantic alignment</strong> measures how well matched themes relate to each other. Higher = better semantic similarity.</p>
+                                                <p class="mb-0"><strong>Effect size</strong> shows how many MADs (median absolute deviations) above the word-salad baseline the observed value falls. This measures how distinct the observed alignment is from random text.</p>
                                                 {% endif %}
                                             </div>
                                         </div>
@@ -1172,8 +1203,8 @@
                                             <h6>Paraphrase Upper Bound</h6>
                                             <p class="small text-muted">LLM-generated paraphrases of each theme establish a realistic upper bound for alignment. Paraphrases capture the same meaning in different words -- this represents the best achievable similarity between semantically equivalent analyses.</p>
                                             <ul class="list-unstyled small">
-                                                <li><strong>Mean self-similarity:</strong> {{ "%.3f"|format(comp.stats.paraphrase_baseline.paraphrase_similarity_mean) }} <small class="text-muted">(paraphrase ceiling)</small></li>
-                                                <li><strong>Std dev:</strong> {{ "%.3f"|format(comp.stats.paraphrase_baseline.paraphrase_similarity_std) }}</li>
+                                                <li><strong>Mean self-similarity:</strong> {{ "%.3f"|format(comp.stats.paraphrase_baseline.paraphrase_similarity_mean) if comp.stats.paraphrase_baseline.paraphrase_similarity_mean is not none else "N/A" }} <small class="text-muted">(paraphrase ceiling)</small></li>
+                                                <li><strong>Std dev:</strong> {{ "%.3f"|format(comp.stats.paraphrase_baseline.paraphrase_similarity_std) if comp.stats.paraphrase_baseline.paraphrase_similarity_std is not none else "N/A" }}</li>
                                                 <li><strong>Model:</strong> {{ comp.stats.paraphrase_baseline.metadata.model }}</li>
                                                 <li><strong>Paraphrases per theme:</strong> {{ comp.stats.paraphrase_baseline.metadata.n_paraphrases }}</li>
                                             </ul>
@@ -1230,7 +1261,7 @@
                                                     <td>Shared Mass</td>
                                                     <td class="text-right text-success">+{{ "%.1f"|format(ot_k.ot.shared_mass_effect) }}</td>
                                                     <td class="text-right text-danger">
-                                                        {% if ot_k.ot.paraphrase_upper_bound is defined and comp.stats.paraphrase_baseline and comp.stats.paraphrase_baseline.paraphrase_similarity_std > 0 %}
+                                                        {% if ot_k.ot.paraphrase_upper_bound is defined and comp.stats.paraphrase_baseline and comp.stats.paraphrase_baseline.paraphrase_similarity_std is not none and comp.stats.paraphrase_baseline.paraphrase_similarity_std > 0 %}
                                                         -{{ "%.1f"|format((ot_k.ot.paraphrase_upper_bound - ot_k.ot.shared_mass) / comp.stats.paraphrase_baseline.paraphrase_similarity_std) }}
                                                         {% else %}-{% endif %}
                                                     </td>
@@ -1241,7 +1272,7 @@
                                                         {% if ot_k.ot.avg_cost_effect is defined %}+{{ "%.1f"|format(ot_k.ot.avg_cost_effect) }}{% else %}-{% endif %}
                                                     </td>
                                                     <td class="text-right text-danger">
-                                                        {% if ot_k.ot.paraphrase_cost_lower_bound is defined and comp.stats.paraphrase_baseline and comp.stats.paraphrase_baseline.paraphrase_similarity_std > 0 %}
+                                                        {% if ot_k.ot.paraphrase_cost_lower_bound is defined and comp.stats.paraphrase_baseline and comp.stats.paraphrase_baseline.paraphrase_similarity_std is not none and comp.stats.paraphrase_baseline.paraphrase_similarity_std > 0 %}
                                                         {% set observed_alignment = 1 - ot_k.ot.avg_cost %}
                                                         {% set ceiling_alignment = 1 - ot_k.ot.paraphrase_cost_lower_bound %}
                                                         -{{ "%.1f"|format((ceiling_alignment - observed_alignment) / comp.stats.paraphrase_baseline.paraphrase_similarity_std) }}

@@ -21,6 +21,35 @@ from soak.models.base import get_embedding, memory
 logger = logging.getLogger(__name__)
 
 
+def rescale_similarity(
+    sim_matrix: np.ndarray,
+    rescale_min: float = 0.5,
+    rescale_max: float = 0.9,
+) -> np.ndarray:
+    """Rescale similarity matrix to focus on meaningful range.
+
+    Empirical testing shows angular similarity for text embeddings has:
+    - Close paraphrases: ~0.83
+    - Unrelated texts: ~0.55
+
+    This function truncates values outside [rescale_min, rescale_max] and
+    rescales to [0, 1], amplifying differences in the meaningful range.
+
+    Args:
+        sim_matrix: Similarity matrix with values nominally in [0, 1]
+        rescale_min: Floor value - similarities below this become 0
+        rescale_max: Ceiling value - similarities above this become 1
+
+    Returns:
+        Rescaled similarity matrix with values in [0, 1]
+    """
+    # clip to range
+    clipped = np.clip(sim_matrix, rescale_min, rescale_max)
+    # rescale to 0-1
+    rescaled = (clipped - rescale_min) / (rescale_max - rescale_min)
+    return rescaled
+
+
 def _hash_array(arr: np.ndarray) -> str:
     """Create a stable hash of a numpy array for cache keys."""
     return hashlib.sha256(arr.tobytes()).hexdigest()[:16]
@@ -478,6 +507,8 @@ def prepare_paraphrase_cost_matrix(
     embedding_model: str = "text-embedding-3-large",
     distance: str = "angular",
     shepard_k: float = 1.0,
+    rescale_min: Optional[float] = None,
+    rescale_max: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Prepare paraphrase cost matrix for OT computation (without running OT).
 
@@ -563,6 +594,10 @@ def prepare_paraphrase_cost_matrix(
     else:
         sim_matrix = cos_sim_matrix
 
+    # apply rescaling if enabled
+    if rescale_min is not None and rescale_max is not None:
+        sim_matrix = rescale_similarity(sim_matrix, rescale_min, rescale_max)
+
     # compute cost matrix for OT
     cost_matrix = 1.0 - sim_matrix
 
@@ -643,6 +678,8 @@ def compute_paraphrase_baseline(
     distance: str = "angular",
     shepard_k: float = 1.0,
     reg_m: float = 0.4,
+    rescale_min: Optional[float] = None,
+    rescale_max: Optional[float] = None,
 ) -> Dict[str, Any]:
     """Compute paraphrase-based upper bound using OT between themes and paraphrases.
 
@@ -663,7 +700,8 @@ def compute_paraphrase_baseline(
     """
     prep = prepare_paraphrase_cost_matrix(
         theme_texts, theme_embeddings, paraphrases,
-        embedding_model, distance, shepard_k
+        embedding_model, distance, shepard_k,
+        rescale_min, rescale_max
     )
 
     if prep is None:
@@ -1663,35 +1701,45 @@ def find_elbow_points(
     n_interp: int = 100,
     eps: float = 1e-12,
     plateau_threshold: float = 0.20,
+    min_k_for_elbow: float = 0.1,
+    max_k_for_elbow: float = 2.0,
 ) -> dict:
-    """Find elbow points using both chord-based and diminishing returns methods.
+    """Find elbow points using maximum curvature and diminishing returns methods.
 
-    Interpolates to a uniform grid in log(K) space for analysis.
+    Uses maximum curvature (κ = |y''| / (1 + y'²)^(3/2)) to find the elbow point
+    where the curve bends most sharply, indicating the optimal K value.
 
     Args:
-        k_values: K parameter values (should be positive; uses log(K+eps) for safety)
+        k_values: K parameter values (should be positive)
         shared_mass: Corresponding shared mass values (should increase with K)
-        n_interp: Number of points for uniform log(K) grid (default: 100)
-        eps: Small constant to handle log(0) edge case (default: 1e-12)
+        n_interp: Number of points for uniform grid (default: 100)
+        eps: Small constant for numerical stability (default: 1e-12)
         plateau_threshold: Threshold for diminishing returns (default: 0.20)
+        min_k_for_elbow: Minimum K to consider for elbow detection (default: 0.1)
+            Small K values often have noisy behaviour at the boundary.
+        max_k_for_elbow: Maximum K to consider for elbow detection (default: 2.0)
+            Anchor points beyond this are excluded from curvature calculation.
 
     Returns:
         Dictionary with:
-        - chord_idx, chord_k: Index and K value for chord-based elbow
+        - elbow_idx, elbow_k: Index and K value for maximum curvature elbow
         - diminishing_idx, diminishing_k: Index and K value for diminishing returns point
         - plateau_reached: Whether curve has clearly asymptoted
     """
     import numpy as np
+    from scipy.interpolate import UnivariateSpline
 
     K = np.asarray(k_values, float)
     s = np.asarray(shared_mass, float)
 
-    # work on log(K) scale to stop the tail dominating
-    logK = np.log(K + eps)
+    # for elbow detection, use K in [min_k_for_elbow, max_k_for_elbow]
+    elbow_mask = (K >= min_k_for_elbow) & (K <= max_k_for_elbow)
+    K_elbow = K[elbow_mask]
+    s_elbow = s[elbow_mask]
 
-    # interpolate to uniform grid in log(K) space
-    logK_uniform = np.linspace(logK.min(), logK.max(), n_interp)
-    s_uniform = np.interp(logK_uniform, logK, s)
+    # interpolate to uniform grid in linear K space (for elbow detection)
+    K_uniform = np.linspace(K_elbow.min(), K_elbow.max(), n_interp)
+    s_uniform = np.interp(K_uniform, K_elbow, s_elbow)
 
     # light smoothing with window=3 (simple moving average)
     if len(s_uniform) >= 3:
@@ -1699,8 +1747,16 @@ def find_elbow_points(
         s_padded = np.pad(s_uniform, (1, 1), mode="edge")
         s_uniform = np.convolve(s_padded, kernel, mode="valid")
 
-    # compute slopes for diminishing returns detection
-    slope = np.diff(s_uniform)
+    # for plateau detection, use all K values (including anchor)
+    K_all_uniform = np.linspace(K.min(), K.max(), n_interp)
+    s_all_uniform = np.interp(K_all_uniform, K, s)
+    if len(s_all_uniform) >= 3:
+        kernel = np.ones(3) / 3
+        s_all_padded = np.pad(s_all_uniform, (1, 1), mode="edge")
+        s_all_uniform = np.convolve(s_all_padded, kernel, mode="valid")
+
+    # compute slopes for plateau detection (using all K values)
+    slope = np.diff(s_all_uniform)
     n_window = min(5, len(slope) // 4) if len(slope) > 4 else 1
     initial_slope = np.mean(np.abs(slope[:n_window])) if len(slope) >= n_window else 0
     final_slope = np.mean(np.abs(slope[-n_window:])) if len(slope) >= n_window else 0
@@ -1711,11 +1767,11 @@ def find_elbow_points(
         final_slope / (initial_slope + 1e-12) < 0.25
     )
     # criterion 2: absolute change in last 20% of curve < 4 points
-    n_tail = max(1, len(s_uniform) // 5)
-    tail_range = s_uniform[-1] - s_uniform[-n_tail]
+    n_tail = max(1, len(s_all_uniform) // 5)
+    tail_range = s_all_uniform[-1] - s_all_uniform[-n_tail]
     absolute_plateau = abs(tail_range) < 4.0
     # criterion 3: high value (already near maximum)
-    high_value_plateau = s_uniform[-1] > 85.0
+    high_value_plateau = s_all_uniform[-1] > 85.0
     # criterion 4: consistent deceleration -- curve is flattening even if not flat
     if len(slope) >= 4:
         mid = len(slope) // 2
@@ -1728,25 +1784,42 @@ def find_elbow_points(
         relative_plateau or absolute_plateau or high_value_plateau or decelerating
     )
 
-    # === CHORD-BASED ELBOW (Kneedle-style) ===
-    x_min, x_max = logK_uniform.min(), logK_uniform.max()
+    # === MAXIMUM CURVATURE ELBOW ===
+    # normalise both axes to [0, 1] so curvature is scale-invariant
+    x_min, x_max = K_uniform.min(), K_uniform.max()
     y_min, y_max = s_uniform.min(), s_uniform.max()
     x_range = x_max - x_min if x_max != x_min else 1.0
     y_range = y_max - y_min if y_max != y_min else 1.0
 
-    x_norm = (logK_uniform - x_min) / x_range
+    x_norm = (K_uniform - x_min) / x_range
     y_norm = (s_uniform - y_min) / y_range
 
-    x0, y0 = x_norm[0], y_norm[0]
-    x1, y1 = x_norm[-1], y_norm[-1]
+    # fit a smoothing spline to get derivatives
+    # use smoothing factor s=0.01 for light smoothing
+    try:
+        spline = UnivariateSpline(x_norm, y_norm, s=0.01, k=4)
+        # first derivative
+        dy = spline.derivative(1)(x_norm)
+        # second derivative
+        d2y = spline.derivative(2)(x_norm)
+    except Exception:
+        # fallback to finite differences if spline fails
+        dy = np.gradient(y_norm, x_norm)
+        d2y = np.gradient(dy, x_norm)
 
-    chord_y = y0 + (y1 - y0) * (x_norm - x0) / (x1 - x0 + eps)
-    distances = y_norm - chord_y
+    # curvature: κ = |y''| / (1 + y'^2)^(3/2)
+    curvature = np.abs(d2y) / (1 + dy**2) ** 1.5
 
-    chord_interp_idx = int(np.argmax(distances))
-    chord_logK = logK_uniform[chord_interp_idx]
-    chord_K = np.exp(chord_logK)
-    chord_orig_idx = int(np.argmin(np.abs(K - chord_K)))
+    # find maximum curvature (excluding both endpoints which can have artifacts)
+    # exclude first 5% and last 10% (endpoints have unstable spline derivatives)
+    start_margin = max(1, n_interp // 20)
+    end_margin = max(1, n_interp // 10)
+    inner_curvature = curvature[start_margin:-end_margin]
+    max_curv_idx = start_margin + int(np.argmax(inner_curvature))
+
+    # map back to original K values (from full K array, not just elbow subset)
+    elbow_K = K_uniform[max_curv_idx]
+    elbow_orig_idx = int(np.argmin(np.abs(K - elbow_K)))
 
     # === DIMINISHING RETURNS (slope < 20% of initial) ===
     # Compute in ORIGINAL K space (not log space) for intuitive results
@@ -1790,8 +1863,11 @@ def find_elbow_points(
     diminishing_K = k_arr[diminishing_orig_idx]
 
     return {
-        "chord_idx": chord_orig_idx,
-        "chord_k": K[chord_orig_idx],
+        # keep chord_idx/chord_k for backward compatibility
+        "chord_idx": elbow_orig_idx,
+        "chord_k": K[elbow_orig_idx],
+        "elbow_idx": elbow_orig_idx,
+        "elbow_k": K[elbow_orig_idx],
         "diminishing_idx": diminishing_orig_idx,
         "diminishing_k": K[diminishing_orig_idx],
         "plateau_reached": plateau_reached,
@@ -1803,25 +1879,25 @@ def create_shared_mass_scree_plot(
     k_values: List[float],
     analysis_name_a: str = "A",
     analysis_name_b: str = "B",
-    default_k: float = 0.25,
+    elbow_k_values: List[float] = None,
 ) -> Dict[str, Any]:
     """Create scree plot showing shared mass across different K values.
 
-    Shows both chord-based elbow and diminishing returns points for K selection.
+    Shows both maximum curvature elbow and diminishing returns points for K selection.
     Baseline curves (paraphrase ceiling and word-salad floor) are extracted from
     ot_by_k for each K value and plotted as reference envelopes.
 
     Args:
         ot_by_k: Dictionary mapping K values to OT results
-        k_values: List of K values used
+        k_values: List of K values to display in plot
         analysis_name_a: Name of analysis A
         analysis_name_b: Name of analysis B
-        default_k: The default K value to highlight
+        elbow_k_values: K values for elbow detection (may include anchor points not displayed)
 
     Returns:
         Dictionary with:
         - image: Base64ImageFile containing the scree plot
-        - chord_k: K value at chord-based elbow
+        - chord_k: K value at maximum curvature elbow
         - diminishing_k: K value at diminishing returns point
         - plateau_reached: Whether the curve has clearly asymptoted
     """
@@ -1831,8 +1907,15 @@ def create_shared_mass_scree_plot(
     import matplotlib.pyplot as plt
     import numpy as np
 
-    # extract shared mass for each K
+    # use elbow_k_values if provided, otherwise use k_values
+    if elbow_k_values is None:
+        elbow_k_values = k_values
+
+    # extract shared mass for display K values
     shared_masses = [ot_by_k[k]["ot"]["shared_mass"] * 100 for k in k_values]
+
+    # extract shared mass for elbow detection (may include anchor K)
+    elbow_shared_masses = [ot_by_k[k]["ot"]["shared_mass"] * 100 for k in elbow_k_values]
 
     # extract baseline values for each K (if available)
     paraphrase_ceilings = []
@@ -1848,45 +1931,49 @@ def create_shared_mass_scree_plot(
     has_ceiling = any(c is not None for c in paraphrase_ceilings)
     has_floor = any(f is not None for f in word_salad_floors)
 
-    # find both elbow points
-    elbow_points = find_elbow_points(k_values, shared_masses)
-    chord_idx = elbow_points["chord_idx"]
+    # find both elbow points using full K range (including anchor)
+    elbow_points = find_elbow_points(elbow_k_values, elbow_shared_masses)
     chord_k = elbow_points["chord_k"]
-    diminishing_idx = elbow_points["diminishing_idx"]
     diminishing_k = elbow_points["diminishing_k"]
     plateau_reached = elbow_points["plateau_reached"]
 
-    chord_shared = shared_masses[chord_idx]
-    diminishing_shared = shared_masses[diminishing_idx]
+    # get shared mass values at elbow points (from elbow_k_values data)
+    chord_shared = elbow_shared_masses[elbow_points["chord_idx"]]
+    diminishing_shared = elbow_shared_masses[elbow_points["diminishing_idx"]]
 
-    # find default K index for highlighting
-    default_idx = k_values.index(default_k) if default_k in k_values else None
+    # find indices in display k_values (for annotation skipping)
+    chord_idx = k_values.index(chord_k) if chord_k in k_values else None
+    diminishing_idx = k_values.index(diminishing_k) if diminishing_k in k_values else None
 
     plt.close("all")
     fig, ax = plt.subplots(1, 1, figsize=(8, 5))
 
-    # plot shared mass curve
-    ax.plot(k_values, shared_masses, "o-", color="#27ae60", linewidth=2, markersize=6)
+    # plot shared mass curve (display k_values only)
+    ax.plot(k_values, shared_masses, "o-", color="#27ae60", linewidth=2, markersize=6, label="Observed")
 
-    # draw chord line in log(K) space (appears curved in linear K space)
-    eps = 1e-12
-    log_k_first, log_k_last = np.log(k_values[0] + eps), np.log(k_values[-1] + eps)
-    sm_first, sm_last = shared_masses[0], shared_masses[-1]
-    n_chord_pts = 50
-    log_k_chord = np.linspace(log_k_first, log_k_last, n_chord_pts)
-    k_chord = np.exp(log_k_chord)
-    sm_chord = sm_first + (sm_last - sm_first) * (log_k_chord - log_k_first) / (
-        log_k_last - log_k_first + eps
-    )
-    ax.plot(
-        k_chord,
-        sm_chord,
-        "--",
-        color="#7f8c8d",
-        linewidth=1.5,
-        alpha=0.7,
-        label="Chord (log K)",
-    )
+    # add spline fit overlay for sanity checking (same as used for curvature detection)
+    from scipy.interpolate import UnivariateSpline
+
+    min_k_for_elbow = 0.1
+    max_k_for_elbow = 2.0
+    elbow_k_arr = np.array(elbow_k_values)
+    elbow_mask = (elbow_k_arr >= min_k_for_elbow) & (elbow_k_arr <= max_k_for_elbow)
+    K_elbow_fit = elbow_k_arr[elbow_mask]
+    s_elbow_fit = np.array(elbow_shared_masses)[elbow_mask]
+    if len(K_elbow_fit) >= 4:
+        K_fit_uniform = np.linspace(K_elbow_fit.min(), K_elbow_fit.max(), 100)
+        s_fit_uniform = np.interp(K_fit_uniform, K_elbow_fit, s_elbow_fit)
+        x_norm = (K_fit_uniform - K_fit_uniform.min()) / (K_fit_uniform.max() - K_fit_uniform.min())
+        y_norm = (s_fit_uniform - s_fit_uniform.min()) / (s_fit_uniform.max() - s_fit_uniform.min() + 1e-12)
+        try:
+            spline = UnivariateSpline(x_norm, y_norm, s=0.01, k=4)
+            y_spline = spline(x_norm)
+            # convert back to original scale
+            s_spline = y_spline * (s_fit_uniform.max() - s_fit_uniform.min()) + s_fit_uniform.min()
+            ax.plot(K_fit_uniform, s_spline, "--", color="#888888", linewidth=1.5, alpha=0.6,
+                    label=f"Spline fit ({len(spline.get_knots())} knots)")
+        except Exception:
+            pass  # skip spline overlay if fitting fails
 
     ax.set_xlabel("K (Mass Penalty)", fontsize=11)
     ax.set_ylabel("Shared Mass (%)", fontsize=11)
@@ -1894,12 +1981,12 @@ def create_shared_mass_scree_plot(
     if not plateau_reached:
         title += " (curve may not have plateaued)"
     ax.set_title(title, fontsize=12)
-    ax.set_xlim(min(k_values), max(k_values))
+    ax.set_xlim(min(k_values), max(k_values))  # show only displayed K values
     ax.set_ylim(0, 100)
     ax.grid(True, alpha=0.3)
     ax.axhline(y=100, color="gray", linestyle="--", alpha=0.5)
 
-    # highlight chord-based elbow (filled purple diamond, lower layer)
+    # highlight maximum curvature elbow (filled purple diamond, lower layer)
     ax.scatter(
         [chord_k],
         [chord_shared],
@@ -1909,7 +1996,7 @@ def create_shared_mass_scree_plot(
         marker="D",
         edgecolors="white",
         linewidths=2,
-        label=f"Chord elbow (K={chord_k})",
+        label=f"Max curvature (K={chord_k})",
     )
     ax.axvline(x=chord_k, color="#9b59b6", linestyle=":", alpha=0.7)
 
@@ -1928,22 +2015,6 @@ def create_shared_mass_scree_plot(
     )
     if diminishing_k != chord_k:
         ax.axvline(x=diminishing_k, color="#e67e22", linestyle=":", alpha=0.7)
-
-    # highlight default K (blue square) if different from both
-    if default_idx is not None and default_k != chord_k and default_k != diminishing_k:
-        default_shared = shared_masses[default_idx]
-        ax.scatter(
-            [default_k],
-            [default_shared],
-            color="#3498db",
-            s=150,
-            zorder=5,
-            marker="s",
-            edgecolors="white",
-            linewidths=2,
-            label=f"Default (K={default_k})",
-        )
-        ax.axvline(x=default_k, color="#3498db", linestyle=":", alpha=0.7)
 
     # add baseline reference curves (varying with K)
     if has_ceiling:
@@ -1978,9 +2049,11 @@ def create_shared_mass_scree_plot(
     ax.legend(loc="lower right", fontsize=9)
 
     # annotate selected points to avoid clutter
-    skip_indices = {chord_idx, diminishing_idx}
-    if default_idx is not None:
-        skip_indices.add(default_idx)
+    skip_indices = set()
+    if chord_idx is not None:
+        skip_indices.add(chord_idx)
+    if diminishing_idx is not None:
+        skip_indices.add(diminishing_idx)
     for i, (k, sm) in enumerate(zip(k_values, shared_masses)):
         if i in skip_indices:
             continue
@@ -2016,7 +2089,6 @@ def create_alignment_scree_plot(
     k_values: List[float],
     analysis_name_a: str = "A",
     analysis_name_b: str = "B",
-    default_k: float = 0.25,
 ) -> Dict[str, Any]:
     """Create scree plot showing alignment (1 - cost) across different K values.
 
@@ -2028,7 +2100,6 @@ def create_alignment_scree_plot(
         k_values: List of K values used
         analysis_name_a: Name of analysis A
         analysis_name_b: Name of analysis B
-        default_k: The default K value to highlight
 
     Returns:
         Dictionary with:
@@ -2054,9 +2125,6 @@ def create_alignment_scree_plot(
 
     has_ceiling = any(c is not None for c in paraphrase_ceilings)
     has_floor = any(f is not None for f in word_salad_floors)
-
-    # find default K index for highlighting
-    default_idx = k_values.index(default_k) if default_k in k_values else None
 
     plt.close("all")
     fig, ax = plt.subplots(1, 1, figsize=(8, 5))
@@ -2109,31 +2177,13 @@ def create_alignment_scree_plot(
             )
             ax.fill_between(valid_k_floor, 0, valid_floor, alpha=0.1, color="#e74c3c")
 
-    # highlight default K
-    if default_idx is not None:
-        default_align = alignments[default_idx]
-        ax.scatter(
-            [default_k],
-            [default_align],
-            color="#3498db",
-            s=150,
-            zorder=5,
-            marker="s",
-            edgecolors="white",
-            linewidths=2,
-            label=f"Default (K={default_k})",
-        )
-        ax.axvline(x=default_k, color="#3498db", linestyle=":", alpha=0.7)
-
     ax.legend(loc="lower right", fontsize=9)
 
     # annotate some points
     for i, (k, align) in enumerate(zip(k_values, alignments)):
-        if default_idx is not None and i == default_idx:
-            continue
         if i == 0 or i == len(k_values) - 1 or i % 4 == 0:
             ax.annotate(
-                f"{align:.1f}%",
+                f"{align:.2f}",
                 (k, align),
                 textcoords="offset points",
                 xytext=(0, -15),
@@ -2158,7 +2208,6 @@ def create_splits_joins_scree_plot(
     k_values: List[float],
     analysis_name_a: str = "A",
     analysis_name_b: str = "B",
-    default_k: float = 0.25,
 ) -> Dict[str, Any]:
     """Create scree plot showing average splits/joins across different K values.
 
@@ -2167,7 +2216,6 @@ def create_splits_joins_scree_plot(
         k_values: List of K values used
         analysis_name_a: Name of analysis A
         analysis_name_b: Name of analysis B
-        default_k: The default K value to highlight
 
     Returns:
         Dictionary with:
@@ -2198,9 +2246,6 @@ def create_splits_joins_scree_plot(
 
     has_ceiling = any(c is not None for c in paraphrase_ceilings)
     has_floor = any(f is not None for f in word_salad_floors)
-
-    # find default K index for highlighting
-    default_idx = k_values.index(default_k) if default_k in k_values else None
 
     plt.close("all")
     fig, ax = plt.subplots(1, 1, figsize=(8, 5))
@@ -2262,31 +2307,13 @@ def create_splits_joins_scree_plot(
             # shade above floor (worse = more splits/joins for random)
             ax.fill_between(valid_k_floor, valid_floor, y_max_data + y_range * 0.1, alpha=0.1, color="#999999")
 
-    # highlight default K
-    if default_idx is not None:
-        default_sj = splits_joins[default_idx]
-        ax.scatter(
-            [default_k],
-            [default_sj],
-            color="#3498db",
-            s=150,
-            zorder=5,
-            marker="s",
-            edgecolors="white",
-            linewidths=2,
-            label=f"Default (K={default_k})",
-        )
-        ax.axvline(x=default_k, color="#3498db", linestyle=":", alpha=0.7)
-
-    ax.legend(loc="upper right", fontsize=9)
-
     # add reference line at 1.0 (perfect 1:1 matching)
     ax.axhline(y=1.0, color="gray", linestyle="--", alpha=0.5, label="Perfect 1:1")
 
+    ax.legend(loc="upper right", fontsize=9)
+
     # annotate some points
     for i, (k, sj) in enumerate(zip(k_values, splits_joins)):
-        if default_idx is not None and i == default_idx:
-            continue
         if i == 0 or i == len(k_values) - 1 or i % 4 == 0:
             ax.annotate(
                 f"{sj:.2f}",
@@ -2324,6 +2351,10 @@ def compare_result_similarity(
     paraphrase_model: Optional[str] = None,
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
+    green_above: float = 0.8,
+    red_below: float = 0.65,
+    rescale_min: Optional[float] = 0.5,
+    rescale_max: Optional[float] = 0.9,
 ) -> Dict[str, Any]:
     """
     Compare two sets of theme embeddings.
@@ -2366,6 +2397,10 @@ def compare_result_similarity(
         paraphrase_model: LLM model for paraphrase generation (default: gpt-4.1-mini)
         api_key: API key for LLM (uses LLM_API_KEY env var if not provided)
         base_url: API base URL (uses LLM_API_BASE env var if not provided)
+        rescale_min: Floor for rescaling similarity (default: 0.5). Values below become 0.
+                    Set to None to disable rescaling.
+        rescale_max: Ceiling for rescaling similarity (default: 0.9). Values above become 1.
+                    Empirically, close paraphrases score ~0.83 and unrelated ~0.55.
 
     Returns:
         Dictionary with similarity metrics including:
@@ -2497,6 +2532,15 @@ def compare_result_similarity(
         "shepard": shepard_sim,
     }
     selected_sim = distance_matrices.get(distance, angle_sim)
+
+    # Apply rescaling if enabled (rescale_min and rescale_max both set)
+    selected_sim_raw = selected_sim.copy()  # keep original for reference
+    if rescale_min is not None and rescale_max is not None:
+        selected_sim = rescale_similarity(selected_sim, rescale_min, rescale_max)
+        logger.info(
+            f"Rescaled similarity from [{rescale_min}, {rescale_max}] to [0, 1]"
+        )
+
     hungarian_results = hungarian_matching(selected_sim, threshold=threshold)
 
     # log Hungarian results
@@ -2567,20 +2611,25 @@ def compare_result_similarity(
         n_samples_per_direction, len(A_texts), -1
     )
 
-    # helper to compute similarity using the selected distance metric
-    def compute_similarity(emb_a, emb_b, metric, k_val):
+    # helper to compute similarity using the selected distance metric (with rescaling)
+    def compute_similarity(emb_a, emb_b, metric, k_val, apply_rescale=True):
         cos_sim = cosine_similarity(emb_a, emb_b)
         if metric == "cosine":
-            return cos_sim
+            sim = cos_sim
         elif metric == "angular":
             angle_mat = np.degrees(np.arccos(np.clip(cos_sim, -1.0, 1.0)))
-            return 1 - angle_mat / 180.0
+            sim = 1 - angle_mat / 180.0
         elif metric == "shepard":
             theta = np.arccos(np.clip(cos_sim, -1.0, 1.0))
-            return (np.exp(-k_val * theta) - np.exp(-k_val * np.pi)) / (
+            sim = (np.exp(-k_val * theta) - np.exp(-k_val * np.pi)) / (
                 1 - np.exp(-k_val * np.pi)
             )
-        return cos_sim
+        else:
+            sim = cos_sim
+        # apply rescaling if enabled
+        if apply_rescale and rescale_min is not None and rescale_max is not None:
+            sim = rescale_similarity(sim, rescale_min, rescale_max)
+        return sim
 
     null_cost_matrices_B = [
         1 - compute_similarity(emb_A, emb, distance, k) for emb in emb_B_salads
@@ -2642,6 +2691,8 @@ def compare_result_similarity(
                 distance=distance,
                 shepard_k=k,
                 reg_m=0.3,  # initial K for logging, will recompute per-K
+                rescale_min=rescale_min,
+                rescale_max=rescale_max,
             )
             baseline_B = compute_paraphrase_baseline(
                 B_texts, emb_B, paraphrases_B,
@@ -2649,6 +2700,8 @@ def compare_result_similarity(
                 distance=distance,
                 shepard_k=k,
                 reg_m=0.3,
+                rescale_min=rescale_min,
+                rescale_max=rescale_max,
             )
 
             # store cost matrices for K-specific baseline computation
@@ -2703,7 +2756,8 @@ def compare_result_similarity(
         4.0,
     ]
     EXTENDED_K_VALUES = [6.0, 8.0, 10.0]
-    DEFAULT_K = 0.3
+    PLATEAU_ANCHOR_K = 5.0  # always compute for reliable plateau detection, but hide from plots
+    MIN_K_BEFORE_STOP = 0.3  # minimum K to compute before allowing early stopping
 
     # PHASE 1: Compute OT for all K values (without visualisations yet)
     ot_by_k = {}
@@ -2744,7 +2798,7 @@ def compare_result_similarity(
             prev_shared_mass + 1e-9
         )
         prev_shared_mass = current_shared_mass
-        if improvement < 0.025 and k_val >= DEFAULT_K:
+        if improvement < 0.025 and k_val >= MIN_K_BEFORE_STOP:
             logger.info(
                 f"Shared mass improvement {improvement:.1%} < 2.5% at K={k_val}, stopping early"
             )
@@ -2800,27 +2854,49 @@ def compare_result_similarity(
                 )
                 break
 
-    # PHASE 2: Get color scale from default K and create visualisations
-    # Extract min/max costs from default K transport plan for consistent color scale
-    default_transport = ot_by_k[DEFAULT_K]["ot_result"]["transport_plan"]
-    threshold_ratio = 0.01
-    threshold = threshold_ratio * default_transport.max()
-
-    # get costs for links that will be displayed (above threshold)
-    default_link_costs = []
-    for i in range(default_transport.shape[0]):
-        for j in range(default_transport.shape[1]):
-            if default_transport[i, j] > threshold:
-                default_link_costs.append(cost_matrix[i, j])
-
-    if default_link_costs:
-        color_cost_min = min(default_link_costs)
-        color_cost_max = max(default_link_costs)
-        logger.info(
-            f"Color scale from default K={DEFAULT_K}: cost range [{color_cost_min:.3f}, {color_cost_max:.3f}] (similarity [{1-color_cost_max:.3f}, {1-color_cost_min:.3f}])"
+    # always compute plateau anchor K for reliable elbow detection (but don't show in plots)
+    if PLATEAU_ANCHOR_K not in ot_by_k:
+        logger.debug(f"\n--- Computing OT with K={PLATEAU_ANCHOR_K} (plateau anchor) ---")
+        ot_result = compute_ot(
+            cost_matrix,
+            null_cost_matrices=null_cost_matrices,
+            mode="unbalanced",
+            reg_m=PLATEAU_ANCHOR_K,
         )
-    else:
-        color_cost_min, color_cost_max = 0.0, 1.0
+        split_join_stats = compute_split_join_stats(ot_result["transport_plan"])
+        ot_by_k[PLATEAU_ANCHOR_K] = {
+            "ot_result": ot_result,
+            "ot": ot_result,  # also store as 'ot' for scree plot compatibility
+            "split_join_stats": split_join_stats,
+        }
+        logger.debug(
+            f"K={PLATEAU_ANCHOR_K:.1f}: shared_mass={ot_result['shared_mass']:.3f} (anchor for plateau detection)"
+        )
+
+    # k values for elbow detection includes anchor; visualization k values excludes it
+    elbow_k_values = sorted(ot_by_k.keys())
+
+    # PHASE 2: Set color scale from user thresholds (or defaults)
+    # If rescaling is enabled, convert thresholds from original to rescaled space
+    effective_green_above = green_above
+    effective_red_below = red_below
+    if rescale_min is not None and rescale_max is not None:
+        # convert user's original-space thresholds to rescaled space
+        scale_range = rescale_max - rescale_min
+        effective_green_above = np.clip((green_above - rescale_min) / scale_range, 0.0, 1.0)
+        effective_red_below = np.clip((red_below - rescale_min) / scale_range, 0.0, 1.0)
+        logger.info(
+            f"Color scale rescaled: original [{red_below:.2f}, {green_above:.2f}] → "
+            f"rescaled [{effective_red_below:.2f}, {effective_green_above:.2f}]"
+        )
+
+    # green_above (similarity) → cost_min = 1 - green_above
+    # red_below (similarity) → cost_max = 1 - red_below
+    color_cost_min = 1.0 - effective_green_above  # e.g., 0.8 similarity → 0.2 cost (green)
+    color_cost_max = 1.0 - effective_red_below    # e.g., 0.65 similarity → 0.35 cost (red)
+    logger.info(
+        f"Color scale: similarity [{effective_red_below:.2f}, {effective_green_above:.2f}] → cost [{color_cost_min:.3f}, {color_cost_max:.3f}]"
+    )
 
     # Create visualisations for all K values with shared color scale
     for k_val in tqdm(all_k_values, desc="Creating visualisations", file=sys.stderr):
@@ -2864,11 +2940,6 @@ def compare_result_similarity(
             # average for symmetric baseline
             paraphrase_upper_bound_k = (para_ot_A["shared_mass"] + para_ot_B["shared_mass"]) / 2
             paraphrase_cost_lower_bound_k = (para_ot_A["avg_cost"] + para_ot_B["avg_cost"]) / 2
-
-            # update paraphrase_baseline with K-specific values for default K
-            if k_val == DEFAULT_K and paraphrase_baseline is not None:
-                paraphrase_baseline["paraphrase_similarity_mean"] = paraphrase_upper_bound_k
-                paraphrase_baseline["paraphrase_cost_mean"] = paraphrase_cost_lower_bound_k
 
         # add paraphrase-scaled metrics if paraphrase baseline available
         if paraphrase_upper_bound_k is not None:
@@ -2927,6 +2998,9 @@ def compare_result_similarity(
                 else:
                     ot_serialisable_k["alignment_improvement_vs_null"] = 0.0
 
+                # alignment_effect: effect size in MADs (same as avg_cost_effect since alignment = 1 - cost)
+                ot_serialisable_k["alignment_effect"] = ot_serialisable_k.get("avg_cost_effect", 0.0)
+
                 # keep old names for backward compatibility
                 ot_serialisable_k["avg_cost_pct_of_floor"] = ot_serialisable_k["alignment_pct_of_ceiling"]
                 ot_serialisable_k["avg_cost_improvement_vs_null"] = ot_serialisable_k["alignment_improvement_vs_null"]
@@ -2943,55 +3017,68 @@ def compare_result_similarity(
             "split_join_stats": split_join_stats,
         }
 
-    # use default K for backward compatibility
-    ot_results = ot_by_k[DEFAULT_K]["ot"]
-    ot_results["transport_plan"] = np.array(
-        ot_results["transport_plan"]
-    )  # convert back for later use
-    transport_sankey = ot_by_k[DEFAULT_K]["transport_sankey"]
-    transport_heatmap = ot_by_k[DEFAULT_K]["transport_heatmap"]
-
-    # generate scree plots (baselines extracted from ot_by_k for each K)
-    scree_result = create_shared_mass_scree_plot(
-        ot_by_k,
-        all_k_values,
-        analysis_name_a=analysis_name_A,
-        analysis_name_b=analysis_name_B,
-        default_k=DEFAULT_K,
-    )
-    shared_mass_scree = scree_result["image"]
-    chord_k = scree_result["chord_k"]
-    diminishing_k = scree_result["diminishing_k"]
-    plateau_reached = scree_result["plateau_reached"]
-
-    alignment_scree_result = create_alignment_scree_plot(
-        ot_by_k,
-        all_k_values,
-        analysis_name_a=analysis_name_A,
-        analysis_name_b=analysis_name_B,
-        default_k=DEFAULT_K,
-    )
-    alignment_scree = alignment_scree_result["image"]
-
-    splits_joins_scree_result = create_splits_joins_scree_plot(
-        ot_by_k,
-        all_k_values,
-        analysis_name_a=analysis_name_A,
-        analysis_name_b=analysis_name_B,
-        default_k=DEFAULT_K,
-    )
-    splits_joins_scree = splits_joins_scree_result["image"]
+    # compute elbow points first to determine chord_k for reference results
+    elbow_shared_masses = [ot_by_k[k]["ot"]["shared_mass"] * 100 for k in elbow_k_values]
+    elbow_points = find_elbow_points(elbow_k_values, elbow_shared_masses)
+    chord_k = elbow_points["chord_k"]
+    diminishing_k = elbow_points["diminishing_k"]
+    plateau_reached = elbow_points["plateau_reached"]
 
     logger.info(f"\n=== Elbow Detection ===")
-    logger.info(f"Chord-based elbow: K={chord_k} (max distance from chord)")
+    logger.info(f"Max curvature elbow: K={chord_k} (maximum curvature point)")
     logger.info(f"Diminishing returns: K={diminishing_k} (slope < 20% of initial)")
     if not plateau_reached:
         logger.warning(
             "Curve may not have plateaued -- elbow estimates may be less reliable"
         )
 
-    # log default K results
-    logger.info(f"\n=== Default K={DEFAULT_K} Results ===")
+    # use chord_k for reference results (the automatically selected K)
+    ot_results = ot_by_k[chord_k]["ot"]
+    ot_results["transport_plan"] = np.array(
+        ot_results["transport_plan"]
+    )  # convert back for later use
+    transport_sankey = ot_by_k[chord_k]["transport_sankey"]
+    transport_heatmap = ot_by_k[chord_k]["transport_heatmap"]
+
+    # populate paraphrase_baseline with chord_k-specific values
+    if paraphrase_baseline is not None:
+        paraphrase_baseline["paraphrase_similarity_mean"] = ot_results.get("paraphrase_upper_bound")
+        paraphrase_baseline["paraphrase_cost_mean"] = ot_results.get("paraphrase_cost_lower_bound")
+
+    # filter displayed K values: show up to chord_k + 0.5, max 1.5
+    k_display_max = min(chord_k + 0.5, 1.5)
+    display_k_values = [k for k in all_k_values if k <= k_display_max]
+    logger.info(f"Displaying K values up to {k_display_max:.2f} (chord={chord_k} + 0.5, max 1.5)")
+
+    # generate scree plots (baselines extracted from ot_by_k for each K)
+    # use elbow_k_values (includes anchor) for elbow detection, display_k_values for display
+    scree_result = create_shared_mass_scree_plot(
+        ot_by_k,
+        display_k_values,
+        analysis_name_a=analysis_name_A,
+        analysis_name_b=analysis_name_B,
+        elbow_k_values=elbow_k_values,
+    )
+    shared_mass_scree = scree_result["image"]
+
+    alignment_scree_result = create_alignment_scree_plot(
+        ot_by_k,
+        display_k_values,
+        analysis_name_a=analysis_name_A,
+        analysis_name_b=analysis_name_B,
+    )
+    alignment_scree = alignment_scree_result["image"]
+
+    splits_joins_scree_result = create_splits_joins_scree_plot(
+        ot_by_k,
+        display_k_values,
+        analysis_name_a=analysis_name_A,
+        analysis_name_b=analysis_name_B,
+    )
+    splits_joins_scree = splits_joins_scree_result["image"]
+
+    # log chord_k results
+    logger.info(f"\n=== Chord K={chord_k} Results ===")
     logger.info(
         f"Shared Mass: {ot_results['shared_mass']:.1%} (proportion of mass transported)"
     )
@@ -3209,7 +3296,7 @@ def compare_result_similarity(
 
     # log best matches with OT statistics
     logger.info(
-        f"\n=== Best Matches (many:many) with OT Statistics (K={DEFAULT_K}) ==="
+        f"\n=== Best Matches (many:many) with OT Statistics (K={chord_k}) ==="
     )
     logger.info(f"\n{analysis_name_A} → {analysis_name_B}:")
     logger.info(
@@ -3250,7 +3337,10 @@ def compare_result_similarity(
     return {
         # similarity metric used for coverage, fidelity, OT (for display purposes)
         "similarity_metric": distance,
+        "rescale_min": rescale_min,
+        "rescale_max": rescale_max,
         "selected_similarity_matrix": np.round(selected_sim, 3),
+        "selected_similarity_matrix_raw": np.round(selected_sim_raw, 3),
         # coverage metrics (hit rates)
         "hit_rate_a": hit_rate_a,
         "hit_rate_b": hit_rate_b,
@@ -3281,10 +3371,10 @@ def compare_result_similarity(
         # Transport visualisations (for default K)
         "transport_sankey": transport_sankey,
         "transport_heatmap": transport_heatmap,
-        # OT results for all K values (for tabbed display)
+        # OT results for displayed K values (for tabbed display)
         "ot_by_k": ot_by_k,
-        "k_values": all_k_values,
-        "default_k": DEFAULT_K,
+        "k_values": display_k_values,
+        "default_k": chord_k,  # default is now chord elbow
         "chord_k": chord_k,
         "diminishing_k": diminishing_k,
         "plateau_reached": plateau_reached,
@@ -3697,6 +3787,12 @@ class SimilarityComparator:
         paraphrase_model = config.get("paraphrase_model", None)
         api_key = config.get("api_key", None)
         base_url = config.get("base_url", None)
+        # color scale thresholds for Sankey plots
+        green_above = config.get("green_above", 0.8)
+        red_below = config.get("red_below", 0.65)
+        # rescaling parameters (set to None to disable)
+        rescale_min = config.get("rescale_min", 0.5)
+        rescale_max = config.get("rescale_max", 0.9)
 
         # Set labels on all themes once at the beginning (only if not already set)
         for result in pipeline_results:
@@ -3737,6 +3833,10 @@ class SimilarityComparator:
                 paraphrase_model=paraphrase_model,
                 api_key=api_key,
                 base_url=base_url,
+                green_above=green_above,
+                red_below=red_below,
+                rescale_min=rescale_min,
+                rescale_max=rescale_max,
             )
             for i, j in result_combinations
         ]

@@ -152,11 +152,21 @@ class QualitativeAnalysisPipeline(DAG):
         dd = self.get_model_dump().copy()
         dd["config"] = dd["config"].copy()  # shallow copy to avoid mutating cache
         dd["config"]["documents"] = []
+
+        # Get soak version for footer
+        try:
+            import importlib.metadata
+
+            soak_version = importlib.metadata.version("soaking")
+        except importlib.metadata.PackageNotFoundError:
+            soak_version = "dev"
+
         return template.render(
             pipeline=self,
             result=self.result(),
             detail=dd,
             execution_order=execution_order,
+            soak_version=soak_version,
         )
 
     def result(self):

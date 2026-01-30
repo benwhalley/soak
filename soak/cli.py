@@ -21,7 +21,7 @@ warnings.filterwarnings(
     category=RuntimeWarning,
 )
 
-app = typer.Typer(name="soak")
+app = typer.Typer(name="soak", pretty_exceptions_show_locals=False)
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 logger = logging.getLogger(__name__)
@@ -73,6 +73,13 @@ def get_soak_version() -> str:
         return "dev"
 
 
+def version_callback(value: bool):
+    """Print version and exit."""
+    if value:
+        typer.echo(get_soak_version())
+        raise typer.Exit()
+
+
 @app.callback()
 def main(
     verbose: int = typer.Option(
@@ -86,6 +93,14 @@ def main(
         False,
         "--pdb",
         help="Drop into pdb debugger on unhandled exceptions",
+    ),
+    version: bool = typer.Option(
+        None,
+        "--version",
+        "-V",
+        help="Show version and exit",
+        callback=version_callback,
+        is_eager=True,
     ),
 ):
     """soak: DAG-based pipeline system for LLM-assisted qualitative analysis.
@@ -520,15 +535,23 @@ def run(
         shutil.rmtree(dump_path)
 
     # Build command string for metadata
-    cmd_parts = [f"soak {pipeline_arg}"]
+    cmd_parts = ["soak", "run", pipeline_arg]
     for inp in input:
-        cmd_parts.append(f"--input {inp}")
-    cmd_parts.append(f"--output {output}")
+        cmd_parts.append(str(inp))
+    cmd_parts.extend(["-o", output])
     if model_name:
-        cmd_parts.append(f"--model-name {model_name}")
+        cmd_parts.extend(["--model", model_name])
+    if sample is not None:
+        cmd_parts.extend(["--sample", str(sample)])
+    if head is not None:
+        cmd_parts.extend(["--head", str(head)])
+    if seed is not None:
+        cmd_parts.extend(["--seed", str(seed)])
     if context:
         for ctx in context:
-            cmd_parts.append(f"--context {ctx}")
+            cmd_parts.extend(["-c", ctx])
+    for tmpl in template:
+        cmd_parts.extend(["-t", tmpl])
 
     # Generate config hash for dump folder naming
     config_hash = hash_run_config(
@@ -544,6 +567,9 @@ def run(
         "model_name": model_name,
         "templates": template,
         "unique_id": config_hash,
+        "sample_n": sample,
+        "head_n": head,
+        "seed": seed,
     }
     if context:
         metadata["context_overrides"] = dict([c.split("=", 1) for c in context])
@@ -852,19 +878,22 @@ def _print_comparison_stats(
     default_k = result.get("default_k", 0.25)
     elbow_k = result.get("elbow_k")
 
-    # show baseline reference values
-    paraphrase_baseline = result.get("paraphrase_baseline")
-    if paraphrase_baseline:
-        ceiling_sim = paraphrase_baseline.get("paraphrase_similarity_mean", 0)
-        ceiling_align = 1 - paraphrase_baseline.get("paraphrase_cost_mean", 0)
-        lines.append(f"  Baselines:")
-        lines.append(f"    Paraphrase ceiling:   {ceiling_sim:.1%} shared mass, {ceiling_align:.1%} alignment")
-        # get word-salad floor from default K's OT data
-        if default_k in ot_by_k:
-            default_ot = ot_by_k[default_k]["ot"]
-            floor_sim = default_ot.get("null_shared_mass_mean", 0)
-            floor_align = 1 - default_ot.get("null_avg_cost_mean", 0)
-            lines.append(f"    Word-salad floor:     {floor_sim:.1%} shared mass, {floor_align:.1%} alignment")
+    # show baseline reference values from default K's OT data
+    if default_k in ot_by_k:
+        default_ot = ot_by_k[default_k]["ot"]
+        ceiling_sim = default_ot.get("paraphrase_upper_bound")
+        ceiling_cost = default_ot.get("paraphrase_cost_lower_bound")
+        floor_sim = default_ot.get("null_shared_mass_mean")
+        floor_cost = default_ot.get("null_avg_cost_mean")
+
+        if ceiling_sim is not None or floor_sim is not None:
+            lines.append(f"  Baselines:")
+            if ceiling_sim is not None:
+                ceiling_align = 1 - (ceiling_cost or 0)
+                lines.append(f"    Paraphrase ceiling:   {ceiling_sim:.1%} shared mass, {ceiling_align:.1%} alignment")
+            if floor_sim is not None:
+                floor_align = 1 - (floor_cost or 0)
+                lines.append(f"    Word-salad floor:     {floor_sim:.1%} shared mass, {floor_align:.1%} alignment")
 
     # determine which K values to show
     if ot_k_values:
@@ -1208,6 +1237,24 @@ def compare(
         envvar="SOAK_PARAPHRASE_MODEL",
         help="Model for paraphrase generation (default: gpt-4.1-mini)",
     ),
+    green_above: float = typer.Option(
+        0.8,
+        "--green-above",
+        envvar="SOAK_GREEN_ABOVE",
+        help="Similarity threshold for green (good match) in Sankey colour scale. Default: 0.8",
+    ),
+    red_below: float = typer.Option(
+        0.65,
+        "--red-below",
+        envvar="SOAK_RED_BELOW",
+        help="Similarity threshold for red (poor match) in Sankey colour scale. Default: 0.65",
+    ),
+    rescale: str = typer.Option(
+        "0.5,0.9",
+        "--rescale",
+        envvar="SOAK_RESCALE",
+        help="Rescale similarity to [0,1] from [min,max]. Format: 'min,max' (default: '0.5,0.9') or 'off' to disable. Empirically, close paraphrases score ~0.83 and unrelated ~0.55.",
+    ),
 ):
     """Compare analyses or string lists and generate comparison statistics.
 
@@ -1239,6 +1286,21 @@ def compare(
         except ValueError:
             logger.error(
                 f"Invalid --ot-k-values format: {ot_k_values}. Use comma-separated floats."
+            )
+            raise typer.Exit(1)
+
+    # parse rescale option
+    rescale_min, rescale_max = None, None
+    if rescale.lower() != "off":
+        try:
+            parts = rescale.split(",")
+            if len(parts) != 2:
+                raise ValueError("Need exactly two values")
+            rescale_min, rescale_max = float(parts[0].strip()), float(parts[1].strip())
+            logger.info(f"Rescaling similarity from [{rescale_min}, {rescale_max}] to [0, 1]")
+        except ValueError:
+            logger.error(
+                f"Invalid --rescale format: {rescale}. Use 'min,max' (e.g., '0.5,0.9') or 'off'."
             )
             raise typer.Exit(1)
 
@@ -1363,6 +1425,10 @@ def compare(
                 "compute_paraphrase_bound": not no_paraphrase_bound,
                 "n_paraphrases": n_paraphrases,
                 "paraphrase_model": paraphrase_model,
+                "green_above": green_above,
+                "red_below": red_below,
+                "rescale_min": rescale_min,
+                "rescale_max": rescale_max,
             },
         )
 
@@ -1502,6 +1568,10 @@ def compare(
                 "compute_paraphrase_bound": not no_paraphrase_bound,
                 "n_paraphrases": n_paraphrases,
                 "paraphrase_model": paraphrase_model,
+                "green_above": green_above,
+                "red_below": red_below,
+                "rescale_min": rescale_min,
+                "rescale_max": rescale_max,
             },
         )
 
