@@ -1,1879 +1,106 @@
-"""Theme and code similarity comparison using embeddings."""
+"""Theme and code similarity comparison using embeddings.
 
-import base64
-import csv
-import hashlib
-import io
+This module provides functions and classes for comparing thematic analyses
+using embedding similarity and optimal transport.
+
+The module is organized into submodules:
+- rescaling: Similarity matrix rescaling methods
+- optimal_transport: Optimal transport computation
+- baselines: Baseline generation (word-salad, permutation)
+- paraphrasing: LLM-based paraphrase generation
+- visualizations: Visualization functions (Sankey, heatmaps, etc.)
+- utils: Utility functions
+"""
+
+import asyncio
 import itertools
 import logging
+import os
 import sys
 import textwrap
 from collections import OrderedDict
 from io import BytesIO
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
+from tqdm import tqdm
 
 from soak.models import QualitativeAnalysis, QualitativeAnalysisComparison
 from soak.models.base import get_embedding, memory
 
+# import from submodules
+from .rescaling import RescaleMethod, rescale_similarity
+from .optimal_transport import (
+    _hash_array,
+    _hash_array_list,
+    _compute_ot_cached,
+    compute_ot,
+    compute_split_join_stats,
+    filter_transport_plan,
+    compute_best_matches_for_k,
+    hungarian_matching,
+)
+from .baselines import generate_word_salad_texts, compute_permutation_baseline
+from .paraphrasing import (
+    generate_paraphrase_texts,
+    generate_short_labels,
+    prepare_paraphrase_cost_matrix,
+    compute_paraphrase_ot_at_k,
+    compute_paraphrase_baseline,
+)
+from .visualizations import (
+    SankeyHTML,
+    Base64ImageFile,
+    create_transport_sankey,
+    create_transport_heatmap,
+    find_elbow_points,
+    _cost_to_color,
+)
+from .utils import create_embeddings_csv_base64, format_similarity_matrix
+
 logger = logging.getLogger(__name__)
 
-
-def rescale_similarity(
-    sim_matrix: np.ndarray,
-    rescale_min: float = 0.5,
-    rescale_max: float = 0.9,
-) -> np.ndarray:
-    """Rescale similarity matrix to focus on meaningful range.
-
-    Empirical testing shows angular similarity for text embeddings has:
-    - Close paraphrases: ~0.83
-    - Unrelated texts: ~0.55
-
-    This function truncates values outside [rescale_min, rescale_max] and
-    rescales to [0, 1], amplifying differences in the meaningful range.
-
-    Args:
-        sim_matrix: Similarity matrix with values nominally in [0, 1]
-        rescale_min: Floor value - similarities below this become 0
-        rescale_max: Ceiling value - similarities above this become 1
-
-    Returns:
-        Rescaled similarity matrix with values in [0, 1]
-    """
-    # clip to range
-    clipped = np.clip(sim_matrix, rescale_min, rescale_max)
-    # rescale to 0-1
-    rescaled = (clipped - rescale_min) / (rescale_max - rescale_min)
-    return rescaled
-
-
-def _hash_array(arr: np.ndarray) -> str:
-    """Create a stable hash of a numpy array for cache keys."""
-    return hashlib.sha256(arr.tobytes()).hexdigest()[:16]
-
-
-def _hash_array_list(arrays: List[np.ndarray]) -> str:
-    """Create a stable hash of a list of numpy arrays."""
-    combined = "".join(_hash_array(np.asarray(a)) for a in arrays)
-    return hashlib.sha256(combined.encode()).hexdigest()[:16]
-
-
-@memory.cache
-def _compute_ot_cached(
-    cost_matrix_hash: str,
-    cost_matrix_tuple: Tuple[Tuple[float, ...], ...],
-    null_hashes: Optional[str],
-    null_matrices_tuple: Optional[Tuple[Tuple[Tuple[float, ...], ...], ...]],
-    mode: str,
-    reg: float,
-    reg_m: float,
-) -> Dict[str, Any]:
-    """Cached OT computation. Inputs are hashable tuples.
-
-    This is the cached inner function. The wrapper compute_ot() handles
-    numpy array conversion.
-    """
-    import ot
-
-    # convert tuples back to numpy arrays
-    cost_matrix = np.array(cost_matrix_tuple, dtype=np.float64)
-    null_cost_matrices = None
-    if null_matrices_tuple is not None:
-        null_cost_matrices = [
-            np.array(m, dtype=np.float64) for m in null_matrices_tuple
-        ]
-
-    n_A, n_B = cost_matrix.shape
-
-    if n_A == 0 or n_B == 0:
-        return {
-            "shared_mass": 0.0,
-            "avg_cost": float("nan"),
-            "unmatched_mass": 1.0,
-            "transport_plan": [],
-            "coverage_a": [],
-            "coverage_b": [],
-            "null_shared_mass_mean": 0.0,
-            "null_shared_mass_95pct": 0.0,
-            "null_avg_cost_mean": 0.0,
-            "null_avg_cost_5pct": 0.0,
-            "mode": mode,
-        }
-
-    # uniform mass distribution
-    a = np.ones(n_A) / n_A
-    b = np.ones(n_B) / n_B
-
-    # ensure cost matrix is non-negative
-    M = np.clip(cost_matrix, 0, None)
-
-    # ensure minimum regularisation for numerical stability
-    reg = max(reg, 1e-6)
-    reg_m = max(reg_m, 1e-6)
-
-    def run_ot(cost, a_dist, b_dist, mode_inner):
-        """Run OT with given cost matrix and mode."""
-        if mode_inner == "balanced":
-            P = ot.emd(a_dist, b_dist, cost)
-        else:
-            P = ot.unbalanced.sinkhorn_unbalanced(
-                a_dist,
-                b_dist,
-                cost,
-                reg=reg,
-                reg_m=reg_m,
-                numItermax=1000,
-                stopThr=1e-9,
-            )
-        return P
-
-    # compute optimal transport coupling
-    P = run_ot(M, a, b, mode)
-
-    # interpretable quantities
-    shared_mass = float(P.sum())
-    if shared_mass > 1e-9:
-        avg_cost = float((P * M).sum() / shared_mass)
-    else:
-        avg_cost = float("nan")
-    unmatched_mass = 1.0 - shared_mass
-
-    # coverage -- how much of each theme's mass maps to the other set
-    coverage_a = P.sum(axis=1).tolist()
-    coverage_b = P.sum(axis=0).tolist()
-
-    result = {
-        "shared_mass": shared_mass,
-        "avg_cost": avg_cost,
-        "unmatched_mass": unmatched_mass,
-        "transport_plan": P.tolist(),  # convert to list for caching
-        "coverage_a": coverage_a,
-        "coverage_b": coverage_b,
-        "reg": reg,
-        "reg_m": reg_m,
-        "mode": mode,
-    }
-
-    # compute null baseline from pre-computed null cost matrices (word-salad)
-    if null_cost_matrices is not None and len(null_cost_matrices) > 0:
-        null_shared_masses = []
-        null_avg_costs = []
-
-        for M_null in null_cost_matrices:
-            M_null = np.asarray(M_null, dtype=np.float64)
-            M_null = np.clip(M_null, 0, None)
-
-            # null may have different n_B, so recompute b distribution
-            n_B_null = M_null.shape[1]
-            b_null = np.ones(n_B_null) / n_B_null
-
-            P_null = run_ot(M_null, a, b_null, mode)
-
-            null_shared = float(P_null.sum())
-            null_shared_masses.append(null_shared)
-
-            if null_shared > 1e-9:
-                null_avg = float((P_null * M_null).sum() / null_shared)
-            else:
-                null_avg = float("nan")
-            null_avg_costs.append(null_avg)
-
-        null_shared_arr = np.array(null_shared_masses)
-        null_avg_arr = np.array([x for x in null_avg_costs if not np.isnan(x)])
-
-        result["null_shared_mass_mean"] = float(null_shared_arr.mean())
-        result["null_shared_mass_95pct"] = float(np.percentile(null_shared_arr, 95))
-        result["null_shared_mass_distribution"] = null_shared_arr.tolist()
-
-        if len(null_avg_arr) > 0:
-            result["null_avg_cost_mean"] = float(null_avg_arr.mean())
-            result["null_avg_cost_5pct"] = float(np.percentile(null_avg_arr, 5))
-            result["null_avg_cost_distribution"] = null_avg_arr.tolist()
-        else:
-            result["null_avg_cost_mean"] = float("nan")
-            result["null_avg_cost_5pct"] = float("nan")
-            result["null_avg_cost_distribution"] = []
-
-        # === INTERPRETABLE RELATIVE METRICS ===
-
-        # shared_mass_excess: raw difference above null
-        null_mean = result["null_shared_mass_mean"]
-        result["shared_mass_excess"] = float(shared_mass - null_mean)
-
-        # shared_mass_relative: 0 = same as random, 1 = perfect transport
-        if null_mean < 1.0:
-            result["shared_mass_relative"] = float(
-                (shared_mass - null_mean) / (1.0 - null_mean)
-            )
-        else:
-            result["shared_mass_relative"] = 0.0
-
-        # shared_mass_effect: robust effect size using MAD
-        null_median = np.median(null_shared_arr)
-        null_mad = np.median(np.abs(null_shared_arr - null_median))
-        result["shared_mass_effect"] = float(
-            (shared_mass - null_mean) / (null_mad + 1e-9)
-        )
-        result["null_shared_mass_mad"] = float(null_mad)
-
-        # avg_cost metrics (lower is better)
-        if len(null_avg_arr) > 0 and not np.isnan(avg_cost):
-            null_cost_mean = result["null_avg_cost_mean"]
-            result["avg_cost_improvement"] = float(null_cost_mean - avg_cost)
-            if null_cost_mean > 0:
-                result["avg_cost_relative"] = float(
-                    (null_cost_mean - avg_cost) / null_cost_mean
-                )
-            else:
-                result["avg_cost_relative"] = 0.0
-            null_cost_median = np.median(null_avg_arr)
-            null_cost_mad = np.median(np.abs(null_avg_arr - null_cost_median))
-            result["avg_cost_effect"] = float(
-                (null_cost_mean - avg_cost) / (null_cost_mad + 1e-9)
-            )
-            result["null_avg_cost_mad"] = float(null_cost_mad)
-        else:
-            result["avg_cost_improvement"] = 0.0
-            result["avg_cost_relative"] = 0.0
-            result["avg_cost_effect"] = 0.0
-            result["null_avg_cost_mad"] = 0.0
-
-    return result
-
-
-def create_embeddings_csv_base64(
-    embeddings_a: dict, embeddings_b: dict, name_a: str, name_b: str
-) -> str:
-    """Create a base64-encoded CSV of embeddings for download.
-
-    Args:
-        embeddings_a: Dict with 'labels', 'texts', 'vectors' for set A
-        embeddings_b: Dict with 'labels', 'texts', 'vectors' for set B
-        name_a: Name of analysis A
-        name_b: Name of analysis B
-
-    Returns:
-        Base64-encoded CSV string
-    """
-    output = io.StringIO()
-    writer = csv.writer(output)
-
-    # determine embedding dimension
-    dim = len(embeddings_a["vectors"][0]) if embeddings_a["vectors"] else 0
-
-    # header row
-    header = ["analysis", "label", "text"] + [f"dim_{i}" for i in range(dim)]
-    writer.writerow(header)
-
-    # write A embeddings
-    for label, text, vec in zip(
-        embeddings_a["labels"], embeddings_a["texts"], embeddings_a["vectors"]
-    ):
-        writer.writerow([name_a, label, text] + vec)
-
-    # write B embeddings
-    for label, text, vec in zip(
-        embeddings_b["labels"], embeddings_b["texts"], embeddings_b["vectors"]
-    ):
-        writer.writerow([name_b, label, text] + vec)
-
-    csv_content = output.getvalue()
-    return base64.b64encode(csv_content.encode("utf-8")).decode("utf-8")
-
-
-def format_similarity_matrix(
-    matrix,
-    row_names: List[str],
-    col_names: List[str],
-    round_dp: int = 2,
-    set_a_name: str = "A",
-    set_b_name: str = "B",
-    show_legend: bool = False,
-) -> str:
-    """Format similarity matrix for console output with numbered indices and legend.
-
-    Args:
-        matrix: Similarity matrix to format (numpy array)
-        row_names: Names for rows (theme names from set A)
-        col_names: Names for columns (theme names from set B)
-        round_dp: Number of decimal places for rounding
-        set_a_name: Name of set A (for legend)
-        set_b_name: Name of set B (for legend)
-        show_legend: Whether to include the legend mapping indices to theme names
-
-    Returns:
-        Formatted string with optional legend and numbered matrix
-    """
-    import numpy as np
-    import pandas as pd
-
-    output_parts = []
-
-    # create legend if requested
-    if show_legend:
-        legend_lines = []
-        legend_lines.append(f"\n{set_a_name} Themes (rows):")
-        for i, name in enumerate(row_names):
-            legend_lines.append(f"  {i}: {name}")
-
-        legend_lines.append(f"\n{set_b_name} Themes (columns):")
-        for i, name in enumerate(col_names):
-            legend_lines.append(f"  {i}: {name}")
-
-        output_parts.append("\n".join(legend_lines))
-
-    # create numbered matrix
-    df = pd.DataFrame(
-        np.round(matrix, round_dp),
-        index=[str(i) for i in range(len(row_names))],
-        columns=[str(i) for i in range(len(col_names))],
-    )
-
-    output_parts.append(str(df))
-
-    return "\n\n".join(output_parts) if show_legend else output_parts[0]
-
-
-def generate_word_salad_texts(
-    theme_texts: List[str], n_samples: int = 100, seed: int = 42
-) -> List[List[str]]:
-    """Generate word-salad versions of themes for null baseline.
-
-    Takes all words from themes, shuffles them, and chunks into strings
-    with the same length distribution as originals. This destroys semantic
-    coherence while preserving vocabulary and length properties.
-
-    Args:
-        theme_texts: Original theme strings (e.g., "name: description")
-        n_samples: Number of word-salad sets to generate
-        seed: Random seed for reproducibility (enables embedding cache hits)
-
-    Returns:
-        List of n_samples lists, each containing len(theme_texts) word-salad strings
-    """
-    import re
-
-    import numpy as np
-
-    # set seed for reproducibility - same inputs will produce same word salad,
-    # enabling embedding cache hits on subsequent runs
-    rng = np.random.default_rng(seed)
-
-    # tokenize all themes (simple word split, lowercase)
-    all_words = []
-    theme_lengths = []
-    for text in theme_texts:
-        words = re.findall(r"\b\w+\b", text.lower())
-        all_words.extend(words)
-        theme_lengths.append(max(1, len(words)))
-
-    if not all_words:
-        # fallback: return original texts if no words found
-        return [[t for t in theme_texts] for _ in range(n_samples)]
-
-    # generate N word salad sets
-    results = []
-    for _ in range(n_samples):
-        shuffled = rng.permutation(all_words).tolist()
-
-        # chunk into same length distribution as originals
-        salad_themes = []
-        idx = 0
-        for length in theme_lengths:
-            chunk_words = []
-            for _ in range(length):
-                chunk_words.append(shuffled[idx % len(shuffled)])
-                idx += 1
-            salad_themes.append(" ".join(chunk_words))
-
-        results.append(salad_themes)
-
-    return results
-
-
-async def _generate_paraphrases_for_theme(
-    theme_text: str,
-    n_paraphrases: int,
-    model_name: str,
-    credentials: "LLMCredentials",
-) -> List[str]:
-    """Generate paraphrases for a single theme using LLM.
-
-    Args:
-        theme_text: The theme text to paraphrase
-        n_paraphrases: Number of paraphrases to generate
-        model_name: LLM model name
-        credentials: LLM credentials
-
-    Returns:
-        List of n_paraphrases alternative phrasings
-    """
-    from jinja2 import StrictUndefined, Template
-    from struckdown import LLM, chatter_async
-
-    # load prompt template from .sd file
-    prompt_path = Path(__file__).parent.parent / "pipelines" / "paraphrase_theme.sd"
-    prompt_template = prompt_path.read_text()
-
-    # render template with context
-    template = Template(prompt_template, undefined=StrictUndefined)
-    prompt = template.render(theme_text=theme_text, n_paraphrases=n_paraphrases)
-
-    llm = LLM(model_name=model_name)
-
-    try:
-        result = await chatter_async(
-            multipart_prompt=prompt,
-            model=llm,
-            credentials=credentials,
-        )
-
-        # extract paraphrases from result
-        if hasattr(result, "outputs") and "alternative_phrasing" in result.outputs:
-            paraphrases = result.outputs["alternative_phrasing"]
-            if isinstance(paraphrases, list):
-                return paraphrases
-            elif hasattr(paraphrases, "alternative_phrasing"):
-                return paraphrases.alternative_phrasing
-
-        logger.warning(f"Paraphrase generation returned unexpected format for theme: {theme_text[:50]}...")
-        return [theme_text] * n_paraphrases  # fallback to original
-
-    except Exception as e:
-        logger.warning(f"Paraphrase generation failed for theme: {theme_text[:50]}... Error: {e}")
-        return [theme_text] * n_paraphrases  # fallback to original
-
-
-async def generate_paraphrase_texts(
-    theme_texts: List[str],
-    n_paraphrases: int = 7,
-    model_name: Optional[str] = None,
-    api_key: Optional[str] = None,
-    base_url: Optional[str] = None,
-) -> Tuple[List[List[str]], Dict[str, Any]]:
-    """Generate LLM paraphrases of themes for realistic upper bound baseline.
-
-    Each theme gets n_paraphrases alternative phrasings that preserve meaning
-    but vary wording. This establishes what similarity we'd expect if two
-    analyses captured identical concepts but expressed them differently.
-
-    Args:
-        theme_texts: Original theme strings (e.g., "name: description")
-        n_paraphrases: Number of paraphrases per theme (default: 7)
-        model_name: LLM model for paraphrase generation (default: gpt-4.1-mini)
-        api_key: API key (uses LLM_API_KEY env var if not provided)
-        base_url: API base URL (uses LLM_API_BASE env var if not provided)
-
-    Returns:
-        Tuple of:
-        - List of n_themes lists, each containing n_paraphrases strings
-        - Metadata dict with model_name, n_paraphrases, etc.
-    """
-    import asyncio
-    from struckdown import LLMCredentials
-
-    if model_name is None:
-        model_name = "gpt-4.1-mini"
-
-    # create credentials - use env vars if api_key not explicitly provided
-    if api_key is not None:
-        credentials = LLMCredentials(api_key=api_key, base_url=base_url)
-    else:
-        credentials = LLMCredentials()  # uses LLM_API_KEY and LLM_API_BASE env vars
-
-    # generate paraphrases for all themes concurrently
-    tasks = [
-        _generate_paraphrases_for_theme(text, n_paraphrases, model_name, credentials)
-        for text in theme_texts
-    ]
-    results = await asyncio.gather(*tasks)
-
-    metadata = {
-        "model_name": model_name,
-        "n_paraphrases": n_paraphrases,
-        "n_themes": len(theme_texts),
-    }
-
-    return list(results), metadata
-
-
-def prepare_paraphrase_cost_matrix(
-    theme_texts: List[str],
-    theme_embeddings: np.ndarray,
-    paraphrases: List[List[str]],
-    embedding_model: str = "text-embedding-3-large",
-    distance: str = "angular",
-    shepard_k: float = 1.0,
-    rescale_min: Optional[float] = None,
-    rescale_max: Optional[float] = None,
-) -> Dict[str, Any]:
-    """Prepare paraphrase cost matrix for OT computation (without running OT).
-
-    Embeds paraphrases, selects the best paraphrase per theme (highest similarity,
-    excluding identical strings), and computes the cost matrix.
-    The cost matrix can then be used to run OT at different K values.
-
-    Args:
-        theme_texts: Original theme strings
-        theme_embeddings: Pre-computed embeddings for theme_texts (n_themes x dim)
-        paraphrases: List of paraphrase lists from generate_paraphrase_texts
-        embedding_model: Model for embedding paraphrases
-        distance: Distance metric (angular, cosine, shepard)
-        shepard_k: Shepard k parameter if distance="shepard"
-
-    Returns:
-        Dictionary with:
-        - cost_matrix: n×n cost matrix for OT
-        - sim_matrix: n×n similarity matrix
-        - per_theme_similarities: best paraphrase similarity per theme (max, excluding sim >= 1)
-        - samples: sample themes with paraphrases for display
-    """
-    from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similarity
-
-    if not paraphrases or not theme_texts:
-        return None
-
-    # ensure theme_embeddings is a numpy array
-    theme_embeddings = np.asarray(theme_embeddings)
-    n_themes = len(theme_texts)
-
-    # flatten all paraphrases for batch embedding
-    all_paraphrase_texts = []
-    for para_list in paraphrases:
-        for para in para_list:
-            all_paraphrase_texts.append(para)
-
-    # embed all paraphrases in single batch
-    logger.info(f"Embedding {len(all_paraphrase_texts)} paraphrase texts...")
-    all_paraphrase_embeddings = np.asarray(
-        get_embedding(all_paraphrase_texts, model=embedding_model)
-    )
-
-    # for each theme, select the best paraphrase (highest similarity, excluding sim >= 1.0)
-    # this aligns with how comparisons work: we find the best match for each theme
-    n_paraphrases_per_theme = len(paraphrases[0]) if paraphrases else 0
-    best_paraphrase_embeddings = np.zeros_like(theme_embeddings)
-
-    for theme_idx in range(n_themes):
-        start_idx = theme_idx * n_paraphrases_per_theme
-        end_idx = start_idx + n_paraphrases_per_theme
-        para_embs = all_paraphrase_embeddings[start_idx:end_idx]
-
-        # compute similarities to each paraphrase
-        theme_emb = theme_embeddings[theme_idx].reshape(1, -1)
-        para_sims = sklearn_cosine_similarity(theme_emb, para_embs)[0]
-
-        # find best paraphrase (excluding identical strings with sim >= 1.0)
-        valid_indices = [j for j, s in enumerate(para_sims) if s < 0.9999]
-        if valid_indices:
-            best_idx = max(valid_indices, key=lambda j: para_sims[j])
-            best_paraphrase_embeddings[theme_idx] = para_embs[best_idx]
-        else:
-            # all paraphrases were identical, use average as fallback
-            avg_emb = para_embs.mean(axis=0)
-            avg_emb = avg_emb / np.linalg.norm(avg_emb)
-            best_paraphrase_embeddings[theme_idx] = avg_emb
-
-    # compute similarity matrix between original and best paraphrase embeddings
-    cos_sim_matrix = sklearn_cosine_similarity(theme_embeddings, best_paraphrase_embeddings)
-
-    # convert to selected distance metric
-    if distance == "cosine":
-        sim_matrix = cos_sim_matrix
-    elif distance == "angular":
-        angles = np.degrees(np.arccos(np.clip(cos_sim_matrix, -1.0, 1.0)))
-        sim_matrix = 1 - angles / 180.0
-    elif distance == "shepard":
-        thetas = np.arccos(np.clip(cos_sim_matrix, -1.0, 1.0))
-        sim_matrix = (np.exp(-shepard_k * thetas) - np.exp(-shepard_k * np.pi)) / (
-            1 - np.exp(-shepard_k * np.pi)
-        )
-    else:
-        sim_matrix = cos_sim_matrix
-
-    # apply rescaling if enabled
-    if rescale_min is not None and rescale_max is not None:
-        sim_matrix = rescale_similarity(sim_matrix, rescale_min, rescale_max)
-
-    # compute cost matrix for OT
-    cost_matrix = 1.0 - sim_matrix
-
-    # compute per-theme similarities using max of individual paraphrases (excluding sim >= 1.0)
-    # this aligns with how comparison works: for each theme, find best match
-    per_theme_similarities = []
-    samples = []
-
-    for i in range(n_themes):
-        start_idx = i * n_paraphrases_per_theme
-        end_idx = start_idx + n_paraphrases_per_theme
-        para_embs = all_paraphrase_embeddings[start_idx:end_idx]
-
-        theme_emb = theme_embeddings[i].reshape(1, -1)
-        para_sims = sklearn_cosine_similarity(theme_emb, para_embs)[0]
-        if distance == "angular":
-            angles = np.degrees(np.arccos(np.clip(para_sims, -1.0, 1.0)))
-            para_sims = 1 - angles / 180.0
-
-        # filter out identical strings (sim >= 1.0) and take max of remaining
-        valid_sims = [s for s in para_sims if s < 0.9999]
-        if valid_sims:
-            best_sim = max(valid_sims)
-        else:
-            # all paraphrases were identical to original, use the averaged embedding similarity
-            best_sim = float(sim_matrix[i, i])
-
-        per_theme_similarities.append(best_sim)
-
-        # create samples for display (first few themes)
-        if i < 5:
-            samples.append({
-                "original": theme_texts[i],
-                "paraphrases": paraphrases[i],
-                "similarity": best_sim,
-            })
-
-    return {
-        "cost_matrix": cost_matrix,
-        "sim_matrix": sim_matrix,
-        "per_theme_similarities": per_theme_similarities,
-        "samples": samples,
-    }
-
-
-def compute_paraphrase_ot_at_k(
-    cost_matrix: np.ndarray,
-    reg_m: float,
-) -> Dict[str, float]:
-    """Run OT on paraphrase cost matrix at a specific K value.
-
-    Args:
-        cost_matrix: Pre-computed cost matrix from prepare_paraphrase_cost_matrix
-        reg_m: OT mass penalty K
-
-    Returns:
-        Dictionary with shared_mass and avg_cost for this K
-    """
-    ot_result = compute_ot(
-        cost_matrix=cost_matrix,
-        null_cost_matrices=None,
-        mode="unbalanced",
-        reg=0.01,
-        reg_m=reg_m,
-    )
-
-    return {
-        "shared_mass": ot_result.get("shared_mass", 1.0),
-        "avg_cost": ot_result.get("avg_cost", 0.0),
-    }
-
-
-def compute_paraphrase_baseline(
-    theme_texts: List[str],
-    theme_embeddings: np.ndarray,
-    paraphrases: List[List[str]],
-    embedding_model: str = "text-embedding-3-large",
-    distance: str = "angular",
-    shepard_k: float = 1.0,
-    reg_m: float = 0.4,
-    rescale_min: Optional[float] = None,
-    rescale_max: Optional[float] = None,
-) -> Dict[str, Any]:
-    """Compute paraphrase-based upper bound using OT between themes and paraphrases.
-
-    This is a convenience wrapper that prepares the cost matrix and runs OT at a single K.
-    For K-specific baselines, use prepare_paraphrase_cost_matrix + compute_paraphrase_ot_at_k.
-
-    Args:
-        theme_texts: Original theme strings
-        theme_embeddings: Pre-computed embeddings for theme_texts (n_themes x dim)
-        paraphrases: List of paraphrase lists from generate_paraphrase_texts
-        embedding_model: Model for embedding paraphrases
-        distance: Distance metric (angular, cosine, shepard)
-        shepard_k: Shepard k parameter if distance="shepard"
-        reg_m: OT mass penalty K
-
-    Returns:
-        Dictionary with OT-based metrics and samples for display
-    """
-    prep = prepare_paraphrase_cost_matrix(
-        theme_texts, theme_embeddings, paraphrases,
-        embedding_model, distance, shepard_k,
-        rescale_min, rescale_max
-    )
-
-    if prep is None:
-        return {
-            "paraphrase_similarity_mean": 1.0,
-            "paraphrase_similarity_std": 0.0,
-            "paraphrase_similarity_per_theme": [],
-            "paraphrase_cost_mean": 0.0,
-            "samples": [],
-        }
-
-    ot_metrics = compute_paraphrase_ot_at_k(prep["cost_matrix"], reg_m)
-
-    std_similarity = float(np.std(prep["per_theme_similarities"]))
-
-    logger.info(
-        f"Paraphrase OT baseline (K={reg_m}): shared_mass={ot_metrics['shared_mass']:.1%}, "
-        f"avg_cost={ot_metrics['avg_cost']:.2f}"
-    )
-
-    return {
-        "paraphrase_similarity_mean": ot_metrics["shared_mass"],
-        "paraphrase_similarity_std": std_similarity,
-        "paraphrase_similarity_per_theme": prep["per_theme_similarities"],
-        "paraphrase_cost_mean": ot_metrics["avg_cost"],
-        "samples": prep["samples"],
-        "cost_matrix": prep["cost_matrix"],  # include for K-specific computation
-    }
-
-
-def compute_split_join_stats(
-    transport_plan,
-    threshold_ratio: float = 0.01,
-) -> Dict[str, Any]:
-    """Compute statistics about splits and joins in a transport plan.
-
-    A "split" occurs when mass from one theme in A flows to multiple themes in B.
-    A "join" occurs when mass from multiple themes in A flows to one theme in B.
-
-    Args:
-        transport_plan: (n_A x n_B) transport coupling matrix P
-        threshold_ratio: Links below this fraction of max flow are ignored
-
-    Returns:
-        Dictionary with split/join statistics including counts, mean, median, mode, max
-    """
-    from collections import Counter
-
-    import numpy as np
-
-    P = np.asarray(transport_plan)
-    n_A, n_B = P.shape
-
-    if n_A == 0 or n_B == 0:
-        return {
-            "splits_from_a": {
-                "counts": {},
-                "mean": 0.0,
-                "median": 0.0,
-                "mode": 0,
-                "max": 0,
-                "total": 0,
-            },
-            "joins_to_b": {
-                "counts": {},
-                "mean": 0.0,
-                "median": 0.0,
-                "mode": 0,
-                "max": 0,
-                "total": 0,
-            },
-        }
-
-    threshold = threshold_ratio * P.max() if P.max() > 0 else 0
-
-    # count outgoing connections for each A theme (splits)
-    splits_per_a = []
-    for i in range(n_A):
-        n_targets = np.sum(P[i, :] > threshold)
-        splits_per_a.append(int(n_targets))
-
-    # count incoming connections for each B theme (joins)
-    joins_per_b = []
-    for j in range(n_B):
-        n_sources = np.sum(P[:, j] > threshold)
-        joins_per_b.append(int(n_sources))
-
-    def compute_stats(values: List[int]) -> Dict[str, Any]:
-        if not values:
-            return {
-                "counts": {},
-                "mean": 0.0,
-                "median": 0.0,
-                "mode": 0,
-                "max": 0,
-                "total": 0,
-            }
-
-        counts = Counter(values)
-        values_arr = np.array(values)
-
-        # mode is the most common value
-        mode_val = counts.most_common(1)[0][0] if counts else 0
-
-        # count themes with >1 connection (actual splits/joins)
-        n_multiple = sum(1 for v in values if v > 1)
-
-        return {
-            "counts": dict(sorted(counts.items())),
-            "mean": float(np.mean(values_arr)),
-            "median": float(np.median(values_arr)),
-            "mode": mode_val,
-            "max": int(np.max(values_arr)),
-            "total": len(values),
-            "n_multiple": n_multiple,
-            "pct_multiple": float(n_multiple / len(values)) if values else 0.0,
-            "distribution": values,
-        }
-
-    return {
-        "splits_from_a": compute_stats(splits_per_a),
-        "joins_to_b": compute_stats(joins_per_b),
-    }
-
-
-def compute_ot(
-    cost_matrix,
-    null_cost_matrices: Optional[List] = None,
-    mode: str = "unbalanced",
-    reg: float = 0.01,
-    reg_m: float = 0.2,
-):
-    """Compute optimal transport metrics for theme similarity.
-
-    Unbalanced OT allows unmatched mass, representing genuinely novel or missing
-    themes rather than forcing all themes to align. The reg_m parameter (K)
-    controls when themes are treated as unmatched rather than forced to align.
-
-    Results are cached based on input hashes for performance.
-
-    Args:
-        cost_matrix: (n_A x n_B) numpy array of costs (1 - similarity)
-        null_cost_matrices: Pre-computed null cost matrices (e.g., from word-salad).
-                           If provided, used for null baseline instead of permutation.
-        mode: "unbalanced" (default) or "balanced" for comparison
-        reg: Entropic regularisation for numerical stability (default: 0.01)
-        reg_m: Mass penalty K (default: 0.2). Fixed value for cross-analysis
-               comparability. Lower K = more selective matching.
-
-    Returns:
-        Dictionary with OT metrics including shared_mass, avg_cost, unmatched_mass
-    """
-    # convert to numpy and ensure float64
-    cost_arr = np.asarray(cost_matrix, dtype=np.float64)
-
-    # create hashable tuples for caching
-    cost_hash = _hash_array(cost_arr)
-    cost_tuple = tuple(tuple(row) for row in cost_arr)
-
-    null_hashes = None
-    null_tuple = None
-    if null_cost_matrices is not None and len(null_cost_matrices) > 0:
-        null_arrays = [np.asarray(m, dtype=np.float64) for m in null_cost_matrices]
-        null_hashes = _hash_array_list(null_arrays)
-        null_tuple = tuple(tuple(tuple(row) for row in m) for m in null_arrays)
-
-    # call cached function
-    result = _compute_ot_cached(
-        cost_hash, cost_tuple, null_hashes, null_tuple, mode, reg, reg_m
-    )
-
-    # convert transport_plan back to numpy array
-    result = dict(result)  # make a copy since cached result shouldn't be modified
-    if result["transport_plan"]:
-        result["transport_plan"] = np.array(result["transport_plan"])
-    else:
-        result["transport_plan"] = np.zeros((0, 0))
-
-    return result
-
-
-def hungarian_matching(
-    similarity_matrix,
-    threshold: float = 0.6,
-):
-    """Compute optimal 1-to-1 theme matching using Hungarian algorithm.
-
-    Args:
-        similarity_matrix: (n_A x n_B) numpy array of similarities
-        threshold: Similarity threshold for considering a match valid
-
-    Returns:
-        Dictionary with:
-        - matched_pairs: List of (i, j, similarity) for matched pairs above threshold
-        - all_pairs: List of all optimal pairs regardless of threshold
-        - thresholded_metrics: Dict with coverage_a, coverage_b, true_jaccard (and legacy
-          precision/recall/f1 for backward compatibility)
-        - soft_metrics: Dict with soft_precision (mean assignment similarity),
-          soft_recall (normalised total similarity), soft_f1
-        - distribution: Dict with min, q1, median, q3, max of matched similarities
-    """
-    import numpy as np
-    from scipy.optimize import linear_sum_assignment
-
-    n_A, n_B = similarity_matrix.shape
-
-    # handle empty sets
-    if n_A == 0 or n_B == 0:
-        return {
-            "matched_pairs": [],
-            "all_pairs": [],
-            "thresholded_metrics": {
-                "precision": 0.0,
-                "recall": 0.0,
-                "f1": 0.0,
-                "true_jaccard": 0.0,
-                "coverage_a": 0.0,
-                "coverage_b": 0.0,
-            },
-            "soft_metrics": {
-                "soft_precision": 0.0,
-                "soft_recall": 0.0,
-                "soft_f1": 0.0,
-            },
-            "distribution": {
-                "min": 0.0,
-                "q1": 0.0,
-                "median": 0.0,
-                "q3": 0.0,
-                "max": 0.0,
-                "n_pairs": 0,
-            },
-        }
-
-    # pad to square matrix for Hungarian algorithm
-    size = max(n_A, n_B)
-    sim_padded = np.zeros((size, size))
-    sim_padded[:n_A, :n_B] = similarity_matrix
-
-    # Hungarian algorithm minimizes cost, so convert similarity to cost
-    cost = 1 - sim_padded
-    row_ind, col_ind = linear_sum_assignment(cost)
-
-    # filter out padding and extract real pairs
-    all_pairs = [
-        (int(i), int(j), float(similarity_matrix[i, j]))
-        for i, j in zip(row_ind, col_ind)
-        if i < n_A and j < n_B
-    ]
-
-    # filter pairs above threshold for thresholded metrics
-    matched_pairs = [(i, j, sim) for i, j, sim in all_pairs if sim >= threshold]
-
-    # extract similarities for all optimal pairs (for soft metrics)
-    all_sims = np.array([sim for _, _, sim in all_pairs])
-
-    # extract similarities for matched pairs (for distribution)
-    matched_sims = (
-        np.array([sim for _, _, sim in matched_pairs])
-        if matched_pairs
-        else np.array([])
-    )
-
-    # === THRESHOLDED METRICS (COVERAGE) ===
-    n_matched = len(matched_pairs)  # pairs above threshold
-
-    # Coverage: proportion of each set that has a good match (above threshold)
-    coverage_a = n_matched / n_A if n_A > 0 else 0.0
-    coverage_b = n_matched / n_B if n_B > 0 else 0.0
-
-    # True Jaccard: intersection / union (matched pairs / total unique themes)
-    # Useful for comparison with Raza et al.
-    true_jaccard = n_matched / (n_A + n_B - n_matched + 1e-9)
-
-    # Legacy metrics (kept for backward compatibility, but not recommended for thematic analysis)
-    TP = n_matched
-    FP = len(all_pairs) - TP  # optimal pairs below threshold
-    FN = max(n_A, n_B) - TP  # unmatched items from larger set
-    precision = TP / (TP + FP + 1e-9)
-    recall = TP / (TP + FN + 1e-9)
-    f1 = 2 * precision * recall / (precision + recall + 1e-9)
-
-    # === FIDELITY METRICS (using Shepard similarities - valid to average) ===
-    # Mean assignment similarity: average quality of all optimal pairs
-    soft_precision = float(all_sims.mean()) if len(all_sims) > 0 else 0.0
-    # Normalised total similarity: sum of similarities / larger set size
-    soft_recall = float(all_sims.sum()) / max(n_A, n_B)
-    soft_f1 = 2 * soft_precision * soft_recall / (soft_precision + soft_recall + 1e-9)
-
-    # === DISTRIBUTION STATS (for all optimal pairs) ===
-    if len(all_sims) > 0:
-        distribution = {
-            "min": float(all_sims.min()),
-            "q1": float(np.percentile(all_sims, 25)),
-            "median": float(np.median(all_sims)),
-            "q3": float(np.percentile(all_sims, 75)),
-            "max": float(all_sims.max()),
-            "n_pairs": len(all_sims),
-        }
-    else:
-        distribution = {
-            "min": 0.0,
-            "q1": 0.0,
-            "median": 0.0,
-            "q3": 0.0,
-            "max": 0.0,
-            "n_pairs": 0,
-        }
-
-    return {
-        "matched_pairs": matched_pairs,
-        "all_pairs": all_pairs,
-        "thresholded_metrics": {
-            "precision": float(precision),
-            "recall": float(recall),
-            "f1": float(f1),
-            "true_jaccard": float(true_jaccard),
-            "coverage_a": float(coverage_a),
-            "coverage_b": float(coverage_b),
-        },
-        "soft_metrics": {
-            "soft_precision": soft_precision,
-            "soft_recall": soft_recall,
-            "soft_f1": soft_f1,
-        },
-        "distribution": distribution,
-    }
-
-
-def _cost_to_color(norm_cost: float, opacity: float = 0.6) -> str:
-    """Convert normalised cost [0,1] to RGBA colour string using green-amber-red gradient.
-
-    Args:
-        norm_cost: Normalised cost value (0 = best match/green, 1 = worst match/red)
-        opacity: Alpha value for the colour (0-1)
-
-    Returns:
-        RGBA colour string for Plotly
-    """
-    # Three-colour gradient: green → amber → red
-    # Green (good match): RGB(39, 174, 96) - #27ae60
-    # Amber (medium match): RGB(243, 156, 18) - #f39c12
-    # Red (poor match): RGB(231, 76, 60) - #e74c3c
-    green = (39, 174, 96)
-    amber = (243, 156, 18)
-    red = (231, 76, 60)
-
-    if norm_cost <= 0.5:
-        # Interpolate green → amber (0 to 0.5)
-        t = norm_cost * 2  # scale to 0-1
-        r = int(green[0] + (amber[0] - green[0]) * t)
-        g = int(green[1] + (amber[1] - green[1]) * t)
-        b = int(green[2] + (amber[2] - green[2]) * t)
-    else:
-        # Interpolate amber → red (0.5 to 1)
-        t = (norm_cost - 0.5) * 2  # scale to 0-1
-        r = int(amber[0] + (red[0] - amber[0]) * t)
-        g = int(amber[1] + (red[1] - amber[1]) * t)
-        b = int(amber[2] + (red[2] - amber[2]) * t)
-
-    return f"rgba({r}, {g}, {b}, {opacity})"
-
-
-# CSS to force opaque hover labels (Plotly Sankey inherits link opacity by default)
-_SANKEY_HOVER_CSS = """
-<style>
-.hoverlayer .hovertext path {
-    fill: white !important;
-    fill-opacity: 1 !important;
-    stroke: #ccc !important;
-    stroke-opacity: 1 !important;
-}
-.hoverlayer .hovertext text {
-    fill: black !important;
-    fill-opacity: 1 !important;
-}
-</style>
-"""
-
-# Plotly config with export buttons
-_SANKEY_PLOTLY_CONFIG = {
-    "displayModeBar": True,
-    "displaylogo": False,
-    "staticPlot": False,
-    "modeBarButtonsToRemove": [
-        "zoom2d",
-        "pan2d",
-        "select2d",
-        "lasso2d",
-        "zoomIn2d",
-        "zoomOut2d",
-        "autoScale2d",
-        "resetScale2d",
-    ],
-    "modeBarButtonsToAdd": [],
-    "toImageButtonOptions": {
-        "format": "svg",  # default to SVG for print quality
-        "filename": "sankey_diagram",
-        "height": None,
-        "width": None,
-        "scale": 2,
-    },
-}
-
-# System UI font stack (consistent with struckdown online editor)
-_FONT_STACK = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Ubuntu, Cantarell, 'Helvetica Neue', sans-serif"
-
-
-class SankeyHTML:
-    """Wrapper for Sankey diagram that provides both HTML and base64 PNG."""
-
-    def __init__(
-        self, html_content: str, png_buffer: BytesIO, name: str = "transport_sankey"
-    ):
-        self.html_content = html_content
-        self.png_buffer = png_buffer
-        self.name = name
-
-    @property
-    def html(self) -> str:
-        """Return full HTML with CSS for embedding."""
-        return self.html_content
-
-    @property
-    def base64(self) -> str:
-        """Return base64-encoded PNG for static display."""
-        self.png_buffer.seek(0)
-        return base64.b64encode(self.png_buffer.read()).decode("utf-8")
-
-
-def create_transport_sankey(
-    transport_plan,
-    theme_names_a: List[str],
-    theme_names_b: List[str],
-    cost_matrix=None,
-    analysis_name_a: str = "A",
-    analysis_name_b: str = "B",
-    threshold_ratio: float = 0.01,
-    link_opacity: float = 0.6,
-    cost_min: Optional[float] = None,
-    cost_max: Optional[float] = None,
-) -> "SankeyHTML":
-    """Create interactive Sankey diagram visualising optimal transport flow.
-
-    Features:
-    - Green-amber-red colour scale for alignment quality (green = good, red = poor)
-    - Labels outside plot area with text wrapping and hyphenation
-    - A nodes in fixed alphabetical order, B nodes positioned to minimise crossings
-    - Hover text showing mass proportions, cost contribution, and unit cost
-    - Opaque hover labels
-
-    Args:
-        transport_plan: (n_A x n_B) transport coupling matrix P
-        theme_names_a: Theme names for set A (left side)
-        theme_names_b: Theme names for set B (right side)
-        cost_matrix: Optional cost matrix for colouring links (1 - similarity)
-        analysis_name_a: Name of analysis A
-        analysis_name_b: Name of analysis B
-        threshold_ratio: Drop links below this fraction of max flow
-        link_opacity: Opacity of link colours (0-1)
-        cost_min: Minimum cost for color scale (green). If None, computed from links.
-        cost_max: Maximum cost for color scale (red). If None, computed from links.
-
-    Returns:
-        SankeyHTML object with .html and .base64 properties
-    """
-    import numpy as np
-    import plotly.graph_objects as go
-    import pyphen
-
-    P = np.asarray(transport_plan)
-    n_A, n_B = P.shape
-
-    # handle empty case
-    if n_A == 0 or n_B == 0:
-        empty_html = "<div>No themes to display</div>"
-        empty_buffer = BytesIO()
-        return SankeyHTML(empty_html, empty_buffer, name="transport_sankey")
-
-    threshold = threshold_ratio * P.max()
-
-    # sort nodes alphanumerically for consistency
-    a_order = np.argsort([n.lower() for n in theme_names_a])
-    b_order = np.argsort([n.lower() for n in theme_names_b])
-
-    P_sorted = P[a_order, :][:, b_order]
-    names_a_sorted = [theme_names_a[i] for i in a_order]
-    names_b_sorted = [theme_names_b[i] for i in b_order]
-
-    if cost_matrix is not None:
-        M_sorted = np.asarray(cost_matrix)[a_order, :][:, b_order]
-    else:
-        M_sorted = None
-
-    # text wrapping with hyphenation and widow control
-    dic = pyphen.Pyphen(lang="en_GB")
-
-    def hyphenate_word(word, max_len=10):
-        if len(word) <= max_len:
-            return [word]
-        pairs = dic.pairs(word)
-        if not pairs:
-            return [word]
-        mid = len(word) // 2
-        best_pair = min(pairs, key=lambda p: abs(len(p[0]) - mid))
-        return [best_pair[0] + "-", best_pair[1]]
-
-    def wrap_with_hyphenation(text, width):
-        words = text.split()
-        lines = []
-        current_line = []
-        current_len = 0
-
-        for word in words:
-            word_len = len(word)
-            space_needed = 1 if current_line else 0
-
-            if current_len + space_needed + word_len <= width:
-                current_line.append(word)
-                current_len += space_needed + word_len
-            elif word_len > width:
-                parts = hyphenate_word(word)
-                for part in parts:
-                    if current_len + (1 if current_line else 0) + len(part) <= width:
-                        current_line.append(part)
-                        current_len += (1 if current_line else 0) + len(part)
-                    else:
-                        if current_line:
-                            lines.append(" ".join(current_line))
-                        current_line = [part]
-                        current_len = len(part)
-            else:
-                if current_line:
-                    lines.append(" ".join(current_line))
-                current_line = [word]
-                current_len = word_len
-
-        if current_line:
-            lines.append(" ".join(current_line))
-        return lines
-
-    def wrap_text(text, max_width=35, min_last_line_ratio=0.6):
-        if len(text) <= max_width:
-            return text
-
-        best_lines = None
-        best_score = float("inf")
-
-        for width in range(max(20, max_width - 8), max_width + 1):
-            lines = wrap_with_hyphenation(text, width)
-            if not lines:
-                continue
-
-            lengths = [len(line) for line in lines]
-            avg_len = sum(lengths) / len(lengths)
-            variance = sum((l - avg_len) ** 2 for l in lengths) / len(lengths)
-
-            last_len = lengths[-1]
-            max_len = max(lengths)
-            widow_ratio = last_len / max_len if max_len > 0 else 1
-            widow_penalty = (
-                50 * (1 - widow_ratio) ** 2 if widow_ratio < min_last_line_ratio else 0
-            )
-
-            score = len(lines) * 5 + variance * 0.5 + widow_penalty
-
-            if score < best_score:
-                best_score = score
-                best_lines = lines
-
-        return "<br>".join(best_lines) if best_lines else text
-
-    # node hover texts (show full analysis name in hover)
-    hover_texts = [
-        f"A{i+1} ({analysis_name_a}): {names_a_sorted[i]}" for i in range(n_A)
-    ] + [f"B{j+1} ({analysis_name_b}): {names_b_sorted[j]}" for j in range(n_B)]
-
-    # collect links and unit costs
-    sources, targets, values, link_costs = [], [], [], []
-    for i in range(n_A):
-        for j in range(n_B):
-            flow = P_sorted[i, j]
-            if flow > threshold:
-                sources.append(i)
-                targets.append(n_A + j)
-                values.append(float(flow))
-                if M_sorted is not None:
-                    link_costs.append(M_sorted[i, j])
-
-    # map costs to colours using the provided or computed min/max range
-    # this ensures colors are comparable across different K values when using shared scale
-    if link_costs:
-        # determine color scale range
-        if cost_min is None:
-            cost_min = min(link_costs)
-        if cost_max is None:
-            cost_max = max(link_costs)
-        cost_range = cost_max - cost_min
-        if cost_range < 1e-9:
-            cost_range = 1.0  # avoid division by zero if all costs identical
-
-        colors = []
-        for cost in link_costs:
-            # normalise cost to [0, 1] within the min/max range
-            # cost_min → 0 (green), cost_max → 1 (red)
-            norm_cost = (cost - cost_min) / cost_range
-            norm_cost = max(0.0, min(1.0, norm_cost))  # clamp to [0, 1]
-            colors.append(_cost_to_color(norm_cost, link_opacity))
-    else:
-        colors = [f"rgba(100, 150, 200, {link_opacity})"] * len(sources)
-        link_costs = [0.5] * len(sources)  # default for hover text
-        cost_min, cost_max = 0.0, 1.0  # defaults for colorbar
-
-    # A positions: fixed top to bottom
-    y_a = np.linspace(0.02, 0.98, n_A).tolist() if n_A > 1 else [0.5]
-
-    # B positions: flow-weighted to minimise crossings
-    b_weighted_y = []
-    for j in range(n_B):
-        total_flow = 0
-        weighted_sum = 0
-        for i in range(n_A):
-            flow = P_sorted[i, j]
-            if flow > 0:
-                weighted_sum += flow * y_a[i]
-                total_flow += flow
-        b_weighted_y.append(weighted_sum / total_flow if total_flow > 0 else 0.5)
-
-    b_order_by_y = np.argsort(b_weighted_y)
-    y_b = [0.0] * n_B
-    y_positions = np.linspace(0.02, 0.98, n_B) if n_B > 1 else [0.5]
-    for rank, b_idx in enumerate(b_order_by_y):
-        y_b[b_idx] = y_positions[rank]
-
-    node_x = [0.05] * n_A + [0.95] * n_B
-    node_y = y_a + y_b
-
-    # build link hover text
-    total_cost = (
-        sum(values[i] * link_costs[i] for i in range(len(values))) if link_costs else 1
-    )
-    total_mass = sum(values) if values else 1
-    a_mass_totals = P_sorted.sum(axis=1)
-    b_mass_totals = P_sorted.sum(axis=0)
-
-    link_hovers = []
-    for idx in range(len(sources)):
-        src_idx = sources[idx]
-        tgt_idx = targets[idx] - n_A
-        flow = values[idx]
-        cost = link_costs[idx]
-
-        mass_prop_a = flow / a_mass_totals[src_idx] if a_mass_totals[src_idx] > 0 else 0
-        mass_prop_b = flow / b_mass_totals[tgt_idx] if b_mass_totals[tgt_idx] > 0 else 0
-
-        link_cost_contribution = flow * cost
-        cost_prop = link_cost_contribution / total_cost if total_cost > 0 else 0
-
-        similarity = 1 - cost  # cost is angular distance, so similarity = 1 - cost
-        link_hovers.append(
-            f"A{src_idx+1} → B{tgt_idx+1}<br>"
-            f"<b>Similarity:</b> {similarity:.3f}<br>"
-            f"<b>Mass:</b> {mass_prop_a:.0%} of A{src_idx+1}, "
-            f"{mass_prop_b:.0%} of B{tgt_idx+1}<br>"
-            f"<b>Cost contribution:</b> {cost_prop:.1%} of total"
-        )
-
-    # empty node labels (full labels in annotations)
-    node_labels = [""] * (n_A + n_B)
-
-    hoverlabel_style = dict(
-        bgcolor="white",
-        bordercolor="#ccc",
-        font=dict(
-            family=_FONT_STACK,
-            size=12,
-            color="black",
-        ),
-    )
-
-    fig = go.Figure(
-        data=[
-            go.Sankey(
-                arrangement="fixed",
-                node=dict(
-                    pad=20,
-                    thickness=2,
-                    line=dict(color="#666666", width=0.5),
-                    label=node_labels,
-                    color=["#666666"] * (n_A + n_B),
-                    x=node_x,
-                    y=node_y,
-                    customdata=hover_texts,
-                    hovertemplate="%{customdata}<extra></extra>",
-                    hoverlabel=hoverlabel_style,
-                ),
-                link=dict(
-                    source=sources,
-                    target=targets,
-                    value=values,
-                    color=colors,
-                    customdata=link_hovers,
-                    hovertemplate="%{customdata}<extra></extra>",
-                    hoverlabel=hoverlabel_style,
-                ),
-            )
-        ]
-    )
-
-    # annotations for labels outside plot area
-    annotations = []
-
-    for i, name in enumerate(names_a_sorted):
-        annotations.append(
-            dict(
-                x=-0.01,
-                y=1 - y_a[i],
-                xref="paper",
-                yref="paper",
-                text=f"{wrap_text(name, 50)} (A{i+1})",
-                showarrow=False,
-                xanchor="right",
-                yanchor="middle",
-                font=dict(size=13),
-                align="right",
-            )
-        )
-
-    for j, name in enumerate(names_b_sorted):
-        annotations.append(
-            dict(
-                x=1.01,
-                y=1 - y_b[j],
-                xref="paper",
-                yref="paper",
-                text=f"{wrap_text(name, 50)} (B{j+1})",
-                showarrow=False,
-                xanchor="left",
-                yanchor="middle",
-                font=dict(size=13),
-                align="left",
-            )
-        )
-
-    padding = 48  # 3em
-
-    # add continuous colorbar showing similarity scale based on actual cost range
-    # cost_min → green (high similarity), cost_max → red (low similarity)
-    if link_costs:
-        # convert cost range to similarity range
-        sim_max = 1 - cost_min  # green end (highest similarity in this analysis)
-        sim_min = 1 - cost_max  # red end (lowest similarity in this analysis)
-
-        # Similarity colorscale: low similarity (red) → high similarity (green)
-        colorscale = [
-            [0.0, "#e74c3c"],  # red (low similarity)
-            [0.5, "#f39c12"],  # amber (medium similarity)
-            [1.0, "#27ae60"],  # green (high similarity)
-        ]
-
-        # generate tick values spread across the similarity range
-        sim_range = sim_max - sim_min
-        tick_vals = [sim_min + sim_range * i / 4 for i in range(5)]
-
-        # add invisible scatter trace just for the colorbar
-        fig.add_trace(
-            go.Scatter(
-                x=[None],
-                y=[None],
-                mode="markers",
-                marker=dict(
-                    colorscale=colorscale,
-                    cmin=sim_min,
-                    cmax=sim_max,
-                    color=[(sim_min + sim_max) / 2],
-                    colorbar=dict(
-                        title=dict(
-                            text="Similarity",
-                            side="top",
-                            font=dict(size=13),
-                        ),
-                        orientation="h",
-                        x=0.5,
-                        y=-0.08,
-                        xanchor="center",
-                        yanchor="top",
-                        len=0.4,
-                        thickness=15,
-                        tickfont=dict(size=11),
-                        tickformat=".2f",
-                        tickvals=tick_vals,
-                    ),
-                ),
-                hoverinfo="skip",
-                showlegend=False,
-            )
-        )
-
-    fig.update_layout(
-        title_text="",
-        font=dict(
-            family=_FONT_STACK,
-            size=9,
-        ),
-        width=1100,
-        height=max(600, 60 * max(n_A, n_B)),
-        margin=dict(l=380 + padding, r=380 + padding, t=padding, b=padding + 80),
-        annotations=annotations,
-        paper_bgcolor="white",
-        plot_bgcolor="white",
-        xaxis=dict(visible=False),
-        yaxis=dict(visible=False),
-        hoverlabel=dict(
-            bgcolor="rgba(255, 255, 255, 1)",
-            bordercolor="rgba(200, 200, 200, 1)",
-            font=dict(
-                family=_FONT_STACK,
-                size=12,
-                color="rgba(0, 0, 0, 1)",
-            ),
-            namelength=-1,
-        ),
-    )
-
-    # generate HTML with CSS injection (use CDN to reduce size)
-    html_str = fig.to_html(
-        config=_SANKEY_PLOTLY_CONFIG, include_plotlyjs="cdn", full_html=True
-    )
-    html_str = html_str.replace("<head>", f"<head>{_SANKEY_HOVER_CSS}")
-
-    # add download buttons below the chart
-    download_buttons_html = """
-<div style="text-align: center; margin: 20px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Ubuntu, Cantarell, 'Helvetica Neue', sans-serif;">
-    <span style="margin-right: 10px; color: #666; font-size: 13px;">Download:</span>
-    <button onclick="downloadSankey('svg')" style="
-        padding: 8px 16px; margin: 0 5px; cursor: pointer;
-        background: #3498db; color: white; border: none; border-radius: 4px;
-        font-size: 13px; font-family: inherit;
-    ">SVG (vector)</button>
-    <button onclick="downloadSankey('png')" style="
-        padding: 8px 16px; margin: 0 5px; cursor: pointer;
-        background: #27ae60; color: white; border: none; border-radius: 4px;
-        font-size: 13px; font-family: inherit;
-    ">PNG (2x)</button>
-    <button onclick="downloadSankey('pdf')" style="
-        padding: 8px 16px; margin: 0 5px; cursor: pointer;
-        background: #9b59b6; color: white; border: none; border-radius: 4px;
-        font-size: 13px; font-family: inherit;
-    ">PDF</button>
-</div>
-<script>
-function downloadSankey(format) {
-    var gd = document.querySelector('.plotly-graph-div');
-    var filename = 'sankey_diagram';
-    if (format === 'pdf') {
-        // For PDF, download as SVG and note that user can convert
-        Plotly.downloadImage(gd, {format: 'svg', filename: filename + '_for_pdf', scale: 2});
-        alert('SVG downloaded. Open in Inkscape, Illustrator, or use an online converter to save as PDF.');
-    } else {
-        Plotly.downloadImage(gd, {format: format, filename: filename, scale: 2});
-    }
-}
-</script>
-"""
-    html_str = html_str.replace("</body>", download_buttons_html + "</body>")
-
-    # generate PNG for fallback
-    try:
-        img_bytes = fig.to_image(format="png", scale=2)
-        png_buffer = BytesIO(img_bytes)
-    except Exception as e:
-        logger.debug(f"PNG export failed: {e}")
-        png_buffer = BytesIO()
-
-    return SankeyHTML(html_str, png_buffer, name="transport_sankey")
-
-
-def create_transport_heatmap(
-    transport_plan,
-    theme_names_a: List[str],
-    theme_names_b: List[str],
-    analysis_name_a: str = "A",
-    analysis_name_b: str = "B",
-) -> "Base64ImageFile":
-    """Create heatmap of transport plan P, sorted alphanumerically.
-
-    Args:
-        transport_plan: (n_A x n_B) transport coupling matrix P
-        theme_names_a: Theme names for set A (rows)
-        theme_names_b: Theme names for set B (columns)
-        analysis_name_a: Name of analysis A
-        analysis_name_b: Name of analysis B
-
-    Returns:
-        Base64ImageFile containing the heatmap
-    """
-    import matplotlib
-
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-    import numpy as np
-    import pandas as pd
-    import seaborn as sns
-
-    P = np.asarray(transport_plan)
-    n_A, n_B = P.shape
-
-    if n_A == 0 or n_B == 0:
-        fig, ax = plt.subplots(figsize=(8, 6))
-        ax.text(0.5, 0.5, "No themes to display", ha="center", va="center")
-        ax.axis("off")
-        buffer = BytesIO()
-        fig.savefig(buffer, dpi=150, bbox_inches="tight", format="png")
-        plt.close(fig)
-        buffer.seek(0)
-        return Base64ImageFile(buffer, name="transport_heatmap.png")
-
-    names_a = list(theme_names_a)
-    names_b = list(theme_names_b)
-
-    # sort alphanumerically for consistency across runs
-    a_order = np.argsort([n.lower() for n in names_a])
-    b_order = np.argsort([n.lower() for n in names_b])
-    P = P[a_order, :][:, b_order]
-    names_a = [names_a[i] for i in a_order]
-    names_b = [names_b[i] for i in b_order]
-
-    # truncate names
-    def truncate(s, max_len=30):
-        return s if len(s) <= max_len else s[: max_len - 3] + "..."
-
-    names_a_display = [truncate(n) for n in names_a]
-    names_b_display = [truncate(n) for n in names_b]
-
-    # normalize by shared_mass so values sum to 100% of transported mass
-    shared_mass = P.sum()
-    if shared_mass > 1e-9:
-        P_pct = (P / shared_mass) * 100
-    else:
-        P_pct = P * 100
-    logger.info(
-        f"Transport heatmap: max={P_pct.max():.1f}%, sum={P_pct.sum():.1f}% (shared_mass={shared_mass:.1%})"
-    )
-
-    fig_height = max(6, n_A * 0.4)
-    fig_width = max(10, n_B * 0.5)
-
-    plt.close("all")
-    fig, ax = plt.subplots(figsize=(fig_width, fig_height))
-
-    df = pd.DataFrame(P_pct, index=names_a_display, columns=names_b_display)
-
-    sns.heatmap(
-        df,
-        annot=True,
-        fmt=".1f",
-        cmap="viridis",
-        linewidths=0.5,
-        cbar_kws={"label": "% of Transported Mass"},
-        ax=ax,
-        vmin=0,
-    )
-
-    ax.set_title(f"Transport Plan: {analysis_name_a} → {analysis_name_b}")
-    ax.set_xlabel(analysis_name_b)
-    ax.set_ylabel(analysis_name_a)
-
-    plt.setp(ax.get_xticklabels(), rotation=45, ha="right", rotation_mode="anchor")
-    plt.setp(ax.get_yticklabels(), rotation=0, ha="right")
-
-    fig.tight_layout()
-
-    buffer = BytesIO()
-    fig.savefig(buffer, dpi=150, bbox_inches="tight", format="png")
-    plt.close(fig)
-    buffer.seek(0)
-    return Base64ImageFile(buffer, name="transport_heatmap.png")
-
-
-class Base64ImageFile:
-    """Simple wrapper for BytesIO that provides base64 encoding."""
-
-    def __init__(self, buffer, name=None):
-        self.buffer = buffer
-        self.name = name
-
-    @property
-    def base64(self):
-        self.buffer.seek(0)
-        return base64.b64encode(self.buffer.read()).decode("utf-8")
-
-
-def find_elbow_points(
-    k_values: List[float],
-    shared_mass: List[float],
-    *,
-    n_interp: int = 100,
-    eps: float = 1e-12,
-    plateau_threshold: float = 0.20,
-    min_k_for_elbow: float = 0.1,
-    max_k_for_elbow: float = 2.0,
-) -> dict:
-    """Find elbow points using maximum curvature and diminishing returns methods.
-
-    Uses maximum curvature (κ = |y''| / (1 + y'²)^(3/2)) to find the elbow point
-    where the curve bends most sharply, indicating the optimal K value.
-
-    Args:
-        k_values: K parameter values (should be positive)
-        shared_mass: Corresponding shared mass values (should increase with K)
-        n_interp: Number of points for uniform grid (default: 100)
-        eps: Small constant for numerical stability (default: 1e-12)
-        plateau_threshold: Threshold for diminishing returns (default: 0.20)
-        min_k_for_elbow: Minimum K to consider for elbow detection (default: 0.1)
-            Small K values often have noisy behaviour at the boundary.
-        max_k_for_elbow: Maximum K to consider for elbow detection (default: 2.0)
-            Anchor points beyond this are excluded from curvature calculation.
-
-    Returns:
-        Dictionary with:
-        - elbow_idx, elbow_k: Index and K value for maximum curvature elbow
-        - diminishing_idx, diminishing_k: Index and K value for diminishing returns point
-        - plateau_reached: Whether curve has clearly asymptoted
-    """
-    import numpy as np
-    from scipy.interpolate import UnivariateSpline
-
-    K = np.asarray(k_values, float)
-    s = np.asarray(shared_mass, float)
-
-    # for elbow detection, use K in [min_k_for_elbow, max_k_for_elbow]
-    elbow_mask = (K >= min_k_for_elbow) & (K <= max_k_for_elbow)
-    K_elbow = K[elbow_mask]
-    s_elbow = s[elbow_mask]
-
-    # interpolate to uniform grid in linear K space (for elbow detection)
-    K_uniform = np.linspace(K_elbow.min(), K_elbow.max(), n_interp)
-    s_uniform = np.interp(K_uniform, K_elbow, s_elbow)
-
-    # light smoothing with window=3 (simple moving average)
-    if len(s_uniform) >= 3:
-        kernel = np.ones(3) / 3
-        s_padded = np.pad(s_uniform, (1, 1), mode="edge")
-        s_uniform = np.convolve(s_padded, kernel, mode="valid")
-
-    # for plateau detection, use all K values (including anchor)
-    K_all_uniform = np.linspace(K.min(), K.max(), n_interp)
-    s_all_uniform = np.interp(K_all_uniform, K, s)
-    if len(s_all_uniform) >= 3:
-        kernel = np.ones(3) / 3
-        s_all_padded = np.pad(s_all_uniform, (1, 1), mode="edge")
-        s_all_uniform = np.convolve(s_all_padded, kernel, mode="valid")
-
-    # compute slopes for plateau detection (using all K values)
-    slope = np.diff(s_all_uniform)
-    n_window = min(5, len(slope) // 4) if len(slope) > 4 else 1
-    initial_slope = np.mean(np.abs(slope[:n_window])) if len(slope) >= n_window else 0
-    final_slope = np.mean(np.abs(slope[-n_window:])) if len(slope) >= n_window else 0
-
-    # === PLATEAU DETECTION ===
-    # criterion 1: relative slope -- final slope < 25% of initial
-    relative_plateau = (initial_slope <= 0) or (
-        final_slope / (initial_slope + 1e-12) < 0.25
-    )
-    # criterion 2: absolute change in last 20% of curve < 4 points
-    n_tail = max(1, len(s_all_uniform) // 5)
-    tail_range = s_all_uniform[-1] - s_all_uniform[-n_tail]
-    absolute_plateau = abs(tail_range) < 4.0
-    # criterion 3: high value (already near maximum)
-    high_value_plateau = s_all_uniform[-1] > 85.0
-    # criterion 4: consistent deceleration -- curve is flattening even if not flat
-    if len(slope) >= 4:
-        mid = len(slope) // 2
-        first_half_slope = np.mean(np.abs(slope[:mid]))
-        second_half_slope = np.mean(np.abs(slope[mid:]))
-        decelerating = second_half_slope < 0.5 * first_half_slope
-    else:
-        decelerating = False
-    plateau_reached = (
-        relative_plateau or absolute_plateau or high_value_plateau or decelerating
-    )
-
-    # === MAXIMUM CURVATURE ELBOW ===
-    # normalise both axes to [0, 1] so curvature is scale-invariant
-    x_min, x_max = K_uniform.min(), K_uniform.max()
-    y_min, y_max = s_uniform.min(), s_uniform.max()
-    x_range = x_max - x_min if x_max != x_min else 1.0
-    y_range = y_max - y_min if y_max != y_min else 1.0
-
-    x_norm = (K_uniform - x_min) / x_range
-    y_norm = (s_uniform - y_min) / y_range
-
-    # fit a smoothing spline to get derivatives
-    # use smoothing factor s=0.01 for light smoothing
-    try:
-        spline = UnivariateSpline(x_norm, y_norm, s=0.01, k=4)
-        # first derivative
-        dy = spline.derivative(1)(x_norm)
-        # second derivative
-        d2y = spline.derivative(2)(x_norm)
-    except Exception:
-        # fallback to finite differences if spline fails
-        dy = np.gradient(y_norm, x_norm)
-        d2y = np.gradient(dy, x_norm)
-
-    # curvature: κ = |y''| / (1 + y'^2)^(3/2)
-    curvature = np.abs(d2y) / (1 + dy**2) ** 1.5
-
-    # find maximum curvature (excluding both endpoints which can have artifacts)
-    # exclude first 5% and last 10% (endpoints have unstable spline derivatives)
-    start_margin = max(1, n_interp // 20)
-    end_margin = max(1, n_interp // 10)
-    inner_curvature = curvature[start_margin:-end_margin]
-    max_curv_idx = start_margin + int(np.argmax(inner_curvature))
-
-    # map back to original K values (from full K array, not just elbow subset)
-    elbow_K = K_uniform[max_curv_idx]
-    elbow_orig_idx = int(np.argmin(np.abs(K - elbow_K)))
-
-    # === DIMINISHING RETURNS (slope < 20% of initial) ===
-    # Compute in ORIGINAL K space (not log space) for intuitive results
-    # Use the raw k_values and shared_mass, not the interpolated log-space data
-    k_arr = np.asarray(k_values, float)
-    sm_arr = np.asarray(shared_mass, float)
-
-    # compute actual slopes: change in shared_mass per unit change in K
-    dk = np.diff(k_arr)
-    dsm = np.diff(sm_arr)
-    slopes_original = dsm / (dk + 1e-12)  # shared_mass change per K unit
-
-    # initial slope is average of first few points
-    n_init = min(3, len(slopes_original))
-    initial_slope_orig = np.mean(slopes_original[:n_init]) if n_init > 0 else 0
-
-    # find where slope drops below 20% of initial
-    thr_orig = plateau_threshold * initial_slope_orig if initial_slope_orig > 0 else 0
-    diminishing_orig_idx = None
-
-    # look for 2 consecutive points below threshold
-    run = 0
-    for i, slope_val in enumerate(slopes_original):
-        if slope_val < thr_orig:
-            run += 1
-            if run >= 2:
-                diminishing_orig_idx = i - 1  # index of first point below threshold
-                break
-        else:
-            run = 0
-
-    if diminishing_orig_idx is None:
-        # fallback: find last point where slope >= threshold
-        above_thr = np.where(slopes_original >= thr_orig)[0]
-        if len(above_thr) > 0:
-            diminishing_orig_idx = above_thr[-1] + 1
-        else:
-            diminishing_orig_idx = len(k_arr) - 1
-
-    diminishing_orig_idx = min(diminishing_orig_idx, len(k_arr) - 1)
-    diminishing_K = k_arr[diminishing_orig_idx]
-
-    return {
-        # keep chord_idx/chord_k for backward compatibility
-        "chord_idx": elbow_orig_idx,
-        "chord_k": K[elbow_orig_idx],
-        "elbow_idx": elbow_orig_idx,
-        "elbow_k": K[elbow_orig_idx],
-        "diminishing_idx": diminishing_orig_idx,
-        "diminishing_k": K[diminishing_orig_idx],
-        "plateau_reached": plateau_reached,
-    }
-
-
+# re-export for backward compatibility
+__all__ = [
+    # Types
+    "RescaleMethod",
+    # Rescaling
+    "rescale_similarity",
+    # Optimal Transport
+    "compute_ot",
+    "compute_split_join_stats",
+    "filter_transport_plan",
+    "compute_best_matches_for_k",
+    "hungarian_matching",
+    # Baselines
+    "generate_word_salad_texts",
+    "compute_permutation_baseline",
+    # Paraphrasing
+    "generate_paraphrase_texts",
+    "generate_short_labels",
+    "prepare_paraphrase_cost_matrix",
+    "compute_paraphrase_ot_at_k",
+    "compute_paraphrase_baseline",
+    # Visualizations
+    "SankeyHTML",
+    "Base64ImageFile",
+    "create_transport_sankey",
+    "create_transport_heatmap",
+    "find_elbow_points",
+    # Utils
+    "create_embeddings_csv_base64",
+    "format_similarity_matrix",
+    # Main functions
+    "create_shared_mass_scree_plot",
+    "create_alignment_scree_plot",
+    "create_splits_joins_scree_plot",
+    "compare_result_similarity",
+    "network_similarity_plot",
+    "create_pairwise_heatmap",
+    # Main class
+    "SimilarityComparator",
+]
 def create_shared_mass_scree_plot(
     ot_by_k: Dict[float, Dict],
     k_values: List[float],
@@ -1920,16 +147,29 @@ def create_shared_mass_scree_plot(
     # extract baseline values for each K (if available)
     paraphrase_ceilings = []
     word_salad_floors = []
+    permutation_baselines = []
+    permutation_95ci_lo = []
+    permutation_95ci_hi = []
     for k in k_values:
         ot_data = ot_by_k[k]["ot"]
         ceiling = ot_data.get("paraphrase_upper_bound")
         floor = ot_data.get("null_shared_mass_mean")
+        perm_mean = ot_data.get("perm_shared_mass_mean")
+        perm_95ci = ot_data.get("perm_shared_mass_95ci")
         paraphrase_ceilings.append(ceiling * 100 if ceiling is not None else None)
         word_salad_floors.append(floor * 100 if floor is not None else None)
+        permutation_baselines.append(perm_mean * 100 if perm_mean is not None else None)
+        if perm_95ci is not None:
+            permutation_95ci_lo.append(perm_95ci[0] * 100)
+            permutation_95ci_hi.append(perm_95ci[1] * 100)
+        else:
+            permutation_95ci_lo.append(None)
+            permutation_95ci_hi.append(None)
 
     # check if we have baseline data
     has_ceiling = any(c is not None for c in paraphrase_ceilings)
     has_floor = any(f is not None for f in word_salad_floors)
+    has_permutation = any(p is not None for p in permutation_baselines)
 
     # find both elbow points using full K range (including anchor)
     elbow_points = find_elbow_points(elbow_k_values, elbow_shared_masses)
@@ -1981,7 +221,7 @@ def create_shared_mass_scree_plot(
     if not plateau_reached:
         title += " (curve may not have plateaued)"
     ax.set_title(title, fontsize=12)
-    ax.set_xlim(min(k_values), max(k_values))  # show only displayed K values
+    ax.set_xlim(0, 0.7)  # fixed scale for comparability across analyses
     ax.set_ylim(0, 100)
     ax.grid(True, alpha=0.3)
     ax.axhline(y=100, color="gray", linestyle="--", alpha=0.5)
@@ -2045,6 +285,26 @@ def create_shared_mass_scree_plot(
                 label="Word-salad floor",
             )
             ax.fill_between(valid_k_floor, 0, valid_floor, alpha=0.1, color="#999999")
+
+    # permutation baseline (alignment identifiability diagnostic)
+    if has_permutation:
+        valid_k_perm = [k for k, p in zip(k_values, permutation_baselines) if p is not None]
+        valid_perm = [p for p in permutation_baselines if p is not None]
+        valid_lo = [lo for lo, p in zip(permutation_95ci_lo, permutation_baselines) if p is not None]
+        valid_hi = [hi for hi, p in zip(permutation_95ci_hi, permutation_baselines) if p is not None]
+        if valid_perm:
+            ax.plot(
+                valid_k_perm,
+                valid_perm,
+                "-.",
+                color="#8e44ad",
+                linewidth=2,
+                alpha=0.8,
+                label="Permutation baseline",
+            )
+            # add 95% CI shading
+            if valid_lo and valid_hi and all(x is not None for x in valid_lo + valid_hi):
+                ax.fill_between(valid_k_perm, valid_lo, valid_hi, alpha=0.15, color="#8e44ad")
 
     ax.legend(loc="lower right", fontsize=9)
 
@@ -2138,7 +398,7 @@ def create_alignment_scree_plot(
     ax.set_title(
         f"Semantic Alignment vs K\n{analysis_name_a} ↔ {analysis_name_b}", fontsize=12
     )
-    ax.set_xlim(min(k_values), max(k_values))
+    ax.set_xlim(0, 0.7)  # fixed scale for comparability across analyses
     # set y-axis to floor - 2% to ceiling + 2% (max 100) for better visual scaling
     y_floor = min([f for f in word_salad_floors if f is not None]) if has_floor else min(alignments)
     y_ceiling = max([c for c in paraphrase_ceilings if c is not None]) if has_ceiling else max(alignments)
@@ -2258,7 +518,7 @@ def create_splits_joins_scree_plot(
     ax.set_title(
         f"Splits/Joins vs K\n{analysis_name_a} ↔ {analysis_name_b}", fontsize=12
     )
-    ax.set_xlim(min(k_values), max(k_values))
+    ax.set_xlim(0, 0.7)  # fixed scale for comparability across analyses
 
     # set y-axis with some padding
     y_min_data = min(splits_joins)
@@ -2340,7 +600,7 @@ def compare_result_similarity(
     A: QualitativeAnalysis,
     B: QualitativeAnalysis,
     threshold: float = 0.6,
-    embedding_template: str = "{name}",
+    embedding_template: str = "{name}: {description}",
     embedding_model: str = "text-embedding-3-large",
     k: float = 1.0,
     reg_m: float = 0.2,
@@ -2351,10 +611,22 @@ def compare_result_similarity(
     paraphrase_model: Optional[str] = None,
     api_key: Optional[str] = None,
     base_url: Optional[str] = None,
-    green_above: float = 0.8,
-    red_below: float = 0.65,
+    # rescaling parameters
+    rescale_method: RescaleMethod = "clip",
     rescale_min: Optional[float] = 0.5,
     rescale_max: Optional[float] = 0.9,
+    rescale_lower_percentile: float = 5.0,
+    rescale_upper_percentile: float = 95.0,
+    rescale_sigmoid_center: float = 0.7,
+    rescale_sigmoid_steepness: float = 10.0,
+    rescale_temperature: float = 0.5,
+    # transport plan filtering
+    filter_threshold: float = 0.05,
+    # color scale (K-relative)
+    color_green: float = 0.2,
+    color_red: float = 1.1,
+    short_labels_a: Optional[List[str]] = None,
+    short_labels_b: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """
     Compare two sets of theme embeddings.
@@ -2397,10 +669,22 @@ def compare_result_similarity(
         paraphrase_model: LLM model for paraphrase generation (default: gpt-4.1-mini)
         api_key: API key for LLM (uses LLM_API_KEY env var if not provided)
         base_url: API base URL (uses LLM_API_BASE env var if not provided)
-        rescale_min: Floor for rescaling similarity (default: 0.5). Values below become 0.
-                    Set to None to disable rescaling.
-        rescale_max: Ceiling for rescaling similarity (default: 0.9). Values above become 1.
-                    Empirically, close paraphrases score ~0.83 and unrelated ~0.55.
+
+        Rescaling parameters (control how similarity matrix is transformed before OT):
+        rescale_method: Method for rescaling similarity matrix. Options:
+            - "off": No rescaling
+            - "clip": Hard clip to [rescale_min, rescale_max] then stretch to [0, 1]
+            - "adaptive": Use percentile-based bounds from the data
+            - "sigmoid": Soft clipping with sigmoid (preserves tails)
+            - "temperature": Power transformation (preserves ordering)
+            - "rank": Convert to percentile ranks (most robust)
+        rescale_min: Floor for clip method (default: 0.5)
+        rescale_max: Ceiling for clip method (default: 0.9)
+        rescale_lower_percentile: Lower percentile for adaptive method (default: 5.0)
+        rescale_upper_percentile: Upper percentile for adaptive method (default: 95.0)
+        rescale_sigmoid_center: Center for sigmoid method (default: 0.7)
+        rescale_sigmoid_steepness: Steepness for sigmoid method (default: 10.0)
+        rescale_temperature: Temperature for power method (default: 0.5, < 1 sharpens)
 
     Returns:
         Dictionary with similarity metrics including:
@@ -2417,8 +701,6 @@ def compare_result_similarity(
         - similarity_matrix: raw cosine similarity values
         - angle_similarity_matrix: angular distance normalized to [0,1]
         - shepard_similarity_matrix: Shepard similarity with specified k
-        - percentile_normalized_shepard: Shepard normalized by within-set percentiles
-        - z_score_normalized_shepard: Shepard normalized by within-set z-scores
     """
 
     # extract theme names/labels and analysis names before reassigning A and B
@@ -2427,6 +709,17 @@ def compare_result_similarity(
     theme_names_B = [theme.label if theme.label else theme.name for theme in B.themes]
     analysis_name_A = A.name
     analysis_name_B = B.name
+
+    # use short labels for plots if provided (these already include set prefix like "A1: Label")
+    # otherwise fall back to truncated theme names with index
+    if short_labels_a:
+        plot_labels_A = list(short_labels_a)
+    else:
+        plot_labels_A = [f"{i+1}. {name[:20]}" for i, name in enumerate(theme_names_A)]
+    if short_labels_b:
+        plot_labels_B = list(short_labels_b)
+    else:
+        plot_labels_B = [f"{i+1}. {name[:20]}" for i, name in enumerate(theme_names_B)]
 
     A_texts = [
         embedding_template.format(name=i.name, description=i.description)
@@ -2506,24 +799,6 @@ def compare_result_similarity(
         iu = np.triu_indices(n, k=1)
         return S[iu]
 
-    S_within_A = pairwise_shepard(emb_A, k)
-    S_within_B = pairwise_shepard(emb_B, k)
-    S_within = np.concatenate([S_within_A, S_within_B])
-
-    # percentile normalization
-    S_within_sorted = np.sort(S_within)
-
-    def percentile_scale(x):
-        # proportion of within-set pairs with similarity <= x
-        return np.searchsorted(S_within_sorted, x, side="right") / len(S_within_sorted)
-
-    shepard_percentile = np.vectorize(percentile_scale)(shepard_sim)
-
-    # z-score normalization
-    mu = S_within.mean()
-    sigma = S_within.std()
-    shepard_z = (shepard_sim - mu) / (sigma + 1e-9)
-
     # === HUNGARIAN MATCHING (optimal 1-to-1 assignment) ===
     # Select similarity matrix based on distance metric
     distance_matrices = {
@@ -2533,13 +808,49 @@ def compare_result_similarity(
     }
     selected_sim = distance_matrices.get(distance, angle_sim)
 
-    # Apply rescaling if enabled (rescale_min and rescale_max both set)
-    selected_sim_raw = selected_sim.copy()  # keep original for reference
-    if rescale_min is not None and rescale_max is not None:
-        selected_sim = rescale_similarity(selected_sim, rescale_min, rescale_max)
-        logger.info(
-            f"Rescaled similarity from [{rescale_min}, {rescale_max}] to [0, 1]"
+    # helper to apply rescaling with current parameters
+    def apply_rescaling(sim):
+        return rescale_similarity(
+            sim,
+            method=rescale_method,
+            rescale_min=rescale_min,
+            rescale_max=rescale_max,
+            lower_percentile=rescale_lower_percentile,
+            upper_percentile=rescale_upper_percentile,
+            sigmoid_center=rescale_sigmoid_center,
+            sigmoid_steepness=rescale_sigmoid_steepness,
+            temperature=rescale_temperature,
         )
+
+    # Apply rescaling if enabled
+    selected_sim_raw = selected_sim.copy()  # keep original for reference
+    if rescale_method != "off":
+        selected_sim = apply_rescaling(selected_sim)
+        logger.info(f"Rescaled similarity using method='{rescale_method}'")
+        logger.info(f"  Original similarity: mean={selected_sim_raw.mean():.3f}, range=[{selected_sim_raw.min():.3f}, {selected_sim_raw.max():.3f}]")
+        logger.info(f"  Rescaled similarity: mean={selected_sim.mean():.3f}, range=[{selected_sim.min():.3f}, {selected_sim.max():.3f}]")
+        if rescale_method == "clip":
+            logger.info(f"  Clip bounds: [{rescale_min}, {rescale_max}]")
+        elif rescale_method == "adaptive":
+            logger.info(f"  Percentile bounds: [{rescale_lower_percentile}%, {rescale_upper_percentile}%]")
+        elif rescale_method == "sigmoid":
+            logger.info(f"  Sigmoid: center={rescale_sigmoid_center}, steepness={rescale_sigmoid_steepness}")
+        elif rescale_method == "temperature":
+            logger.info(f"  Temperature: {rescale_temperature}")
+
+    # Prepare rescaled similarity matrices for BOTH angular and shepard (for OT toggle)
+    angle_sim_raw = angle_sim.copy()
+    shepard_sim_raw = shepard_sim.copy()
+    if rescale_method != "off":
+        angle_sim_rescaled = apply_rescaling(angle_sim)
+        shepard_sim_rescaled = apply_rescaling(shepard_sim)
+    else:
+        angle_sim_rescaled = angle_sim.copy()
+        shepard_sim_rescaled = shepard_sim.copy()
+
+    # Cost matrices for both metrics (used in OT computation)
+    cost_matrix_angular = 1 - angle_sim_rescaled
+    cost_matrix_shepard = 1 - shepard_sim_rescaled
 
     hungarian_results = hungarian_matching(selected_sim, threshold=threshold)
 
@@ -2565,9 +876,12 @@ def compare_result_similarity(
         )
 
     # === UNBALANCED OPTIMAL TRANSPORT (many-to-many alignment) ===
-    # use selected distance metric for cost matrix
-    cost_matrix = 1 - selected_sim
+    # use selected distance metric for cost matrix (for backwards compatibility)
+    cost_matrix = 1 - selected_sim  # rescaled similarity used for OT and coloring
+    cost_matrix_original = 1 - selected_sim_raw  # original similarity for hover display
     logger.info("\n=== Computing Unbalanced Optimal Transport Metrics ===")
+    logger.info(f"Cost matrix (rescaled): mean={cost_matrix.mean():.3f}")
+    logger.info(f"Cost matrix (original): mean={cost_matrix_original.mean():.3f}")
 
     # === SYMMETRIC WORD-SALAD NULL BASELINE ===
     # To avoid asymmetry, we scramble BOTH sets and average the null distributions:
@@ -2612,7 +926,7 @@ def compare_result_similarity(
     )
 
     # helper to compute similarity using the selected distance metric (with rescaling)
-    def compute_similarity(emb_a, emb_b, metric, k_val, apply_rescale=True):
+    def compute_similarity(emb_a, emb_b, metric, k_val, do_rescale=True):
         cos_sim = cosine_similarity(emb_a, emb_b)
         if metric == "cosine":
             sim = cos_sim
@@ -2627,8 +941,8 @@ def compare_result_similarity(
         else:
             sim = cos_sim
         # apply rescaling if enabled
-        if apply_rescale and rescale_min is not None and rescale_max is not None:
-            sim = rescale_similarity(sim, rescale_min, rescale_max)
+        if do_rescale and rescale_method != "off":
+            sim = apply_rescaling(sim)
         return sim
 
     null_cost_matrices_B = [
@@ -2647,6 +961,39 @@ def compare_result_similarity(
     logger.info(
         f"Generated {len(null_cost_matrices)} null cost matrices ({len(null_cost_matrices_B)} A vs B_salad + {len(null_cost_matrices_A)} A_salad vs B)"
     )
+
+    # === WORD-SALAD SELF-SIMILARITY ===
+    # Estimate the similarity between independent word-salad samples.
+    # This gives a baseline for "what does random similarity look like?"
+    # We compare different word-salad samples (different scramblings) to each other.
+    word_salad_self_similarity = None
+    word_salad_self_similarity_raw = None
+    if n_samples_per_direction >= 2:
+        salad_self_sims = []
+        salad_self_sims_raw = []
+        # compare pairs of word-salad samples (different scramblings)
+        # use both A and B salad sets for robustness
+        for emb_salads in [emb_B_salads, emb_A_salads]:
+            n_samples = emb_salads.shape[0]
+            for i in range(min(n_samples, 3)):  # cap at 3 pairs per set for efficiency
+                for j in range(i + 1, min(n_samples, 3)):
+                    # compare salad[i] vs salad[j] -- two different scramblings
+                    self_sim_rescaled = compute_similarity(
+                        emb_salads[i], emb_salads[j], distance, k, do_rescale=True
+                    )
+                    self_sim_raw = compute_similarity(
+                        emb_salads[i], emb_salads[j], distance, k, do_rescale=False
+                    )
+                    # mean off-diagonal similarity (diagonal would be same theme scrambled differently)
+                    salad_self_sims.append(float(np.mean(self_sim_rescaled)))
+                    salad_self_sims_raw.append(float(np.mean(self_sim_raw)))
+
+        if salad_self_sims:
+            word_salad_self_similarity = float(np.mean(salad_self_sims))
+            word_salad_self_similarity_raw = float(np.mean(salad_self_sims_raw))
+            logger.info(
+                f"Word-salad self-similarity: {word_salad_self_similarity_raw:.3f} (rescaled: {word_salad_self_similarity:.3f})"
+            )
 
     # === PARAPHRASE UPPER BOUND BASELINE ===
     # Generate LLM paraphrases to establish a realistic upper bound for relative metrics.
@@ -2691,8 +1038,14 @@ def compare_result_similarity(
                 distance=distance,
                 shepard_k=k,
                 reg_m=0.3,  # initial K for logging, will recompute per-K
+                rescale_method=rescale_method,
                 rescale_min=rescale_min,
                 rescale_max=rescale_max,
+                rescale_lower_percentile=rescale_lower_percentile,
+                rescale_upper_percentile=rescale_upper_percentile,
+                rescale_sigmoid_center=rescale_sigmoid_center,
+                rescale_sigmoid_steepness=rescale_sigmoid_steepness,
+                rescale_temperature=rescale_temperature,
             )
             baseline_B = compute_paraphrase_baseline(
                 B_texts, emb_B, paraphrases_B,
@@ -2700,8 +1053,14 @@ def compare_result_similarity(
                 distance=distance,
                 shepard_k=k,
                 reg_m=0.3,
+                rescale_method=rescale_method,
                 rescale_min=rescale_min,
                 rescale_max=rescale_max,
+                rescale_lower_percentile=rescale_lower_percentile,
+                rescale_upper_percentile=rescale_upper_percentile,
+                rescale_sigmoid_center=rescale_sigmoid_center,
+                rescale_sigmoid_steepness=rescale_sigmoid_steepness,
+                rescale_temperature=rescale_temperature,
             )
 
             # store cost matrices for K-specific baseline computation
@@ -2731,78 +1090,117 @@ def compare_result_similarity(
             logger.warning(f"Paraphrase baseline generation failed: {e}")
             logger.warning("Continuing without paraphrase upper bound")
 
+    # === PERMUTATION BASELINE (alignment identifiability test) ===
+    # Tests whether the similarity geometry encodes pair-specific structure.
+    # If permuted shared mass ~ true shared mass, alignments are underdetermined.
+    # This is a necessary condition for meaningful OT interpretation.
+    logger.info("\n=== Computing permutation baseline (alignment identifiability) ===")
+
+    # K values for permutation test (subset for efficiency)
+    PERM_K_VALUES = [0.1, 0.2, 0.3, 0.5, 1.0]
+    permutation_baseline = compute_permutation_baseline(
+        cost_matrix,
+        k_values=PERM_K_VALUES,
+        n_permutations=50,
+        mode="unbalanced",
+        reg=0.01,
+        seed=42,
+    )
+    logger.info(f"Permutation baseline computed for K values: {PERM_K_VALUES}")
+
     # === COMPUTE OT FOR MULTIPLE K VALUES ===
     # K (reg_m) controls when themes are left unmatched vs forced to align
     # Higher K = stronger penalty for unmatching = more mass forced to transport
     # Lower K = weaker penalty = more mass can remain unmatched
-    # K values: fine at low end for elbow detection, coarser at high end
-    # 0.025-0.05: very low K | 0.1-1.0: every 0.1 | 1.0-2.0: every 0.5 | 2.0-4.0: every 1.0
+    # K values: fine gradations in critical range 0.05-0.5, coarser above
+    # 0.05-0.5: every 0.025 | 0.5-1.0: every 0.1 | above 1.0: coarser
     K_VALUES = [
-        0.025,
-        0.05,
-        0.1,
-        0.2,
-        0.3,
-        0.4,
-        0.5,
-        0.6,
-        0.7,
-        0.8,
-        0.9,
-        1.0,
-        1.5,
-        2.0,
-        3.0,
-        4.0,
+        # Fine gradations in critical range (0.025 steps)
+        0.05, 0.075, 0.1, 0.125, 0.15, 0.175, 0.2, 0.225, 0.25, 0.275,
+        0.3, 0.325, 0.35, 0.375, 0.4, 0.425, 0.45, 0.475, 0.5,
+        # Coarser above 0.5 (0.1 steps)
+        0.6, 0.7, 0.8, 0.9, 1.0,
+        # Even coarser for high K
+        1.5, 2.0, 3.0, 4.0,
     ]
     EXTENDED_K_VALUES = [6.0, 8.0, 10.0]
     PLATEAU_ANCHOR_K = 5.0  # always compute for reliable plateau detection, but hide from plots
-    MIN_K_BEFORE_STOP = 0.3  # minimum K to compute before allowing early stopping
+    MIN_K_BEFORE_STOP = 0.7  # minimum K to compute before allowing early stopping
 
-    # PHASE 1: Compute OT for all K values (without visualisations yet)
-    ot_by_k = {}
-    computed_k_values = []
-    prev_shared_mass = 0.0
-    for k_val in tqdm(K_VALUES, desc="Computing OT for K values", file=sys.stderr):
-        logger.debug(f"\n--- Computing OT with K={k_val} ---")
+    # PHASE 1: Compute OT for all K values in parallel (up to MIN_K_BEFORE_STOP)
+    # Then continue sequentially with early stopping for higher K values
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
+    def compute_ot_for_k(k_val):
+        """Compute OT and split/join stats for a single K value."""
         ot_result = compute_ot(
             cost_matrix,
             null_cost_matrices=null_cost_matrices,
             mode="unbalanced",
             reg_m=k_val,
         )
-
         split_join_stats = compute_split_join_stats(ot_result["transport_plan"])
+        return k_val, ot_result, split_join_stats
 
-        # store transport plan as numpy array for later visualisation
-        ot_by_k[k_val] = {
-            "ot_result": ot_result,
-            "split_join_stats": split_join_stats,
-        }
-        computed_k_values.append(k_val)
+    ot_by_k = {}
+    computed_k_values = []
 
-        logger.debug(
-            f"K={k_val:.1f}: shared_mass={ot_result['shared_mass']:.1%}, avg_cost={ot_result['avg_cost']:.2f}"
-        )
-        logger.debug(
-            f"  Splits from A: mean={split_join_stats['splits_from_a']['mean']:.2f}, max={split_join_stats['splits_from_a']['max']}"
-        )
-        logger.debug(
-            f"  Joins to B: mean={split_join_stats['joins_to_b']['mean']:.2f}, max={split_join_stats['joins_to_b']['max']}"
-        )
+    # split K values into parallel batch (up to MIN_K_BEFORE_STOP) and sequential batch
+    parallel_k_values = [k for k in K_VALUES if k <= MIN_K_BEFORE_STOP]
+    sequential_k_values = [k for k in K_VALUES if k > MIN_K_BEFORE_STOP]
 
-        # stop early if improvement < 2.5% (curve has plateaued)
-        current_shared_mass = ot_result["shared_mass"]
-        improvement = (current_shared_mass - prev_shared_mass) / (
-            prev_shared_mass + 1e-9
-        )
-        prev_shared_mass = current_shared_mass
-        if improvement < 0.025 and k_val >= MIN_K_BEFORE_STOP:
-            logger.info(
-                f"Shared mass improvement {improvement:.1%} < 2.5% at K={k_val}, stopping early"
+    # compute parallel batch using thread pool
+    n_cores = os.cpu_count() or 4
+    n_workers = min(n_cores, len(parallel_k_values))
+    logger.info(f"Computing OT for {len(parallel_k_values)} K values in parallel ({n_workers} workers)...")
+
+    with ThreadPoolExecutor(max_workers=n_workers) as executor:
+        futures = {executor.submit(compute_ot_for_k, k): k for k in parallel_k_values}
+
+        # collect results with progress bar
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Computing OT (parallel)", file=sys.stderr):
+            k_val, ot_result, split_join_stats = future.result()
+            ot_by_k[k_val] = {
+                "ot_result": ot_result,
+                "split_join_stats": split_join_stats,
+            }
+            logger.debug(
+                f"K={k_val:.3f}: shared_mass={ot_result['shared_mass']:.1%}, avg_cost={ot_result['avg_cost']:.2f}"
             )
-            break
+
+    # sort computed K values
+    computed_k_values = sorted(ot_by_k.keys())
+
+    # continue sequentially for higher K values with early stopping
+    if sequential_k_values:
+        prev_shared_mass = ot_by_k[computed_k_values[-1]]["ot_result"]["shared_mass"]
+
+        for k_val in tqdm(sequential_k_values, desc="Computing OT (sequential)", file=sys.stderr):
+            k_val, ot_result, split_join_stats = compute_ot_for_k(k_val)
+
+            ot_by_k[k_val] = {
+                "ot_result": ot_result,
+                "split_join_stats": split_join_stats,
+            }
+            computed_k_values.append(k_val)
+
+            logger.debug(
+                f"K={k_val:.3f}: shared_mass={ot_result['shared_mass']:.1%}, avg_cost={ot_result['avg_cost']:.2f}"
+            )
+
+            # stop early if improvement < 2.5% (curve has plateaued)
+            current_shared_mass = ot_result["shared_mass"]
+            improvement = (current_shared_mass - prev_shared_mass) / (
+                prev_shared_mass + 1e-9
+            )
+            prev_shared_mass = current_shared_mass
+            if improvement < 0.025:
+                logger.info(
+                    f"Shared mass improvement {improvement:.1%} < 2.5% at K={k_val}, stopping early"
+                )
+                break
+
+    computed_k_values = sorted(ot_by_k.keys())
 
     # adaptive extension: if last improvement was still >= 2.5%, add extra K values
     all_k_values = list(computed_k_values)
@@ -2876,47 +1274,95 @@ def compare_result_similarity(
     # k values for elbow detection includes anchor; visualization k values excludes it
     elbow_k_values = sorted(ot_by_k.keys())
 
-    # PHASE 2: Set color scale from user thresholds (or defaults)
-    # If rescaling is enabled, convert thresholds from original to rescaled space
-    effective_green_above = green_above
-    effective_red_below = red_below
-    if rescale_min is not None and rescale_max is not None:
-        # convert user's original-space thresholds to rescaled space
-        scale_range = rescale_max - rescale_min
-        effective_green_above = np.clip((green_above - rescale_min) / scale_range, 0.0, 1.0)
-        effective_red_below = np.clip((red_below - rescale_min) / scale_range, 0.0, 1.0)
-        logger.info(
-            f"Color scale rescaled: original [{red_below:.2f}, {green_above:.2f}] → "
-            f"rescaled [{effective_red_below:.2f}, {effective_green_above:.2f}]"
-        )
+    # PHASE 2: Set color scale from baselines (data-driven, smooth gradient)
+    # Color anchors:
+    #   - Red anchor: word-salad self-similarity + 20% (random noise baseline with margin)
+    #   - Green anchor: paraphrase self-similarity - 20% (paraphrase ceiling with margin)
+    # Smooth gradient: red → amber → green across the full range
 
-    # green_above (similarity) → cost_min = 1 - green_above
-    # red_below (similarity) → cost_max = 1 - red_below
-    color_cost_min = 1.0 - effective_green_above  # e.g., 0.8 similarity → 0.2 cost (green)
-    color_cost_max = 1.0 - effective_red_below    # e.g., 0.65 similarity → 0.35 cost (red)
-    logger.info(
-        f"Color scale: similarity [{effective_red_below:.2f}, {effective_green_above:.2f}] → cost [{color_cost_min:.3f}, {color_cost_max:.3f}]"
-    )
+    # Use word-salad SELF-similarity (similarity between different word-salad samples)
+    # This represents true random baseline -- what similarity looks like for noise
+    if word_salad_self_similarity is not None:
+        base_floor = word_salad_self_similarity
+        logger.info(f"Word-salad self-similarity (rescaled): {base_floor:.3f}")
+    elif null_cost_matrices:
+        # fallback: use mean of null cost matrices (A vs word-salad-B)
+        null_similarities = [1.0 - np.mean(m) for m in null_cost_matrices]
+        base_floor = float(np.mean(null_similarities))
+        logger.info(f"Word-salad baseline similarity (fallback): {base_floor:.3f}")
+    else:
+        base_floor = 0.3  # fallback if no null baseline
+        logger.info(f"No word-salad baseline, using default floor: {base_floor:.3f}")
 
-    # Create visualisations for all K values with shared color scale
+    # Use paraphrase self-similarity (theme to its paraphrases)
+    if paraphrase_cost_matrix_A is not None and paraphrase_cost_matrix_B is not None:
+        # Diagonal of cost matrix = cost of theme to its best paraphrase
+        # Similarity = 1 - cost
+        diag_sim_A = 1.0 - np.diag(paraphrase_cost_matrix_A)
+        diag_sim_B = 1.0 - np.diag(paraphrase_cost_matrix_B)
+        base_ceiling = float((np.mean(diag_sim_A) + np.mean(diag_sim_B)) / 2)
+        logger.info(f"Paraphrase self-similarity (rescaled): {base_ceiling:.3f}")
+    else:
+        base_ceiling = 0.9  # fallback if no paraphrase baseline
+        logger.info(f"No paraphrase baseline, using default ceiling: {base_ceiling:.3f}")
+
+    # Apply 20% margins to create the color anchors
+    # Red anchor: word-salad + 20% of range (give benefit of doubt to low values)
+    # Green anchor: paraphrase - 20% of range (reserve green for truly good matches)
+    baseline_range = base_ceiling - base_floor
+    margin = baseline_range * 0.20
+    color_red_anchor = base_floor + margin      # similarity below this → red
+    color_green_anchor = base_ceiling - margin  # similarity above this → green
+
+    # Store for output documentation (K-relative color scale)
+    color_scale_info = {
+        "word_salad_self_similarity": base_floor,
+        "paraphrase_self_similarity": base_ceiling,
+        "scaling_method": "k_relative",
+        "color_green_mult": color_green,
+        "color_red_mult": color_red,
+        "description": f"K-relative colour scale: green = cost < {color_green}*K, red = cost > {color_red}*K. "
+                       "Red links are close to being dropped at the current K threshold."
+    }
+
+    logger.info(f"Color scale info (K-relative: green < {color_green}*K, red > {color_red}*K):")
+    logger.info(f"  Word-salad baseline: {base_floor:.3f}")
+    logger.info(f"  Paraphrase baseline: {base_ceiling:.3f}")
+
+    # Create visualisations for all K values with K-relative color scale
+    # Green = cost 0 (perfect match), Red = cost approaching K (marginal, about to be dropped)
     for k_val in tqdm(all_k_values, desc="Creating visualisations", file=sys.stderr):
         ot_result = ot_by_k[k_val]["ot_result"]
         split_join_stats = ot_by_k[k_val]["split_join_stats"]
 
+        # Apply transport plan filtering to reduce weak edges (splits/joins)
+        # This affects visualizations only; shared_mass is computed from unfiltered plan
+        transport_plan_raw = ot_result["transport_plan"]
+        filtered_plan, filter_stats = filter_transport_plan(transport_plan_raw, threshold=filter_threshold)
+
+        # Compute split/join stats on filtered plan for display
+        filtered_split_join_stats = compute_split_join_stats(filtered_plan)
+
+        # K-relative color scale: green at cost<green*K, red at cost>red*K
+        # Green = strong match, Red = marginal (approaching threshold)
+        color_cost_min = k_val * color_green  # green anchor
+        color_cost_max = k_val * color_red  # red anchor
+
         transport_sankey_k = create_transport_sankey(
-            ot_result["transport_plan"],
-            theme_names_A,
-            theme_names_B,
-            cost_matrix=cost_matrix,
+            filtered_plan,  # use filtered plan for visualization
+            plot_labels_A,
+            plot_labels_B,
+            cost_matrix=cost_matrix,  # rescaled, for coloring
+            cost_matrix_original=cost_matrix_original,  # original, for hover display
             analysis_name_a=analysis_name_A,
             analysis_name_b=analysis_name_B,
             cost_min=color_cost_min,
             cost_max=color_cost_max,
         )
         transport_heatmap_k = create_transport_heatmap(
-            ot_result["transport_plan"],
-            theme_names_A,
-            theme_names_B,
+            filtered_plan,  # use filtered plan for visualization
+            plot_labels_A,
+            plot_labels_B,
             analysis_name_a=analysis_name_A,
             analysis_name_b=analysis_name_B,
         )
@@ -2928,7 +1374,13 @@ def compare_result_similarity(
         ot_serialisable_k["transport_plan"] = np.round(
             ot_result["transport_plan"], 4
         ).tolist()
+        # split/join stats from unfiltered plan (original OT result)
         ot_serialisable_k["split_join_stats"] = split_join_stats
+
+        # filtering stats (for interpretability)
+        ot_serialisable_k["filter_stats"] = filter_stats
+        ot_serialisable_k["filtered_transport_plan"] = np.round(filtered_plan, 4).tolist()
+        ot_serialisable_k["filtered_split_join_stats"] = filtered_split_join_stats
 
         # compute K-specific paraphrase baselines
         paraphrase_upper_bound_k = None
@@ -3010,11 +1462,94 @@ def compare_result_similarity(
             ot_serialisable_k["paraphrase_upper_bound"] = paraphrase_upper_bound_k
             ot_serialisable_k["paraphrase_cost_lower_bound"] = paraphrase_cost_lower_bound_k
 
+        # === PERMUTATION BASELINE METRICS ===
+        # Add permutation-based identifiability metrics for this K value
+        shared_mass = ot_serialisable_k.get("shared_mass", 0.0)
+        if k_val in permutation_baseline:
+            perm_data = permutation_baseline[k_val]
+            perm_mean = perm_data["perm_shared_mass_mean"]
+            perm_std = perm_data["perm_shared_mass_std"]
+            perm_95ci = perm_data["perm_shared_mass_95ci"]
+
+            ot_serialisable_k["perm_shared_mass_mean"] = perm_mean
+            ot_serialisable_k["perm_shared_mass_std"] = perm_std
+            ot_serialisable_k["perm_shared_mass_95ci"] = perm_95ci
+            ot_serialisable_k["perm_shared_mass_distribution"] = perm_data["perm_shared_mass_distribution"]
+
+            # alignment_gap: how much better is true alignment than random permutation
+            ot_serialisable_k["alignment_gap"] = float(shared_mass - perm_mean)
+
+            # identifiability_ratio: true / permuted (should be >> 1 for meaningful alignment)
+            if perm_mean > 0:
+                ot_serialisable_k["identifiability_ratio"] = float(shared_mass / perm_mean)
+            else:
+                ot_serialisable_k["identifiability_ratio"] = float("inf") if shared_mass > 0 else 1.0
+
+            # identifiability_pvalue: fraction of permutations >= true shared mass
+            perm_dist = np.array(perm_data["perm_shared_mass_distribution"])
+            ot_serialisable_k["identifiability_pvalue"] = float((perm_dist >= shared_mass).mean())
+
+            # === SPLITS/JOINS IDENTIFIABILITY ===
+            # Even if shared mass is similar, permuted alignments should have MORE splits/joins
+            # (fragmented transport) if the true alignment has meaningful structure
+            true_splits_joins = (
+                split_join_stats.get("splits_from_a", {}).get("mean", 1.0) +
+                split_join_stats.get("joins_to_b", {}).get("mean", 1.0)
+            ) / 2
+
+            perm_sj_mean = perm_data.get("perm_splits_joins_mean", true_splits_joins)
+            perm_sj_std = perm_data.get("perm_splits_joins_std", 0.0)
+            perm_sj_95ci = perm_data.get("perm_splits_joins_95ci", [perm_sj_mean, perm_sj_mean])
+
+            ot_serialisable_k["true_splits_joins"] = float(true_splits_joins)
+            ot_serialisable_k["perm_splits_joins_mean"] = float(perm_sj_mean)
+            ot_serialisable_k["perm_splits_joins_std"] = float(perm_sj_std)
+            ot_serialisable_k["perm_splits_joins_95ci"] = perm_sj_95ci
+
+            # splits_joins_gap: permuted - true (should be positive: permuted has more fragmentation)
+            ot_serialisable_k["splits_joins_gap"] = float(perm_sj_mean - true_splits_joins)
+
+            # splits_joins_ratio: permuted / true (should be > 1 if true alignment is cleaner)
+            if true_splits_joins > 0:
+                ot_serialisable_k["splits_joins_ratio"] = float(perm_sj_mean / true_splits_joins)
+            else:
+                ot_serialisable_k["splits_joins_ratio"] = 1.0
+
+            # p-value: fraction of permutations with FEWER splits/joins than true
+            # (lower is better for true alignment, so we want few permutations to beat us)
+            perm_sj_dist = np.array(perm_data.get("perm_splits_joins_distribution", [perm_sj_mean]))
+            ot_serialisable_k["splits_joins_pvalue"] = float((perm_sj_dist <= true_splits_joins).mean())
+
+            # identifiability_warning: flag if alignment is not significantly better than permuted
+            # Consider BOTH mass ratio AND splits/joins ratio
+            # warn if: mass ratio < 1.2 AND splits/joins ratio < 1.2
+            # (either metric being good is sufficient)
+            mass_ratio = ot_serialisable_k["identifiability_ratio"]
+            sj_ratio = ot_serialisable_k["splits_joins_ratio"]
+            mass_pval = ot_serialisable_k["identifiability_pvalue"]
+            sj_pval = ot_serialisable_k["splits_joins_pvalue"]
+
+            # warning if BOTH metrics fail (neither shows pair-specific structure)
+            mass_ok = (mass_ratio >= 1.1) or (mass_pval < 0.1)
+            sj_ok = (sj_ratio >= 1.1) or (sj_pval < 0.1)
+            ot_serialisable_k["identifiability_warning"] = not (mass_ok or sj_ok)
+
+        # compute K-specific best matches
+        best_matches_a_to_b_k, best_matches_b_to_a_k = compute_best_matches_for_k(
+            ot_result["transport_plan"],
+            selected_sim,
+            cost_matrix,
+            len(emb_A),
+            len(emb_B),
+        )
+
         ot_by_k[k_val] = {
             "ot": ot_serialisable_k,
             "transport_sankey": transport_sankey_k,
             "transport_heatmap": transport_heatmap_k,
             "split_join_stats": split_join_stats,
+            "best_matches_a_to_b": best_matches_a_to_b_k,
+            "best_matches_b_to_a": best_matches_b_to_a_k,
         }
 
     # compute elbow points first to determine chord_k for reference results
@@ -3118,6 +1653,60 @@ def compare_result_similarity(
             f"Avg cost relative: {ot_results['avg_cost_relative']:.2f} (0=random, 1=perfect)"
         )
 
+    # permutation baseline diagnostic
+    if "perm_shared_mass_mean" in ot_results:
+        logger.info(f"--- Permutation baseline (alignment identifiability) ---")
+        logger.info(
+            f"Permutation shared_mass: mean={ot_results['perm_shared_mass_mean']:.1%}, 95% CI=[{ot_results['perm_shared_mass_95ci'][0]:.1%}, {ot_results['perm_shared_mass_95ci'][1]:.1%}]"
+        )
+        logger.info(
+            f"Alignment gap: {ot_results['alignment_gap']:.1%} (observed - permuted)"
+        )
+        logger.info(
+            f"Mass identifiability ratio: {ot_results['identifiability_ratio']:.2f}x (should be >> 1.0)"
+        )
+        logger.info(
+            f"Mass identifiability p-value: {ot_results['identifiability_pvalue']:.3f}"
+        )
+
+        # splits/joins identifiability (complementary metric)
+        if "perm_splits_joins_mean" in ot_results:
+            logger.info(
+                f"True splits/joins: {ot_results['true_splits_joins']:.2f}, Permuted: {ot_results['perm_splits_joins_mean']:.2f}"
+            )
+            logger.info(
+                f"Splits/joins ratio: {ot_results['splits_joins_ratio']:.2f}x (permuted/true, should be > 1.0)"
+            )
+            logger.info(
+                f"Splits/joins gap: +{ot_results['splits_joins_gap']:.2f} (permuted has more fragmentation)"
+            )
+
+        if ot_results.get("identifiability_warning"):
+            logger.warning(
+                "⚠ Low alignment identifiability: alignment may not be pair-specific (neither mass nor splits/joins shows significant difference from permuted)"
+            )
+
+    # filtering stats
+    if "filter_stats" in ot_results:
+        fs = ot_results["filter_stats"]
+        if fs.get("filtering_enabled"):
+            logger.info(
+                f"Transport filtered at {fs['threshold']:.0%} threshold: "
+                f"{fs['mass_retained_pct']:.1f}% mass retained, "
+                f"{fs['edges_filtered']}/{fs['edges_original']} edges ({fs['edges_retained_pct']:.0f}% retained) "
+                f"vs {fs['edges_original']}/{fs['edges_max_possible']} ({fs['edges_original_pct']:.0f}%) unfiltered"
+            )
+            # filtered split/join stats
+            fss = ot_results.get("filtered_split_join_stats", {})
+            splits_pct = fss.get("splits_from_a", {}).get("pct_multiple", 0) * 100
+            joins_pct = fss.get("joins_to_b", {}).get("pct_multiple", 0) * 100
+            logger.info(
+                f"Filtered splits: {splits_pct:.0f}% of rows have >1 connection"
+            )
+            logger.info(
+                f"Filtered joins: {joins_pct:.0f}% of cols have >1 connection"
+            )
+
     # log all matrices (show legend only once at the start)
     logger.info("\n=== Theme Index Legend ===")
     logger.info(f"\n{analysis_name_A} Themes (rows):")
@@ -3155,30 +1744,6 @@ def compare_result_similarity(
         f"\n=== Shepard Similarity (k={k}) ===\n"
         + format_similarity_matrix(
             shepard_sim,
-            theme_names_A,
-            theme_names_B,
-            set_a_name=analysis_name_A,
-            set_b_name=analysis_name_B,
-            show_legend=False,
-        )
-    )
-
-    logger.info(
-        "\n=== Percentile-Normalized Shepard ===\n"
-        + format_similarity_matrix(
-            shepard_percentile,
-            theme_names_A,
-            theme_names_B,
-            set_a_name=analysis_name_A,
-            set_b_name=analysis_name_B,
-            show_legend=False,
-        )
-    )
-
-    logger.info(
-        "\n=== Z-Score Normalized Shepard ===\n"
-        + format_similarity_matrix(
-            shepard_z,
             theme_names_A,
             theme_names_B,
             set_a_name=analysis_name_A,
@@ -3337,8 +1902,15 @@ def compare_result_similarity(
     return {
         # similarity metric used for coverage, fidelity, OT (for display purposes)
         "similarity_metric": distance,
+        # rescaling configuration
+        "rescale_method": rescale_method,
         "rescale_min": rescale_min,
         "rescale_max": rescale_max,
+        "rescale_lower_percentile": rescale_lower_percentile,
+        "rescale_upper_percentile": rescale_upper_percentile,
+        "rescale_sigmoid_center": rescale_sigmoid_center,
+        "rescale_sigmoid_steepness": rescale_sigmoid_steepness,
+        "rescale_temperature": rescale_temperature,
         "selected_similarity_matrix": np.round(selected_sim, 3),
         "selected_similarity_matrix_raw": np.round(selected_sim_raw, 3),
         # coverage metrics (hit rates)
@@ -3355,15 +1927,6 @@ def compare_result_similarity(
         "angle_similarity_matrix": np.round(angle_sim, 3),
         "shepard_similarity_matrix": np.round(shepard_sim, 3),
         "shepard_k_value": k,
-        # normalized metrics
-        "percentile_normalized_shepard": np.round(shepard_percentile, 3),
-        "z_score_normalized_shepard": np.round(shepard_z, 3),
-        # within-set statistics used for normalization
-        "within_set_stats": {
-            "mean": float(mu),
-            "std": float(sigma),
-            "n_pairs": len(S_within),
-        },
         # Hungarian matching (optimal 1-to-1 assignment using Shepard similarity)
         "hungarian": hungarian_results,
         # Unbalanced Optimal Transport (many-to-many alignment with unmatched mass)
@@ -3378,9 +1941,10 @@ def compare_result_similarity(
         "chord_k": chord_k,
         "diminishing_k": diminishing_k,
         "plateau_reached": plateau_reached,
-        # color scale range (from default K, used across all K plots)
-        "color_sim_min": round(1 - color_cost_max, 3),
-        "color_sim_max": round(1 - color_cost_min, 3),
+        # color scale info (anchored to baselines, smooth gradient)
+        "color_scale_info": color_scale_info,
+        "color_sim_min": round(1 - color_cost_max, 3),  # red anchor (similarity)
+        "color_sim_max": round(1 - color_cost_min, 3),  # green anchor (similarity)
         # Scree plots of metrics vs K
         "shared_mass_scree": shared_mass_scree,
         "alignment_scree": alignment_scree,
@@ -3393,8 +1957,13 @@ def compare_result_similarity(
         "mean_embedding_words_b": mean_embedding_len_B,
         # all word salad samples used in null baseline
         "word_salad_samples": word_salad_samples,
+        # word-salad self-similarity: baseline for random matching
+        "word_salad_self_similarity": word_salad_self_similarity,  # rescaled
+        "word_salad_self_similarity_raw": word_salad_self_similarity_raw,  # original
         # paraphrase baseline for upper bound scaling
         "paraphrase_baseline": paraphrase_baseline,
+        # permutation baseline for alignment identifiability
+        "permutation_baseline": permutation_baseline,
         # raw embeddings for export (with labels)
         "embeddings_a": {
             "labels": theme_names_A,
@@ -3417,7 +1986,7 @@ def network_similarity_plot(
     min_dist=0.01,
     threshold=0.6,
     exclude_within_set_edges=True,
-    embedding_template="{name}",
+    embedding_template="{name}: {description}",
     embedding_model: str = "text-embedding-3-large",
 ) -> str:
     """Create similarity plot using embedding visualization.
@@ -3603,11 +2172,13 @@ def create_pairwise_heatmap(
     b: QualitativeAnalysis,
     threshold=0.6,
     use_threshold=True,
-    embedding_template="{name}",
+    embedding_template="{name}: {description}",
     embedding_model: str = "text-embedding-3-large",
     metric_type: str = "cosine",
     k: float = 1.0,
     comparison_result: Optional[Dict[str, Any]] = None,
+    short_labels_a: Optional[Tuple[str, ...]] = None,
+    short_labels_b: Optional[Tuple[str, ...]] = None,
 ) -> str:
     """Create a heatmap visualization for a single pair of pipeline results.
 
@@ -3619,7 +2190,7 @@ def create_pairwise_heatmap(
         threshold: Similarity threshold for matching
         use_threshold: Whether to use threshold-based binary heatmap
         embedding_template: Python format string for embeddings. Available: {name}, {description}
-        metric_type: Type of similarity metric ("cosine", "angle", "shepard", "percentile", "z_score")
+        metric_type: Type of similarity metric ("cosine", "angle", "shepard")
         k: Shepard similarity decay parameter (default: 1.0)
         comparison_result: Pre-computed result from compare_result_similarity. If provided,
             skips recomputation (avoids redundant OT calculations).
@@ -3642,8 +2213,16 @@ def create_pairwise_heatmap(
             return theme
         return theme[: max_len - 3] + "..."
 
-    themes_a = [theme.label for theme in a.themes]
-    themes_b = [theme.label for theme in b.themes]
+    # use short_labels if provided (these already include set prefix like "A1: Label")
+    # otherwise fall back to theme.label with index
+    if short_labels_a:
+        themes_a = list(short_labels_a)
+    else:
+        themes_a = [f"{i+1}. {theme.label}" for i, theme in enumerate(a.themes)]
+    if short_labels_b:
+        themes_b = list(short_labels_b)
+    else:
+        themes_b = [f"{i+1}. {theme.label}" for i, theme in enumerate(b.themes)]
     themes_a_display = [truncate_theme(t) for t in themes_a]
     themes_b_display = [truncate_theme(t) for t in themes_b]
 
@@ -3675,11 +2254,6 @@ def create_pairwise_heatmap(
         "cosine": ("Cosine Similarity", "similarity_matrix"),
         "angle": ("Angular Similarity", "angle_similarity_matrix"),
         "shepard": (f"Shepard Similarity (k={k})", "shepard_similarity_matrix"),
-        "percentile": (
-            "Percentile-Normalized Shepard",
-            "percentile_normalized_shepard",
-        ),
-        "z_score": ("Z-Score Normalized Shepard", "z_score_normalized_shepard"),
     }
 
     metric_label, matrix_key = metric_labels.get(
@@ -3776,7 +2350,7 @@ class SimilarityComparator:
         min_dist = config.get("min_dist", 0.01)
         method = config.get("method", "umap")
         label_template = config.get("label_template", "{name}")
-        embedding_template = config.get("embedding_template", "{name}")
+        embedding_template = config.get("embedding_template", "{name}: {description}")
         embedding_model = config.get("embedding_model", "text-embedding-3-large")
         k = config.get("k", 1.0)
         reg_m = config.get("reg_m", 0.2)
@@ -3787,12 +2361,23 @@ class SimilarityComparator:
         paraphrase_model = config.get("paraphrase_model", None)
         api_key = config.get("api_key", None)
         base_url = config.get("base_url", None)
-        # color scale thresholds for Sankey plots
-        green_above = config.get("green_above", 0.8)
-        red_below = config.get("red_below", 0.65)
-        # rescaling parameters (set to None to disable)
+        # rescaling parameters
+        rescale_method = config.get("rescale_method", "clip")
         rescale_min = config.get("rescale_min", 0.5)
         rescale_max = config.get("rescale_max", 0.9)
+        rescale_lower_pct = config.get("rescale_lower_pct", 5.0)
+        rescale_upper_pct = config.get("rescale_upper_pct", 95.0)
+        rescale_sigmoid_center = config.get("rescale_sigmoid_center", 0.7)
+        rescale_sigmoid_steepness = config.get("rescale_sigmoid_steepness", 10.0)
+        rescale_temp = config.get("rescale_temp", 0.5)
+        # transport plan filtering
+        filter_threshold = config.get("filter_threshold", 0.05)
+        # color scale (K-relative)
+        color_green = config.get("color_green", 0.2)
+        color_red = config.get("color_red", 1.1)
+        # short label generation for plots
+        compute_short_labels = config.get("compute_short_labels", True)
+        short_label_model = config.get("short_label_model", None)
 
         # Set labels on all themes once at the beginning (only if not already set)
         for result in pipeline_results:
@@ -3802,9 +2387,13 @@ class SimilarityComparator:
 
         result_combinations = list(itertools.combinations(pipeline_results, 2))
 
+        # Create A, B, C... labels for each analysis set (used throughout report)
+        set_letters = {result.name: chr(65 + i) for i, result in enumerate(pipeline_results)}
+
         # Build embedded strings mapping for each result
         embedded_strings_map = {}
         for result in pipeline_results:
+            set_letter = set_letters[result.name]
             embedded_strings_map[result.name] = [
                 {
                     "theme_name": theme.name,
@@ -3813,9 +2402,57 @@ class SimilarityComparator:
                     "embedded_string": embedding_template.format(
                         name=theme.name, description=theme.description
                     ),
+                    "short_label": None,  # populated below if compute_short_labels
+                    "set_letter": set_letter,
+                    "theme_index": str(i + 1),  # 1-based index as string
                 }
-                for theme in result.themes
+                for i, theme in enumerate(result.themes)
             ]
+
+        # Generate short labels for all results if enabled
+        if compute_short_labels:
+            import asyncio
+
+            logger.info("Generating short labels for themes...")
+            for result in pipeline_results:
+                # use raw theme text without embedding template for short labels
+                # this ensures consistent labels across different embedding models
+                theme_texts = [
+                    f"{t.name}: {t.description}" for t in result.themes
+                ]
+                try:
+                    short_labels = asyncio.run(
+                        generate_short_labels(
+                            theme_texts,
+                            model_name=short_label_model,
+                            api_key=api_key,
+                            base_url=base_url,
+                        )
+                    )
+                    # add short labels to embedded_strings_map
+                    for i, short_label in enumerate(short_labels):
+                        if i < len(embedded_strings_map[result.name]):
+                            embedded_strings_map[result.name][i]["short_label"] = short_label
+                except Exception as e:
+                    logger.warning(f"Short label generation failed for {result.name}: {e}")
+                    # fallback: use numbered theme identifiers
+                    for i, entry in enumerate(embedded_strings_map[result.name]):
+                        entry["short_label"] = f"Theme {i + 1}"
+
+        # helper to get short labels for an analysis (with set prefix like "A1: Label")
+        def get_short_labels(analysis_name: str) -> Optional[List[str]]:
+            if analysis_name in embedded_strings_map:
+                entries = embedded_strings_map[analysis_name]
+                labels = []
+                for e in entries:
+                    short = e.get("short_label")
+                    if short:
+                        # format: "A1: Short Label"
+                        labels.append(f"{e['set_letter']}{e['theme_index']}: {short}")
+                    else:
+                        return None  # not all labels are set
+                return labels
+            return None
 
         # run synchronously
         similarity_results = [
@@ -3833,16 +2470,30 @@ class SimilarityComparator:
                 paraphrase_model=paraphrase_model,
                 api_key=api_key,
                 base_url=base_url,
-                green_above=green_above,
-                red_below=red_below,
+                rescale_method=rescale_method,
                 rescale_min=rescale_min,
                 rescale_max=rescale_max,
+                rescale_lower_percentile=rescale_lower_pct,
+                rescale_upper_percentile=rescale_upper_pct,
+                rescale_sigmoid_center=rescale_sigmoid_center,
+                rescale_sigmoid_steepness=rescale_sigmoid_steepness,
+                rescale_temperature=rescale_temp,
+                filter_threshold=filter_threshold,
+                color_green=color_green,
+                color_red=color_red,
+                short_labels_a=get_short_labels(i.name),
+                short_labels_b=get_short_labels(j.name),
             )
             for i, j in result_combinations
         ]
 
         # generate heatmaps for all metric types, reusing pre-computed similarity results
-        metric_types = ["cosine", "angle", "shepard", "percentile", "z_score"]
+        metric_types = ["cosine", "angle", "shepard"]
+
+        # helper to get short labels as tuple (for caching)
+        def get_short_labels_tuple(analysis_name: str) -> Optional[Tuple[str, ...]]:
+            labels = get_short_labels(analysis_name)
+            return tuple(labels) if labels else None
 
         heatmaps_by_metric = {}
         for metric_type in metric_types:
@@ -3857,6 +2508,8 @@ class SimilarityComparator:
                     metric_type=metric_type,
                     k=k,
                     comparison_result=sim_result,
+                    short_labels_a=get_short_labels_tuple(a.name),
+                    short_labels_b=get_short_labels_tuple(b.name),
                 )
                 for (a, b), sim_result in zip(result_combinations, similarity_results)
             ]
@@ -3883,6 +2536,8 @@ class SimilarityComparator:
                 metric_type="cosine",
                 k=k,
                 comparison_result=sim_result,
+                short_labels_a=get_short_labels_tuple(a.name),
+                short_labels_b=get_short_labels_tuple(b.name),
             )
             for (a, b), sim_result in zip(result_combinations, similarity_results)
         ]
@@ -3953,8 +2608,6 @@ class SimilarityComparator:
                 "heatmaps_cosine": heatmap_dicts_by_metric["cosine"],
                 "heatmaps_angle": heatmap_dicts_by_metric["angle"],
                 "heatmaps_shepard": heatmap_dicts_by_metric["shepard"],
-                "heatmaps_percentile": heatmap_dicts_by_metric["percentile"],
-                "heatmaps_z_score": heatmap_dicts_by_metric["z_score"],
                 # transport visualisations from unbalanced OT
                 "transport_sankey": transport_sankey_dict,
                 "transport_heatmap": transport_heatmap_dict,

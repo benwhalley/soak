@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "soaking"
-version = "0.3.14"
+version = "0.3.15"
 description = "soak: graph-based pipelines and tools for LLM-assisted qualitative text analysis"
 authors = [
   { name = "Ben Whalley", email = "ben.whalley@plymouth.ac.uk" }
@@ -85,8 +85,7 @@ package = true
 
 [tool.uv.sources]
 # Local development version
-# struckdown = { path = "/Users/benwhalley/dev/struckdown", editable = true }
-# struckdown = { git = "https://github.com/benwhalley/struckdown", branch = "main" }
+struckdown = { path = "/Users/benwhalley/dev/struckdown", editable = true }
 spacy-transformers = { git = "https://github.com/explosion/spacy-transformers.git", rev = "bf2fe03" }
 umap-learn = { git = "https://github.com/lmcinnes/umap", branch = "master" }
 

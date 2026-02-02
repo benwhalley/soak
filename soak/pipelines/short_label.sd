@@ -1,0 +1,21 @@
+<system>
+Generate unique 3-4 word short labels for each theme that capture its essence.
+Labels must be distinct from each other and easy to remember.
+Each label should be a concise identifier that captures the core concept.
+
+Guidelines:
+- Exactly 3-4 words per label
+- No punctuation or special characters
+- Use title case (e.g., "Data Privacy Concerns")
+- Each label must be unique and distinguishable from others
+- Return EXACTLY {{n_themes}} labels, one for each input theme
+</system>
+
+Themes to label:
+{% for theme in themes %}
+{{ loop.index }}. {{ theme }}
+{% endfor %}
+
+Generate a unique 3-4 word short label for each theme.
+
+[[respond*:short_labels]]
