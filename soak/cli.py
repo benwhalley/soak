@@ -73,6 +73,108 @@ def get_soak_version() -> str:
         return "dev"
 
 
+def generate_compare_filename(
+    input_names: list[str],
+    embedding_model: str = "text-embedding-3-large",
+    threshold: float = 0.6,
+    similarity: str = "angular",
+    shepard_k: float = 1.0,
+    rescale: str = "clip",
+    rescale_min: float = 0.5,
+    rescale_max: float = 0.9,
+    rescale_percentiles: str = "5,95",
+    rescale_sigmoid: str = "0.7,10",
+    rescale_temp: float = 0.5,
+    no_paraphrase_bound: bool = False,
+    extension: str = ".html",
+) -> str:
+    """Generate an auto-filename for compare output based on inputs and options.
+
+    Creates a concise but unique filename encoding key parameters.
+    Format: {inputs}_{options}.{ext}
+
+    Examples:
+        PROF_vs_NOTPROF_e5b_t75.html
+        A_vs_B_vs_C_cos_t60_rsada.html
+    """
+    # abbreviate input names (remove common suffixes, shorten)
+    def abbreviate(name: str) -> str:
+        for suffix in ["_dump", "_analysis", "_results", "_output"]:
+            if name.endswith(suffix):
+                name = name[:-len(suffix)]
+        if len(name) > 12:
+            name = name[:12]
+        return name
+
+    abbrev_inputs = [abbreviate(n) for n in input_names]
+    inputs_part = "_vs_".join(abbrev_inputs)
+
+    # build options part (only non-default values)
+    opts = []
+
+    # embedding model: strip "local/" prefix and take last part after "/"
+    # e.g. "local/intfloat/e5-base" -> "e5-base"
+    # "text-embedding-3-large" (default) -> omit
+    model_name = embedding_model.replace("local/", "").split("/")[-1]
+    if model_name != "text-embedding-3-large":
+        opts.append(model_name)
+
+    # threshold (if not default 0.6)
+    if threshold != 0.6:
+        opts.append(f"t{int(threshold * 100)}")
+
+    # similarity metric (if not default angular)
+    sim_abbrevs = {"angular": "", "cosine": "cos", "shepard": "shep"}
+    if similarity in sim_abbrevs:
+        if sim_abbrevs[similarity]:
+            opts.append(sim_abbrevs[similarity])
+    else:
+        opts.append(similarity[:3])
+
+    # shepard_k (only if using shepard and not default 1.0)
+    if similarity == "shepard" and shepard_k != 1.0:
+        opts.append(f"sk{shepard_k:.1f}".replace(".", ""))
+
+    # rescale method and parameters
+    if rescale == "clip":
+        if rescale_min != 0.5 or rescale_max != 0.9:
+            opts.append(f"clip{int(rescale_min*100)}-{int(rescale_max*100)}")
+    elif rescale == "adaptive":
+        if rescale_percentiles != "5,95":
+            opts.append(f"ada{rescale_percentiles.replace(',', '-')}")
+        else:
+            opts.append("ada")
+    elif rescale == "sigmoid":
+        if rescale_sigmoid != "0.7,10":
+            opts.append(f"sig{rescale_sigmoid.replace(',', '-').replace('.', '')}")
+        else:
+            opts.append("sig")
+    elif rescale == "temperature":
+        if rescale_temp != 0.5:
+            opts.append(f"temp{str(rescale_temp).replace('.', '')}")
+        else:
+            opts.append("temp")
+    elif rescale == "rank":
+        opts.append("rank")
+    elif rescale == "off":
+        opts.append("rsoff")
+
+    # no paraphrase bound
+    if no_paraphrase_bound:
+        opts.append("nopara")
+
+    # combine parts
+    if opts:
+        filename = f"{inputs_part}_{'_'.join(opts)}{extension}"
+    else:
+        filename = f"{inputs_part}{extension}"
+
+    # sanitise: replace spaces and special chars
+    filename = filename.replace(" ", "_").replace("/", "-")
+
+    return filename
+
+
 def version_callback(value: bool):
     """Print version and exit."""
     if value:
@@ -1237,23 +1339,61 @@ def compare(
         envvar="SOAK_PARAPHRASE_MODEL",
         help="Model for paraphrase generation (default: gpt-4.1-mini)",
     ),
-    green_above: float = typer.Option(
-        0.8,
-        "--green-above",
-        envvar="SOAK_GREEN_ABOVE",
-        help="Similarity threshold for green (good match) in Sankey colour scale. Default: 0.8",
-    ),
-    red_below: float = typer.Option(
-        0.65,
-        "--red-below",
-        envvar="SOAK_RED_BELOW",
-        help="Similarity threshold for red (poor match) in Sankey colour scale. Default: 0.65",
-    ),
     rescale: str = typer.Option(
-        "0.5,0.9",
+        "clip",
         "--rescale",
         envvar="SOAK_RESCALE",
-        help="Rescale similarity to [0,1] from [min,max]. Format: 'min,max' (default: '0.5,0.9') or 'off' to disable. Empirically, close paraphrases score ~0.83 and unrelated ~0.55.",
+        help="Rescaling method: 'off', 'clip' (default), 'adaptive', 'sigmoid', 'temperature', 'rank'. "
+             "For clip: use --rescale-min/--rescale-max. For adaptive: use --rescale-percentiles. "
+             "For sigmoid: use --rescale-sigmoid. For temperature: use --rescale-temp.",
+    ),
+    rescale_min: float = typer.Option(
+        0.5,
+        "--rescale-min",
+        envvar="SOAK_RESCALE_MIN",
+        help="Floor for clip method (default: 0.5). Values below become 0.",
+    ),
+    rescale_max: float = typer.Option(
+        0.9,
+        "--rescale-max",
+        envvar="SOAK_RESCALE_MAX",
+        help="Ceiling for clip method (default: 0.9). Values above become 1.",
+    ),
+    rescale_percentiles: str = typer.Option(
+        "5,95",
+        "--rescale-percentiles",
+        envvar="SOAK_RESCALE_PERCENTILES",
+        help="Percentile bounds for adaptive method (default: '5,95'). Format: 'lower,upper'.",
+    ),
+    rescale_sigmoid: str = typer.Option(
+        "0.7,10",
+        "--rescale-sigmoid",
+        envvar="SOAK_RESCALE_SIGMOID",
+        help="Sigmoid params (default: '0.7,10'). Format: 'center,steepness'. Higher steepness = sharper.",
+    ),
+    rescale_temp: float = typer.Option(
+        0.5,
+        "--rescale-temp",
+        envvar="SOAK_RESCALE_TEMP",
+        help="Temperature for power method (default: 0.5). <1 sharpens, >1 flattens.",
+    ),
+    filter_threshold: float = typer.Option(
+        0.05,
+        "--filter-threshold",
+        envvar="SOAK_FILTER_THRESHOLD",
+        help="Filter weak edges from transport plan. Edges with mass < threshold * row/col sum are removed. Default 0.05 (5%). Set to 0 to disable.",
+    ),
+    color_green: float = typer.Option(
+        0.2,
+        "--color-green",
+        envvar="SOAK_COLOR_GREEN",
+        help="Green color threshold as fraction of K. Links with cost < green*K appear green. Default 0.2.",
+    ),
+    color_red: float = typer.Option(
+        1.1,
+        "--color-red",
+        envvar="SOAK_COLOR_RED",
+        help="Red color threshold as fraction of K. Links with cost > red*K appear red. Default 1.1.",
     ),
 ):
     """Compare analyses or string lists and generate comparison statistics.
@@ -1289,20 +1429,40 @@ def compare(
             )
             raise typer.Exit(1)
 
-    # parse rescale option
-    rescale_min, rescale_max = None, None
-    if rescale.lower() != "off":
-        try:
-            parts = rescale.split(",")
-            if len(parts) != 2:
-                raise ValueError("Need exactly two values")
-            rescale_min, rescale_max = float(parts[0].strip()), float(parts[1].strip())
-            logger.info(f"Rescaling similarity from [{rescale_min}, {rescale_max}] to [0, 1]")
-        except ValueError:
-            logger.error(
-                f"Invalid --rescale format: {rescale}. Use 'min,max' (e.g., '0.5,0.9') or 'off'."
-            )
-            raise typer.Exit(1)
+    # parse rescale options
+    rescale_method = rescale.lower()
+    valid_methods = ["off", "clip", "adaptive", "sigmoid", "temperature", "rank"]
+    if rescale_method not in valid_methods:
+        logger.error(f"Invalid --rescale method: {rescale}. Must be one of: {', '.join(valid_methods)}")
+        raise typer.Exit(1)
+
+    # parse percentile bounds for adaptive method
+    try:
+        pct_parts = rescale_percentiles.split(",")
+        rescale_lower_pct = float(pct_parts[0].strip())
+        rescale_upper_pct = float(pct_parts[1].strip())
+    except (ValueError, IndexError):
+        logger.error(f"Invalid --rescale-percentiles format: {rescale_percentiles}. Use 'lower,upper' (e.g., '5,95').")
+        raise typer.Exit(1)
+
+    # parse sigmoid params
+    try:
+        sig_parts = rescale_sigmoid.split(",")
+        rescale_sigmoid_center = float(sig_parts[0].strip())
+        rescale_sigmoid_steepness = float(sig_parts[1].strip())
+    except (ValueError, IndexError):
+        logger.error(f"Invalid --rescale-sigmoid format: {rescale_sigmoid}. Use 'center,steepness' (e.g., '0.7,10').")
+        raise typer.Exit(1)
+
+    logger.info(f"Rescaling method: {rescale_method}")
+    if rescale_method == "clip":
+        logger.info(f"  Clip bounds: [{rescale_min}, {rescale_max}]")
+    elif rescale_method == "adaptive":
+        logger.info(f"  Percentile bounds: [{rescale_lower_pct}%, {rescale_upper_pct}%]")
+    elif rescale_method == "sigmoid":
+        logger.info(f"  Sigmoid: center={rescale_sigmoid_center}, steepness={rescale_sigmoid_steepness}")
+    elif rescale_method == "temperature":
+        logger.info(f"  Temperature: {rescale_temp}")
 
     # determine mode: strings or JSON
     if strings:
@@ -1425,17 +1585,44 @@ def compare(
                 "compute_paraphrase_bound": not no_paraphrase_bound,
                 "n_paraphrases": n_paraphrases,
                 "paraphrase_model": paraphrase_model,
-                "green_above": green_above,
-                "red_below": red_below,
+                "rescale_method": rescale_method,
                 "rescale_min": rescale_min,
                 "rescale_max": rescale_max,
+                "rescale_lower_pct": rescale_lower_pct,
+                "rescale_upper_pct": rescale_upper_pct,
+                "rescale_sigmoid_center": rescale_sigmoid_center,
+                "rescale_sigmoid_steepness": rescale_sigmoid_steepness,
+                "rescale_temp": rescale_temp,
+                "filter_threshold": filter_threshold,
+                "color_green": color_green,
+                "color_red": color_red,
             },
         )
 
+        # auto-generate filename if output is just an extension (e.g., ".html")
+        effective_output = output
+        if output and output.startswith("."):
+            effective_output = generate_compare_filename(
+                input_names=col_names,
+                embedding_model=embedding_model,
+                threshold=threshold,
+                similarity=similarity,
+                shepard_k=shepard_k,
+                rescale=rescale_method,
+                rescale_min=rescale_min,
+                rescale_max=rescale_max,
+                rescale_percentiles=rescale_percentiles,
+                rescale_sigmoid=rescale_sigmoid,
+                rescale_temp=rescale_temp,
+                no_paraphrase_bound=no_paraphrase_bound,
+                extension=output,
+            )
+            logger.info(f"Auto-generated filename: {effective_output}")
+
         # determine if we should print stats to console
         # only print if: no output specified, or output is .txt
-        output_path = Path(output) if output else None
-        print_to_console = not output or (output_path and output_path.suffix == ".txt")
+        output_path = Path(effective_output) if effective_output else None
+        print_to_console = not effective_output or (output_path and output_path.suffix == ".txt")
 
         # generate statistics for each pairwise comparison
         all_stats_text = []
@@ -1462,11 +1649,11 @@ def compare(
                 print(stats_text, file=sys.stdout)
 
         # save output if requested
-        if output:
+        if effective_output:
             if output_path.suffix == ".txt":
                 with open(output_path, "w", encoding="utf-8") as f:
                     f.write("\n\n".join(all_stats_text))
-                logger.info(f"✓ Statistics saved to: {output}")
+                logger.info(f"✓ Statistics saved to: {effective_output}")
             else:
                 # HTML output
                 template_dir = Path(__file__).parent / "templates"
@@ -1480,7 +1667,7 @@ def compare(
                 )
                 with open(output_path, "w", encoding="utf-8") as f:
                     f.write(html_content)
-                logger.info(f"✓ HTML report saved to: {output}")
+                logger.info(f"✓ HTML report saved to: {effective_output}")
 
     else:
         # JSON MODE: compare analysis files
@@ -1568,16 +1755,44 @@ def compare(
                 "compute_paraphrase_bound": not no_paraphrase_bound,
                 "n_paraphrases": n_paraphrases,
                 "paraphrase_model": paraphrase_model,
-                "green_above": green_above,
-                "red_below": red_below,
+                "rescale_method": rescale_method,
                 "rescale_min": rescale_min,
                 "rescale_max": rescale_max,
+                "rescale_lower_pct": rescale_lower_pct,
+                "rescale_upper_pct": rescale_upper_pct,
+                "rescale_sigmoid_center": rescale_sigmoid_center,
+                "rescale_sigmoid_steepness": rescale_sigmoid_steepness,
+                "rescale_temp": rescale_temp,
+                "filter_threshold": filter_threshold,
+                "color_green": color_green,
+                "color_red": color_red,
             },
         )
 
+        # auto-generate filename if output is just an extension (e.g., ".html")
+        effective_output = output
+        if output and output.startswith("."):
+            input_names = [a.name for a in analyses]
+            effective_output = generate_compare_filename(
+                input_names=input_names,
+                embedding_model=embedding_model,
+                threshold=threshold,
+                similarity=similarity,
+                shepard_k=shepard_k,
+                rescale=rescale_method,
+                rescale_min=rescale_min,
+                rescale_max=rescale_max,
+                rescale_percentiles=rescale_percentiles,
+                rescale_sigmoid=rescale_sigmoid,
+                rescale_temp=rescale_temp,
+                no_paraphrase_bound=no_paraphrase_bound,
+                extension=output,
+            )
+            logger.info(f"Auto-generated filename: {effective_output}")
+
         # determine if we should print stats to console
         # only print if: no output specified, or output is .txt
-        output_path = Path(output) if output else Path("comparison.html")
+        output_path = Path(effective_output) if effective_output else Path("comparison.html")
         print_to_console = not output or output_path.suffix == ".txt"
 
         # generate statistics for each pairwise comparison
