@@ -66,6 +66,10 @@
                 <a class="nav-link" href="#groups">Group Statistics</a>
                 {% endif %}
                 <a class="nav-link" href="#documents">Document Details</a>
+                <a class="nav-link" href="#threshold-counts">Threshold Counts</a>
+                {% if calibration_info %}
+                <a class="nav-link" href="#calibration">Calibration</a>
+                {% endif %}
                 <a class="nav-link" href="#config">Configuration</a>
             </nav>
         </div>
@@ -283,7 +287,8 @@
         <!-- Per-Theme Top Chunks -->
         <section id="themes" class="mb-5">
             <h2>Top Matching Chunks Per Theme</h2>
-            <p class="text-muted">For each theme, the 50 highest-similarity chunks across all documents.</p>
+            <p class="text-muted">For each theme, the 50 highest-similarity chunks across all documents. Note that the matching is against the theme text AND the quotes for the theme, so some passages (likely the first few) may have very high similarity scores because they are essentially the same text.
+            </p>
 
             <div class="accordion" id="themeAccordion">
                 {% for theme in result.themes %}
@@ -404,6 +409,177 @@
             </div>
         </section>
 
+        {% if threshold_counts %}
+        <hr>
+
+        <!-- Threshold Counts Section -->
+        <section id="threshold-counts" class="mb-5">
+            <h2>Participant Counts by Threshold</h2>
+            <p class="text-muted">Number of participants (documents) with at least one chunk exceeding each similarity threshold, per theme.</p>
+
+            <div class="table-responsive">
+                <table class="table table-striped table-sm">
+                    <thead>
+                        <tr>
+                            <th>Theme</th>
+                            {% for t in count_thresholds %}
+                            <th class="text-center">&ge; {{ t }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for theme_name in result.theme_names %}
+                        <tr>
+                            <td>{{ theme_name[:50] }}{% if theme_name|length > 50 %}...{% endif %}</td>
+                            {% for t in count_thresholds %}
+                            <td class="text-center">{{ threshold_counts[theme_name][t] }}</td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                    <tfoot>
+                        <tr class="font-weight-bold">
+                            <td>Total participants</td>
+                            {% for t in count_thresholds %}
+                            <td class="text-center" colspan="1">{{ result.documents|length }}</td>
+                            {% endfor %}
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </section>
+        {% endif %}
+
+        {% if calibration_info %}
+        <hr>
+
+        <!-- Calibration Section -->
+        <section id="calibration" class="mb-5">
+            <h2>Calibration</h2>
+            <p class="text-muted">Similarity scores have been transformed using a calibration model trained on paraphrases of varying semantic similarity.</p>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <h5>Training Information</h5>
+                    <table class="table table-sm">
+                        <tbody>
+                            <tr>
+                                <td><strong>Embedding Model</strong></td>
+                                <td><code>{{ calibration_info.metadata.embedding_model }}</code></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Template</strong></td>
+                                <td><code>{{ calibration_info.metadata.embedding_template }}</code></td>
+                            </tr>
+                            {% if calibration_info.metadata.validation %}
+                            <tr>
+                                <td><strong>Training Samples</strong></td>
+                                <td>{{ calibration_info.metadata.validation.n_train }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Test Samples</strong></td>
+                                <td>{{ calibration_info.metadata.validation.n_test }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Category Accuracy</strong></td>
+                                <td>{{ "%.1f" | format(calibration_info.metadata.validation.category_accuracy * 100) }}%</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+
+                    <h5>Target Values</h5>
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Category</th>
+                                <th>Target</th>
+                                <th>Mean Raw</th>
+                                <th>Range</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for cat, target in calibration_info.metadata.targets.items() %}
+                            <tr>
+                                <td>{{ cat }}</td>
+                                <td>{{ "%.2f" | format(target) }}</td>
+                                {% if calibration_info.metadata.category_stats[cat] %}
+                                <td>{{ "%.3f" | format(calibration_info.metadata.category_stats[cat].mean) }}</td>
+                                <td>{{ "%.3f" | format(calibration_info.metadata.category_stats[cat].min) }} - {{ "%.3f" | format(calibration_info.metadata.category_stats[cat].max) }}</td>
+                                {% else %}
+                                <td>-</td>
+                                <td>-</td>
+                                {% endif %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="col-md-6">
+                    <h5>Calibration Curve</h5>
+                    {% if calibration_info.plot_base64 %}
+                    <img src="data:image/png;base64,{{ calibration_info.plot_base64 }}"
+                         alt="Calibration curve"
+                         style="max-width: 100%; height: auto; border-radius: 4px;"
+                         class="img-fluid mb-3">
+                    {% else %}
+                    <svg viewBox="0 0 300 220" style="max-width: 100%; height: auto; background: #f8f9fa; border-radius: 4px;">
+                        <!-- axes -->
+                        <line x1="40" y1="180" x2="280" y2="180" stroke="#333" stroke-width="1"/>
+                        <line x1="40" y1="180" x2="40" y2="20" stroke="#333" stroke-width="1"/>
+
+                        <!-- axis labels -->
+                        <text x="160" y="210" text-anchor="middle" font-size="12" fill="#666">Raw Similarity</text>
+                        <text x="15" y="100" text-anchor="middle" font-size="12" fill="#666" transform="rotate(-90 15 100)">Calibrated</text>
+
+                        <!-- tick marks and labels -->
+                        <text x="40" y="195" text-anchor="middle" font-size="10" fill="#666">0.5</text>
+                        <text x="160" y="195" text-anchor="middle" font-size="10" fill="#666">0.75</text>
+                        <text x="280" y="195" text-anchor="middle" font-size="10" fill="#666">1.0</text>
+                        <text x="35" y="185" text-anchor="end" font-size="10" fill="#666">0</text>
+                        <text x="35" y="105" text-anchor="end" font-size="10" fill="#666">0.5</text>
+                        <text x="35" y="25" text-anchor="end" font-size="10" fill="#666">1.0</text>
+
+                        <!-- diagonal reference -->
+                        <line x1="40" y1="180" x2="280" y2="20" stroke="#ccc" stroke-width="1" stroke-dasharray="4"/>
+
+                        <!-- calibration curve -->
+                        <polyline fill="none" stroke="#0d6efd" stroke-width="2" points="
+                            {% for pt in calibration_info.transformation %}{{ 40 + (pt.raw - 0.5) * 480 }},{{ 180 - pt.calibrated * 160 }} {% endfor %}
+                        "/>
+
+                        <!-- data points -->
+                        {% for pt in calibration_info.transformation %}
+                        <circle cx="{{ 40 + (pt.raw - 0.5) * 480 }}" cy="{{ 180 - pt.calibrated * 160 }}" r="2" fill="#0d6efd"/>
+                        {% endfor %}
+                    </svg>
+                    {% endif %}
+
+                    <h5 class="mt-3">Sample Transformations</h5>
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Raw</th>
+                                <th>Calibrated</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for pt in calibration_info.transformation %}
+                            {% if loop.index0 % 4 == 0 %}
+                            <tr>
+                                <td>{{ "%.3f" | format(pt.raw) }}</td>
+                                <td>{{ "%.3f" | format(pt.calibrated) }}</td>
+                            </tr>
+                            {% endif %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+        {% endif %}
+
         <hr>
 
         <!-- Configuration Section -->
@@ -444,6 +620,15 @@
 
                         <dt class="col-sm-4">Total Themes</dt>
                         <dd class="col-sm-8">{{ result.config.n_themes }}</dd>
+
+                        {% if result.config.calibration %}
+                        <dt class="col-sm-4">Calibration</dt>
+                        <dd class="col-sm-8">
+                            <span class="badge badge-info">Calibrated</span>
+                            {{ result.config.calibration.method }} model
+                            (trained on <code>{{ result.config.calibration.embedding_model }}</code>)
+                        </dd>
+                        {% endif %}
                     </dl>
                 </div>
             </div>

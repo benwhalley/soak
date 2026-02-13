@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Literal, Union
 
 from pydantic import Field
-from struckdown import StruckdownLLMError, chatter_async
+from struckdown import LLMError, chatter_async
 from tqdm import tqdm
 
 from soak.error_handlers import managed_llm_call

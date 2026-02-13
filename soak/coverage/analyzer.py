@@ -647,6 +647,7 @@ class ThemeCoverageAnalyzer:
                         document_id=doc_id,
                         filename=doc_filenames.get(doc_id, doc_id),
                         similarity=float(theme_sims[idx]),
+                        chunk_index=idx,
                     )
                 )
 

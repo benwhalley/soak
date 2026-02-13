@@ -11,7 +11,7 @@ from tqdm import tqdm
 from soak.models.base import get_embedding
 
 from .optimal_transport import compute_ot
-from .rescaling import RescaleMethod, rescale_similarity
+from .rescaling import apply_calibration
 
 logger = logging.getLogger(__name__)
 
@@ -61,11 +61,15 @@ async def _generate_paraphrases_for_theme(
             elif hasattr(paraphrases, "alternative_phrasing"):
                 return paraphrases.alternative_phrasing
 
-        logger.warning(f"Paraphrase generation returned unexpected format for theme: {theme_text[:50]}...")
+        logger.warning(
+            f"Paraphrase generation returned unexpected format for theme: {theme_text[:50]}..."
+        )
         return [theme_text] * n_paraphrases  # fallback to original
 
     except Exception as e:
-        logger.warning(f"Paraphrase generation failed for theme: {theme_text[:50]}... Error: {e}")
+        logger.warning(
+            f"Paraphrase generation failed for theme: {theme_text[:50]}... Error: {e}"
+        )
         return [theme_text] * n_paraphrases  # fallback to original
 
 
@@ -190,7 +194,9 @@ Generate a 3-4 word short label for this theme.
                     short_labels.append(label.strip())
                     continue
 
-            logger.warning(f"Short label generation returned unexpected format for theme {i + 1}")
+            logger.warning(
+                f"Short label generation returned unexpected format for theme {i + 1}"
+            )
             short_labels.append(f"Theme {i + 1}")
 
         except Exception as e:
@@ -208,15 +214,7 @@ def prepare_paraphrase_cost_matrix(
     embedding_model: str = "text-embedding-3-large",
     distance: str = "angular",
     shepard_k: float = 1.0,
-    # rescaling parameters
-    rescale_method: RescaleMethod = "clip",
-    rescale_min: float = 0.5,
-    rescale_max: float = 0.9,
-    rescale_lower_percentile: float = 5.0,
-    rescale_upper_percentile: float = 95.0,
-    rescale_sigmoid_center: float = 0.7,
-    rescale_sigmoid_steepness: float = 10.0,
-    rescale_temperature: float = 0.5,
+    calibration_path: Optional[str] = None,
 ) -> Optional[Dict[str, Any]]:
     """Prepare paraphrase cost matrix for OT computation (without running OT).
 
@@ -239,7 +237,8 @@ def prepare_paraphrase_cost_matrix(
         - per_theme_similarities: best paraphrase similarity per theme (max, excluding sim >= 1)
         - samples: sample themes with paraphrases for display
     """
-    from sklearn.metrics.pairwise import cosine_similarity as sklearn_cosine_similarity
+    from sklearn.metrics.pairwise import \
+        cosine_similarity as sklearn_cosine_similarity
 
     if not paraphrases or not theme_texts:
         return None
@@ -286,7 +285,9 @@ def prepare_paraphrase_cost_matrix(
             best_paraphrase_embeddings[theme_idx] = avg_emb
 
     # compute similarity matrix between original and best paraphrase embeddings
-    cos_sim_matrix = sklearn_cosine_similarity(theme_embeddings, best_paraphrase_embeddings)
+    cos_sim_matrix = sklearn_cosine_similarity(
+        theme_embeddings, best_paraphrase_embeddings
+    )
 
     # convert to selected distance metric
     if distance == "cosine":
@@ -302,19 +303,9 @@ def prepare_paraphrase_cost_matrix(
     else:
         sim_matrix = cos_sim_matrix
 
-    # apply rescaling if enabled
-    if rescale_method != "off":
-        sim_matrix = rescale_similarity(
-            sim_matrix,
-            method=rescale_method,
-            rescale_min=rescale_min,
-            rescale_max=rescale_max,
-            lower_percentile=rescale_lower_percentile,
-            upper_percentile=rescale_upper_percentile,
-            sigmoid_center=rescale_sigmoid_center,
-            sigmoid_steepness=rescale_sigmoid_steepness,
-            temperature=rescale_temperature,
-        )
+    # apply calibration if provided
+    if calibration_path:
+        sim_matrix = apply_calibration(sim_matrix, Path(calibration_path))
 
     # compute cost matrix for OT
     cost_matrix = 1.0 - sim_matrix
@@ -347,11 +338,13 @@ def prepare_paraphrase_cost_matrix(
 
         # create samples for display (first few themes)
         if i < 5:
-            samples.append({
-                "original": theme_texts[i],
-                "paraphrases": paraphrases[i],
-                "similarity": best_sim,
-            })
+            samples.append(
+                {
+                    "original": theme_texts[i],
+                    "paraphrases": paraphrases[i],
+                    "similarity": best_sim,
+                }
+            )
 
     return {
         "cost_matrix": cost_matrix,
@@ -396,15 +389,7 @@ def compute_paraphrase_baseline(
     distance: str = "angular",
     shepard_k: float = 1.0,
     reg_m: float = 0.4,
-    # rescaling parameters
-    rescale_method: RescaleMethod = "clip",
-    rescale_min: float = 0.5,
-    rescale_max: float = 0.9,
-    rescale_lower_percentile: float = 5.0,
-    rescale_upper_percentile: float = 95.0,
-    rescale_sigmoid_center: float = 0.7,
-    rescale_sigmoid_steepness: float = 10.0,
-    rescale_temperature: float = 0.5,
+    calibration_path: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Compute paraphrase-based upper bound using OT between themes and paraphrases.
 
@@ -424,16 +409,13 @@ def compute_paraphrase_baseline(
         Dictionary with OT-based metrics and samples for display
     """
     prep = prepare_paraphrase_cost_matrix(
-        theme_texts, theme_embeddings, paraphrases,
-        embedding_model, distance, shepard_k,
-        rescale_method=rescale_method,
-        rescale_min=rescale_min,
-        rescale_max=rescale_max,
-        rescale_lower_percentile=rescale_lower_percentile,
-        rescale_upper_percentile=rescale_upper_percentile,
-        rescale_sigmoid_center=rescale_sigmoid_center,
-        rescale_sigmoid_steepness=rescale_sigmoid_steepness,
-        rescale_temperature=rescale_temperature,
+        theme_texts,
+        theme_embeddings,
+        paraphrases,
+        embedding_model,
+        distance,
+        shepard_k,
+        calibration_path=calibration_path,
     )
 
     if prep is None:

@@ -7,22 +7,12 @@ import sys
 
 import typer
 
-from ._common import (
-    COMMANDS,
-    PIPELINE_DIR,
-    TEMPLATES_DIR,
-    check_and_prompt_credentials,
-    generate_all_html_outputs,
-    generate_html_output,
-    get_pdb_on_exception,
-    get_soak_version,
-    load_pipeline_json,
-    resolve_analysis_path,
-    resolve_template,
-    set_pdb_on_exception,
-    setup_logging,
-    version_callback,
-)
+from ._common import (COMMANDS, PIPELINE_DIR, TEMPLATES_DIR,
+                      check_and_prompt_credentials, generate_all_html_outputs,
+                      generate_html_output, get_pdb_on_exception,
+                      get_soak_version, load_pipeline_json,
+                      resolve_analysis_path, resolve_template,
+                      set_pdb_on_exception, setup_logging, version_callback)
 
 # create the main app
 app = typer.Typer(name="soak", pretty_exceptions_show_locals=False)
@@ -59,12 +49,12 @@ def main(
     setup_logging(verbose)
 
 
-# import and register commands
-from .run import run
 from .compare import compare
 from .coverage_cmd import coverage
+from .misc import calibrate, test, tui
+# import and register commands
+from .run import run
 from .show import show
-from .misc import tui, test, calibrate
 
 app.command()(run)
 app.command()(compare)

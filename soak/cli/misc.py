@@ -18,6 +18,7 @@ def tui():
     from typer.main import get_group
 
     from . import app
+
     Trogon(get_group(app), app_name="soak").run()
 
 
@@ -169,14 +170,9 @@ def calibrate(
     """
     import yaml
 
-    from ..calibration import (
-        DEFAULT_TARGETS,
-        compute_similarities,
-        fit_calibration_gam,
-        generate_paraphrases,
-        plot_calibration_curve,
-        save_calibration,
-    )
+    from ..calibration import (DEFAULT_TARGETS, compute_similarities,
+                               fit_calibration_gam, generate_paraphrases,
+                               plot_calibration_curve, save_calibration)
 
     # validate method
     if method not in ("scam", "gam"):
@@ -186,6 +182,7 @@ def calibrate(
     # check R availability for scam
     if method == "scam":
         from ..calibration import _check_r_available
+
         if not _check_r_available():
             logger.error("R and scam package required for calibration.")
             logger.error("Install: uv pip install rpy2")
@@ -247,7 +244,9 @@ def calibrate(
             input_text_col = "original"
         else:
             input_text_col = df_input.columns[0]
-            logger.info(f"Using first column '{input_text_col}' for paraphrasing (use --column to specify)")
+            logger.info(
+                f"Using first column '{input_text_col}' for paraphrasing (use --column to specify)"
+            )
 
         n_total = len(df_input)
 
@@ -257,10 +256,14 @@ def calibrate(
             print(f"  Input: {input} (using first {head} of {n_total} sentences)")
         elif sample is not None:
             if sample > n_total:
-                logger.warning(f"Sample size {sample} exceeds data size {n_total}, using all data")
+                logger.warning(
+                    f"Sample size {sample} exceeds data size {n_total}, using all data"
+                )
             else:
                 df_input = df_input.sample(n=sample, random_state=seed)
-                print(f"  Input: {input} (sampled {sample} of {n_total} sentences, seed={seed})")
+                print(
+                    f"  Input: {input} (sampled {sample} of {n_total} sentences, seed={seed})"
+                )
         else:
             print(f"  Input: {input} ({n_total} sentences)")
 
@@ -314,7 +317,9 @@ def calibrate(
             print(f"  Using first {head} rows")
         elif sample is not None:
             if sample > len(df):
-                logger.warning(f"Sample size {sample} exceeds data size {len(df)}, using all data")
+                logger.warning(
+                    f"Sample size {sample} exceeds data size {len(df)}, using all data"
+                )
             else:
                 df = df.sample(n=sample, random_state=seed)
                 print(f"  Sampled {sample} rows (seed={seed})")
@@ -330,12 +335,16 @@ def calibrate(
     categories = df[category_col].unique()
     missing = set(categories) - set(targets.keys())
     if missing:
-        logger.error(f"Categories {missing} not in config targets: {list(targets.keys())}")
+        logger.error(
+            f"Categories {missing} not in config targets: {list(targets.keys())}"
+        )
         raise typer.Exit(1)
 
     # show data summary
     n_unique_originals = df[original_col].nunique()
-    print(f"  Loaded {len(df)} paraphrase pairs from {n_unique_originals} unique originals")
+    print(
+        f"  Loaded {len(df)} paraphrase pairs from {n_unique_originals} unique originals"
+    )
     print(f"  Categories: {', '.join(sorted(categories))}")
 
     # STEP 2: Compute embeddings and similarities
@@ -346,7 +355,9 @@ def calibrate(
         df, embedding_model, embedding_template, original_col, text_col
     )
     df["similarity"] = similarities
-    print(f"  Done. Similarity range: [{similarities.min():.3f}, {similarities.max():.3f}]")
+    print(
+        f"  Done. Similarity range: [{similarities.min():.3f}, {similarities.max():.3f}]"
+    )
 
     # determine output folder early so we can save intermediate results
     if output is None:
@@ -391,12 +402,15 @@ def calibrate(
 
         # for grouped holdout, use first column (most coarse grouping)
         groups = df[group_col[0]].values
-        print(f"  Using grouped holdout by '{group_col[0]}' ({len(df[group_col[0]].unique())} groups)")
+        print(
+            f"  Using grouped holdout by '{group_col[0]}' ({len(df[group_col[0]].unique())} groups)"
+        )
 
     # STEP 3: Fit calibration model
     print(f"\n[3/5] Fitting calibration model...")
     if method == "scam":
         from ..calibration import fit_calibration_scam
+
         re_info = f" + RE ({group_col[0]})" if groups is not None else ""
         print(f"  Method: Monotonic scam (R){re_info}")
         print(f"  df: {spline_df}, Holdout: {holdout:.0%}")
@@ -425,9 +439,11 @@ def calibrate(
     print("  Model fitted successfully")
 
     # compute category stats for metadata
-    category_stats = df.groupby(category_col)["similarity"].agg(
-        ["mean", "std", "min", "max"]
-    ).to_dict("index")
+    category_stats = (
+        df.groupby(category_col)["similarity"]
+        .agg(["mean", "std", "min", "max"])
+        .to_dict("index")
+    )
 
     # STEP 4: Save calibration outputs
     print(f"\n[4/5] Saving calibration outputs...")
@@ -439,6 +455,7 @@ def calibrate(
     # build CLI info for metadata
     import sys
     from datetime import datetime
+
     cli_info = {
         "command": " ".join(sys.argv),
         "timestamp": datetime.now().isoformat(),
@@ -463,9 +480,15 @@ def calibrate(
 
     # save calibration model
     pkl_path, yaml_path = save_calibration(
-        model, output_path, embedding_model, embedding_template,
-        category_stats, targets, validation_stats,
-        method=method, cli_info=cli_info,
+        model,
+        output_path,
+        embedding_model,
+        embedding_template,
+        category_stats,
+        targets,
+        validation_stats,
+        method=method,
+        cli_info=cli_info,
         group_columns=group_col if group_col else None,
     )
     print(f"  Saved model: {pkl_path.name}")
@@ -476,8 +499,12 @@ def calibrate(
     # STEP 5: Generate visualisation
     print(f"\n[5/5] Generating calibration plot...")
     png_path = plot_calibration_curve(
-        model, similarities, df[category_col].tolist(),
-        targets, output_path, category_stats,
+        model,
+        similarities,
+        df[category_col].tolist(),
+        targets,
+        output_path,
+        category_stats,
         method=method,
     )
     print(f"  Saved plot: {png_path.name}")
@@ -497,7 +524,9 @@ def calibrate(
     # display validation results if holdout was used
     if validation_stats:
         print("\nHoldout Validation:")
-        print(f"  Train/Test: {validation_stats['n_train']}/{validation_stats['n_test']} ({holdout:.0%} holdout)")
+        print(
+            f"  Train/Test: {validation_stats['n_train']}/{validation_stats['n_test']} ({holdout:.0%} holdout)"
+        )
         print(f"  MAE: {validation_stats['mae']:.3f}")
         print(f"  Category Accuracy: {validation_stats['category_accuracy']:.1%}")
 
@@ -509,7 +538,9 @@ def calibrate(
 
     if method == "scam":
         # scam uses lookup table
-        calibrated = np.clip(np.interp(test_values, model["x_lookup"], model["y_lookup"]), 0, 1)
+        calibrated = np.clip(
+            np.interp(test_values, model["x_lookup"], model["y_lookup"]), 0, 1
+        )
     else:  # gam
         calibrated = np.clip(model.predict(test_values.reshape(-1, 1)), 0, 1)
 

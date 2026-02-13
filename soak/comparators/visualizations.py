@@ -136,6 +136,7 @@ def create_transport_sankey(
     link_opacity: float = 0.6,
     cost_min: Optional[float] = None,
     cost_max: Optional[float] = None,
+    color_mode: str = "k_relative",
 ) -> "SankeyHTML":
     """Create interactive Sankey diagram visualising optimal transport flow.
 
@@ -151,13 +152,15 @@ def create_transport_sankey(
         theme_names_a: Theme names for set A (left side)
         theme_names_b: Theme names for set B (right side)
         cost_matrix: Cost matrix for colouring links (1 - rescaled_similarity)
-        cost_matrix_original: Original cost matrix before rescaling (for hover display)
+        cost_matrix_original: Original cost matrix before calibration (for hover display)
         analysis_name_a: Name of analysis A
         analysis_name_b: Name of analysis B
         threshold_ratio: Drop links below this fraction of max flow
         link_opacity: Opacity of link colours (0-1)
         cost_min: Minimum cost for color scale (green). If None, computed from links.
         cost_max: Maximum cost for color scale (red). If None, computed from links.
+        color_mode: Coloring mode - "similarity" (absolute thresholds) or "k_relative" (distance to K).
+            Controls colorbar title: "Similarity" vs "Distance to K".
 
     Returns:
         SankeyHTML object with .html and .base64 properties
@@ -273,9 +276,9 @@ def create_transport_sankey(
         return "<br>".join(best_lines) if best_lines else text
 
     # node hover texts (show full analysis name in hover)
-    hover_texts = [
-        f"{analysis_name_a}: {names_a_sorted[i]}" for i in range(n_A)
-    ] + [f"{analysis_name_b}: {names_b_sorted[j]}" for j in range(n_B)]
+    hover_texts = [f"{analysis_name_a}: {names_a_sorted[i]}" for i in range(n_A)] + [
+        f"{analysis_name_b}: {names_b_sorted[j]}" for j in range(n_B)
+    ]
 
     # collect links and unit costs (both rescaled and original)
     sources, targets, values, link_costs, link_costs_orig = [], [], [], [], []
@@ -359,10 +362,10 @@ def create_transport_sankey(
         cost_prop = link_cost_contribution / total_cost if total_cost > 0 else 0
 
         similarity_orig = 1 - cost_orig
-        similarity_rescaled = 1 - cost
+        similarity_calibrated = 1 - cost
         link_hovers.append(
             f"A{src_idx+1} -> B{tgt_idx+1}<br>"
-            f"<b>Similarity:</b> {similarity_orig:.3f} (rescaled: {similarity_rescaled:.3f})<br>"
+            f"<b>Similarity:</b> {similarity_orig:.3f} (calibrated: {similarity_calibrated:.3f})<br>"
             f"<b>Mass:</b> {mass_prop_a:.0%} of A{src_idx+1}, "
             f"{mass_prop_b:.0%} of B{tgt_idx+1}<br>"
             f"<b>Cost contribution:</b> {cost_prop:.1%} of total"
@@ -456,6 +459,9 @@ def create_transport_sankey(
         sim_range = sim_max - sim_min
         tick_vals = [sim_min + sim_range * i / 4 for i in range(5)]
 
+        # colorbar title depends on color mode
+        colorbar_title = "Similarity" if color_mode == "similarity" else "Distance to K"
+
         fig.add_trace(
             go.Scatter(
                 x=[None],
@@ -467,7 +473,7 @@ def create_transport_sankey(
                     cmax=sim_max,
                     color=[(sim_min + sim_max) / 2],
                     colorbar=dict(
-                        title=dict(text="Similarity", side="top", font=dict(size=13)),
+                        title=dict(text=colorbar_title, side="top", font=dict(size=13)),
                         orientation="h",
                         x=0.5,
                         y=-0.08,
@@ -573,6 +579,7 @@ def create_transport_heatmap(
         Base64ImageFile containing the heatmap
     """
     import matplotlib
+
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
     import pandas as pd
@@ -659,7 +666,7 @@ def find_elbow_points(
     eps: float = 1e-12,
     plateau_threshold: float = 0.20,
     min_k_for_elbow: float = 0.1,
-    max_k_for_elbow: float = 2.0,
+    max_k_for_elbow: float = float("inf"),
 ) -> dict:
     """Find elbow points using maximum curvature and diminishing returns methods.
 
@@ -724,30 +731,40 @@ def find_elbow_points(
         relative_plateau or absolute_plateau or high_value_plateau or decelerating
     )
 
+    # Use "kneedle" approach: find point with maximum perpendicular distance
+    # from line connecting first and last points of the curve
+    # This correctly identifies the "elbow" regardless of slope magnitude
+
     x_min, x_max = K_uniform.min(), K_uniform.max()
     y_min, y_max = s_uniform.min(), s_uniform.max()
     x_range = x_max - x_min if x_max != x_min else 1.0
     y_range = y_max - y_min if y_max != y_min else 1.0
 
+    # normalize to [0,1] for fair distance calculation
     x_norm = (K_uniform - x_min) / x_range
     y_norm = (s_uniform - y_min) / y_range
 
-    try:
-        spline = UnivariateSpline(x_norm, y_norm, s=0.01, k=4)
-        dy = spline.derivative(1)(x_norm)
-        d2y = spline.derivative(2)(x_norm)
-    except Exception:
-        dy = np.gradient(y_norm, x_norm)
-        d2y = np.gradient(dy, x_norm)
+    # line from (0,0) to (1,1) in normalized space (start to end of curve)
+    # perpendicular distance from point (x,y) to line ax + by + c = 0
+    # for line from (x1,y1) to (x2,y2): (y2-y1)x - (x2-x1)y + (x2-x1)y1 - (y2-y1)x1 = 0
+    x1, y1 = x_norm[0], y_norm[0]
+    x2, y2 = x_norm[-1], y_norm[-1]
+    a = y2 - y1
+    b = -(x2 - x1)
+    c = (x2 - x1) * y1 - (y2 - y1) * x1
+    denom = np.sqrt(a**2 + b**2) + eps
 
-    curvature = np.abs(d2y) / (1 + dy**2) ** 1.5
+    # perpendicular distance (signed - positive means curve is above line)
+    distances = (a * x_norm + b * y_norm + c) / denom
 
+    # for a concave curve (typical scree plot), the curve bulges above the baseline
+    # signed distance is negative for points above the line y=x, so we want max absolute distance
     start_margin = max(1, n_interp // 20)
     end_margin = max(1, n_interp // 10)
-    inner_curvature = curvature[start_margin:-end_margin]
-    max_curv_idx = start_margin + int(np.argmax(inner_curvature))
+    inner_distances = distances[start_margin:-end_margin]
+    max_dist_idx = start_margin + int(np.argmax(np.abs(inner_distances)))
 
-    elbow_K = K_uniform[max_curv_idx]
+    elbow_K = K_uniform[max_dist_idx]
     elbow_orig_idx = int(np.argmin(np.abs(K - elbow_K)))
 
     k_arr = np.asarray(k_values, float)

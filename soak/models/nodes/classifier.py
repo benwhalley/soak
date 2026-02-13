@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Literal, Optional, Union
 import anyio
 import pandas as pd
 from pydantic import Field, PrivateAttr
-from struckdown import LLM, StruckdownLLMError, chatter_async
+from struckdown import LLM, LLMError, chatter_async
 from struckdown.parsing import parse_syntax
 
 from soak.error_handlers import managed_llm_call
