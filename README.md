@@ -75,24 +75,41 @@ Similarity statistics quantify the similarity between sets of themes created by 
 
 ```bash
 # install
-git clone https://github.com/benwhalley/soak
-uv install . tool
+uv tool install soaking
 
-# set credentials, using openai for simplicity
+soak test  # will help set up credentials, 
+# or you can manually set them, using openai for simplicity here:
 export LLM_API_KEY=your_api_key
 export LLM_API_BASE=https://api.openai.com/v1
 
-# Run analysis
-soak zs soak/data/cfs/*.txt -t simple -o cfs-simple-1
+# Run analysis using built in example data
+# quote the file paths to avoid immediate shell expansion 
+# (this allows using data from the package)
+soak zs "soak-data/cfs/a*" -t simple -o cfs-simple-1
 
-# Open results in a browser
-open cfs-simple-1_simple.html
+# to use your own data:
+soak zs mydata/*.txt -t simple -o mydata_analysis
 
-# Re-run with a different/better model
-soak zs -o cfs-simple-2 --model-name="openai/gpt-4o" soak/data/cfs/*.txt
+```
+
+You should see something like this:
+
+```
+Total cost: $0.3074 (805,082 in / 46,329 out)
+  Total API calls: 87
+Writing output files
+```
+
+
+```bash
+# Open the results in a browser
+open cfs-simple-1_dump/cfs-simple-1_simple.html
+
+# Re-run with a different LLM
+soak zs  "soak-data/cfs/a*" -o cfs-simple-2 --model="gpt-5-mini"
 
 # Compare results
-soak compare cfs-simple-1.json cfs-simple-2.json -o comparison.html
+soak cfs-simple-1_dump cfs-simple-2_dump -o comparison_1_2.html
 ```
 
 
