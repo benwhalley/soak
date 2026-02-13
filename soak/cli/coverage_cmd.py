@@ -10,11 +10,8 @@ from pathlib import Path
 import numpy as np
 import typer
 
-from ._common import (
-    TEMPLATES_DIR,
-    check_and_prompt_credentials,
-    get_pdb_on_exception,
-)
+from ._common import (TEMPLATES_DIR, check_and_prompt_credentials,
+                      get_pdb_on_exception)
 
 logger = logging.getLogger(__name__)
 
@@ -23,9 +20,7 @@ def coverage(
     analysis_file: str = typer.Argument(
         ..., help="Path to JSON file containing QualitativeAnalysis or Pipeline results"
     ),
-    output: str = typer.Option(
-        "coverage", "--output", "-o", help="Output folder name"
-    ),
+    output: str = typer.Option("coverage", "--output", "-o", help="Output folder name"),
     documents: list[Path] = typer.Option(
         None,
         "--documents",
@@ -384,6 +379,7 @@ def coverage(
 
         # group chunks by document (using chunk_info)
         from collections import defaultdict
+
         doc_chunks = defaultdict(list)
         for chunk_idx, info in enumerate(result.chunk_info):
             doc_chunks[info.document_id].append(chunk_idx)
@@ -421,17 +417,20 @@ def coverage(
             theme_idx = result.theme_names.index(theme_name)
             for chunk_example in result.top_chunks_per_theme[theme_name]:
                 # use chunk_index to get calibrated score directly
-                chunk_example.similarity = float(calibrated_sim[chunk_example.chunk_index, theme_idx])
+                chunk_example.similarity = float(
+                    calibrated_sim[chunk_example.chunk_index, theme_idx]
+                )
             # re-sort by calibrated similarity (descending)
             result.top_chunks_per_theme[theme_name] = sorted(
                 result.top_chunks_per_theme[theme_name],
                 key=lambda x: x.similarity,
-                reverse=True
+                reverse=True,
             )
 
         # recompute group statistics if groups were provided
         if result.groups:
             from ..coverage.models import GroupCoverage
+
             group_docs = defaultdict(list)
             for doc in result.documents:
                 if doc.group:
@@ -464,7 +463,11 @@ def coverage(
 
         # prepare calibration info for template
         raw_values = np.linspace(0.5, 1.0, 21)
-        calibrated_values = np.clip(calibrate(raw_values.reshape(-1, 1), model, method=method).flatten(), 0.0, 1.0)
+        calibrated_values = np.clip(
+            calibrate(raw_values.reshape(-1, 1), model, method=method).flatten(),
+            0.0,
+            1.0,
+        )
         calibration_info = {
             "metadata": cal_metadata,
             "transformation": [
@@ -476,7 +479,9 @@ def coverage(
         plot_path = calibration_path.with_suffix(".png")
         if plot_path.exists():
             with open(plot_path, "rb") as f:
-                calibration_info["plot_base64"] = base64.b64encode(f.read()).decode("utf-8")
+                calibration_info["plot_base64"] = base64.b64encode(f.read()).decode(
+                    "utf-8"
+                )
 
         logger.info("Calibration applied successfully")
 
@@ -502,7 +507,11 @@ def coverage(
     count_thresholds = [0.6, 0.7, 0.8, 0.9]
     threshold_counts = {
         theme_name: {
-            t: sum(1 for doc in result.documents if doc.theme_scores.get(theme_name, 0) >= t)
+            t: sum(
+                1
+                for doc in result.documents
+                if doc.theme_scores.get(theme_name, 0) >= t
+            )
             for t in count_thresholds
         }
         for theme_name in result.theme_names

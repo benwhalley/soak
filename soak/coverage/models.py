@@ -31,6 +31,7 @@ class ChunkExample(BaseModel):
     document_id: str
     filename: str
     similarity: float
+    chunk_index: int = 0  # index into chunk_similarity_matrix for recalibration
 
 
 class ChunkInfo(BaseModel):

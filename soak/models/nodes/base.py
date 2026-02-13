@@ -16,7 +16,7 @@ import tiktoken
 from box import Box
 from jinja2 import Environment, TemplateSyntaxError
 from pydantic import BaseModel, Field, PrivateAttr
-from struckdown import LLM, ChatterResult, StruckdownLLMError, chatter_async
+from struckdown import LLM, ChatterResult, LLMError, chatter_async
 from struckdown.parsing import parse_syntax
 from tqdm import tqdm
 
@@ -565,7 +565,7 @@ class ItemsNode(DAGNode):
 async def default_map_task(template, context, model, credentials, **kwargs):
     """Default map task renders the Step template for each input item and calls the LLM.
 
-    Note: This function does NOT catch StruckdownLLMError - it lets errors propagate
+    Note: This function does NOT catch LLMError - it lets errors propagate
     to the calling node (Map) which handles them appropriately via managed_llm_call.
     The connection error counter is reset by managed_llm_call wrapper.
     """

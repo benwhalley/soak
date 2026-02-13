@@ -24,29 +24,14 @@ def _hash_array_list(arrays: List[np.ndarray]) -> str:
 
 
 @memory.cache
-def _compute_ot_cached(
-    cost_matrix_hash: str,
-    cost_matrix_tuple: Tuple[Tuple[float, ...], ...],
-    null_hashes: Optional[str],
-    null_matrices_tuple: Optional[Tuple[Tuple[Tuple[float, ...], ...], ...]],
+def _compute_ot_single(
+    cost_matrix: np.ndarray,
     mode: str,
     reg: float,
     reg_m: float,
 ) -> Dict[str, Any]:
-    """Cached OT computation. Inputs are hashable tuples.
-
-    This is the cached inner function. The wrapper compute_ot() handles
-    numpy array conversion.
-    """
+    """Cached OT for a single cost matrix. Tiny args = fast joblib persistence."""
     import ot
-
-    # convert tuples back to numpy arrays
-    cost_matrix = np.array(cost_matrix_tuple, dtype=np.float64)
-    null_cost_matrices = None
-    if null_matrices_tuple is not None:
-        null_cost_matrices = [
-            np.array(m, dtype=np.float64) for m in null_matrices_tuple
-        ]
 
     n_A, n_B = cost_matrix.shape
 
@@ -58,11 +43,6 @@ def _compute_ot_cached(
             "transport_plan": [],
             "coverage_a": [],
             "coverage_b": [],
-            "null_shared_mass_mean": 0.0,
-            "null_shared_mass_95pct": 0.0,
-            "null_avg_cost_mean": 0.0,
-            "null_avg_cost_5pct": 0.0,
-            "mode": mode,
         }
 
     # uniform mass distribution
@@ -76,75 +56,89 @@ def _compute_ot_cached(
     reg = max(reg, 1e-6)
     reg_m = max(reg_m, 1e-6)
 
-    def run_ot(cost, a_dist, b_dist, mode_inner):
-        """Run OT with given cost matrix and mode."""
-        if mode_inner == "balanced":
-            P = ot.emd(a_dist, b_dist, cost)
-        else:
-            P = ot.unbalanced.sinkhorn_unbalanced(
-                a_dist,
-                b_dist,
-                cost,
-                reg=reg,
-                reg_m=reg_m,
-                numItermax=1000,
-                stopThr=1e-9,
-            )
-        return P
-
-    # compute optimal transport coupling
-    P = run_ot(M, a, b, mode)
-
-    # interpretable quantities
-    shared_mass = float(P.sum())
-    if shared_mass > 1e-9:
-        avg_cost = float((P * M).sum() / shared_mass)
+    if mode == "balanced":
+        P = ot.emd(a, b, M)
     else:
-        avg_cost = float("nan")
+        P = ot.unbalanced.sinkhorn_unbalanced(
+            a, b, M, reg=reg, reg_m=reg_m, numItermax=1000, stopThr=1e-9
+        )
+
+    shared_mass = float(P.sum())
+    avg_cost = (
+        float((P * M).sum() / shared_mass) if shared_mass > 1e-9 else float("nan")
+    )
     unmatched_mass = 1.0 - shared_mass
 
-    # coverage -- how much of each theme's mass maps to the other set
     coverage_a = P.sum(axis=1).tolist()
     coverage_b = P.sum(axis=0).tolist()
 
-    result = {
+    return {
         "shared_mass": shared_mass,
         "avg_cost": avg_cost,
         "unmatched_mass": unmatched_mass,
-        "transport_plan": P.tolist(),  # convert to list for caching
+        "transport_plan": P.tolist(),
         "coverage_a": coverage_a,
         "coverage_b": coverage_b,
-        "reg": reg,
-        "reg_m": reg_m,
-        "mode": mode,
     }
 
-    # compute null baseline from pre-computed null cost matrices (word-salad)
+
+def compute_ot(
+    cost_matrix,
+    null_cost_matrices: Optional[List] = None,
+    mode: str = "unbalanced",
+    reg: float = 0.01,
+    reg_m: float = 0.2,
+):
+    """Compute optimal transport metrics for theme similarity.
+
+    Unbalanced OT allows unmatched mass, representing genuinely novel or missing
+    themes rather than forcing all themes to align. The reg_m parameter (K)
+    controls when themes are treated as unmatched rather than forced to align.
+
+    Each individual OT computation (main + each null matrix) is cached separately
+    via _compute_ot_single, so joblib only needs to hash one small matrix per call.
+
+    Args:
+        cost_matrix: (n_A x n_B) numpy array of costs (1 - similarity)
+        null_cost_matrices: Pre-computed null cost matrices (e.g., from word-salad).
+                           If provided, used for null baseline instead of permutation.
+        mode: "unbalanced" (default) or "balanced" for comparison
+        reg: Entropic regularisation for numerical stability (default: 0.01)
+        reg_m: Mass penalty K (default: 0.2). Fixed value for cross-analysis
+               comparability. Lower K = more selective matching.
+
+    Returns:
+        Dictionary with OT metrics including shared_mass, avg_cost, unmatched_mass
+    """
+    cost_arr = np.asarray(cost_matrix, dtype=np.float64)
+
+    # main OT -- cached, tiny args
+    main = _compute_ot_single(cost_arr, mode, reg, reg_m)
+
+    result = dict(main)
+    result["reg"] = max(reg, 1e-6)
+    result["reg_m"] = max(reg_m, 1e-6)
+    result["mode"] = mode
+
+    # convert transport_plan back to numpy array
+    if result["transport_plan"]:
+        result["transport_plan"] = np.array(result["transport_plan"])
+    else:
+        result["transport_plan"] = np.zeros((0, 0))
+
+    # null baseline from pre-computed null cost matrices (word-salad)
     if null_cost_matrices is not None and len(null_cost_matrices) > 0:
-        null_shared_masses = []
-        null_avg_costs = []
+        null_arrays = [np.asarray(m, dtype=np.float64) for m in null_cost_matrices]
 
-        for M_null in null_cost_matrices:
-            M_null = np.asarray(M_null, dtype=np.float64)
-            M_null = np.clip(M_null, 0, None)
+        # each null matrix cached individually -- tiny args per call
+        null_results = [_compute_ot_single(m, mode, reg, reg_m) for m in null_arrays]
 
-            # null may have different n_B, so recompute b distribution
-            n_B_null = M_null.shape[1]
-            b_null = np.ones(n_B_null) / n_B_null
-
-            P_null = run_ot(M_null, a, b_null, mode)
-
-            null_shared = float(P_null.sum())
-            null_shared_masses.append(null_shared)
-
-            if null_shared > 1e-9:
-                null_avg = float((P_null * M_null).sum() / null_shared)
-            else:
-                null_avg = float("nan")
-            null_avg_costs.append(null_avg)
-
-        null_shared_arr = np.array(null_shared_masses)
+        null_shared_arr = np.array([r["shared_mass"] for r in null_results])
+        null_avg_costs = [r["avg_cost"] for r in null_results]
         null_avg_arr = np.array([x for x in null_avg_costs if not np.isnan(x)])
+
+        shared_mass = result["shared_mass"]
+        avg_cost = result["avg_cost"]
 
         result["null_shared_mass_mean"] = float(null_shared_arr.mean())
         result["null_shared_mass_95pct"] = float(np.percentile(null_shared_arr, 95))
@@ -202,62 +196,6 @@ def _compute_ot_cached(
             result["avg_cost_relative"] = 0.0
             result["avg_cost_effect"] = 0.0
             result["null_avg_cost_mad"] = 0.0
-
-    return result
-
-
-def compute_ot(
-    cost_matrix,
-    null_cost_matrices: Optional[List] = None,
-    mode: str = "unbalanced",
-    reg: float = 0.01,
-    reg_m: float = 0.2,
-):
-    """Compute optimal transport metrics for theme similarity.
-
-    Unbalanced OT allows unmatched mass, representing genuinely novel or missing
-    themes rather than forcing all themes to align. The reg_m parameter (K)
-    controls when themes are treated as unmatched rather than forced to align.
-
-    Results are cached based on input hashes for performance.
-
-    Args:
-        cost_matrix: (n_A x n_B) numpy array of costs (1 - similarity)
-        null_cost_matrices: Pre-computed null cost matrices (e.g., from word-salad).
-                           If provided, used for null baseline instead of permutation.
-        mode: "unbalanced" (default) or "balanced" for comparison
-        reg: Entropic regularisation for numerical stability (default: 0.01)
-        reg_m: Mass penalty K (default: 0.2). Fixed value for cross-analysis
-               comparability. Lower K = more selective matching.
-
-    Returns:
-        Dictionary with OT metrics including shared_mass, avg_cost, unmatched_mass
-    """
-    # convert to numpy and ensure float64
-    cost_arr = np.asarray(cost_matrix, dtype=np.float64)
-
-    # create hashable tuples for caching
-    cost_hash = _hash_array(cost_arr)
-    cost_tuple = tuple(tuple(row) for row in cost_arr)
-
-    null_hashes = None
-    null_tuple = None
-    if null_cost_matrices is not None and len(null_cost_matrices) > 0:
-        null_arrays = [np.asarray(m, dtype=np.float64) for m in null_cost_matrices]
-        null_hashes = _hash_array_list(null_arrays)
-        null_tuple = tuple(tuple(tuple(row) for row in m) for m in null_arrays)
-
-    # call cached function
-    result = _compute_ot_cached(
-        cost_hash, cost_tuple, null_hashes, null_tuple, mode, reg, reg_m
-    )
-
-    # convert transport_plan back to numpy array
-    result = dict(result)  # make a copy since cached result shouldn't be modified
-    if result["transport_plan"]:
-        result["transport_plan"] = np.array(result["transport_plan"])
-    else:
-        result["transport_plan"] = np.zeros((0, 0))
 
     return result
 
@@ -393,8 +331,16 @@ def filter_transport_plan(
             "edges_removed": 0,
             "edges_max_possible": edges_max_possible,
             "edges_retained_pct": 100.0,
-            "edges_original_pct": float(edges_count / edges_max_possible * 100) if edges_max_possible > 0 else 0.0,
-            "edges_filtered_pct": float(edges_count / edges_max_possible * 100) if edges_max_possible > 0 else 0.0,
+            "edges_original_pct": (
+                float(edges_count / edges_max_possible * 100)
+                if edges_max_possible > 0
+                else 0.0
+            ),
+            "edges_filtered_pct": (
+                float(edges_count / edges_max_possible * 100)
+                if edges_max_possible > 0
+                else 0.0
+            ),
             "threshold": threshold,
             "filtering_enabled": False,
         }
@@ -422,14 +368,26 @@ def filter_transport_plan(
     stats = {
         "original_mass": original_mass,
         "filtered_mass": filtered_mass,
-        "mass_retained_pct": float(filtered_mass / original_mass * 100) if original_mass > 0 else 0.0,
+        "mass_retained_pct": (
+            float(filtered_mass / original_mass * 100) if original_mass > 0 else 0.0
+        ),
         "edges_original": edges_original,
         "edges_filtered": edges_filtered,
         "edges_removed": edges_original - edges_filtered,
         "edges_max_possible": edges_max_possible,
-        "edges_retained_pct": float(edges_filtered / edges_original * 100) if edges_original > 0 else 0.0,
-        "edges_original_pct": float(edges_original / edges_max_possible * 100) if edges_max_possible > 0 else 0.0,
-        "edges_filtered_pct": float(edges_filtered / edges_max_possible * 100) if edges_max_possible > 0 else 0.0,
+        "edges_retained_pct": (
+            float(edges_filtered / edges_original * 100) if edges_original > 0 else 0.0
+        ),
+        "edges_original_pct": (
+            float(edges_original / edges_max_possible * 100)
+            if edges_max_possible > 0
+            else 0.0
+        ),
+        "edges_filtered_pct": (
+            float(edges_filtered / edges_max_possible * 100)
+            if edges_max_possible > 0
+            else 0.0
+        ),
         "threshold": threshold,
         "filtering_enabled": True,
     }
@@ -630,6 +588,25 @@ def hungarian_matching(
     soft_recall = float(all_sims.sum()) / max(n_A, n_B)
     soft_f1 = 2 * soft_precision * soft_recall / (soft_precision + soft_recall + 1e-9)
 
+    # === DIRECTIONAL BEST-MATCH METRICS ===
+    # Forward: for each A, find best match in B
+    forward_similarity = (
+        float(np.mean(np.max(similarity_matrix, axis=1))) if n_A > 0 else 0.0
+    )
+    # Backward: for each B, find best match in A
+    backward_similarity = (
+        float(np.mean(np.max(similarity_matrix, axis=0))) if n_B > 0 else 0.0
+    )
+    # Bidirectional: harmonic mean of forward and backward
+    bidirectional_similarity = (
+        2
+        * forward_similarity
+        * backward_similarity
+        / (forward_similarity + backward_similarity + 1e-9)
+    )
+    # Hungarian: mean similarity of optimal 1:1 pairs
+    hungarian_similarity = soft_precision  # same as soft_precision, clearer name
+
     # === DISTRIBUTION STATS (for all optimal pairs) ===
     if len(all_sims) > 0:
         distribution = {
@@ -665,6 +642,12 @@ def hungarian_matching(
             "soft_precision": soft_precision,
             "soft_recall": soft_recall,
             "soft_f1": soft_f1,
+        },
+        "directional_metrics": {
+            "forward_similarity": forward_similarity,
+            "backward_similarity": backward_similarity,
+            "bidirectional_similarity": bidirectional_similarity,
+            "hungarian_similarity": hungarian_similarity,
         },
         "distribution": distribution,
     }

@@ -287,6 +287,144 @@
             max-height: 200px;
             cursor: pointer;
         }
+
+        /* Info Panel (offcanvas) */
+        .info-panel-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.3);
+            z-index: 1040;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .info-panel-overlay.active {
+            display: block;
+            opacity: 1;
+        }
+        .info-panel {
+            position: fixed;
+            top: 0;
+            right: -450px;
+            width: 450px;
+            max-width: 90vw;
+            height: 100%;
+            background: white;
+            box-shadow: -4px 0 20px rgba(0, 0, 0, 0.15);
+            z-index: 1050;
+            transition: right 0.3s ease;
+            display: flex;
+            flex-direction: column;
+        }
+        .info-panel.active {
+            right: 0;
+        }
+        .info-panel-header {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #f8f9fa;
+            flex-shrink: 0;
+        }
+        .info-panel-header h5 {
+            margin: 0;
+            font-size: 1rem;
+            font-weight: 600;
+        }
+        .info-panel-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            line-height: 1;
+            cursor: pointer;
+            color: #6c757d;
+            padding: 0;
+        }
+        .info-panel-close:hover {
+            color: #343a40;
+        }
+        .info-panel-body {
+            padding: 1.25rem;
+            overflow-y: auto;
+            flex-grow: 1;
+        }
+        .info-panel-section {
+            margin-bottom: 1.5rem;
+        }
+        .info-panel-section:last-child {
+            margin-bottom: 0;
+        }
+        .info-panel-section h6 {
+            font-size: 0.75rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #6c757d;
+            margin-bottom: 0.5rem;
+            padding-bottom: 0.25rem;
+            border-bottom: 1px solid #e9ecef;
+        }
+        .info-panel-label {
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 0.25rem;
+        }
+        .info-panel-content {
+            font-size: 0.875rem;
+            line-height: 1.6;
+            color: #212529;
+        }
+        .info-panel-theme {
+            background: #f8f9fa;
+            border-radius: 0.375rem;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        .info-panel-theme:last-child {
+            margin-bottom: 0;
+        }
+        .info-panel-theme .badge {
+            font-size: 0.7rem;
+        }
+        .info-panel-theme-name {
+            font-weight: 600;
+            font-size: 0.95rem;
+            margin-bottom: 0.5rem;
+        }
+        .info-panel-embedded {
+            font-size: 0.8rem;
+            color: #495057;
+            line-height: 1.5;
+        }
+        /* Clickable elements that open info panel */
+        .info-trigger {
+            cursor: pointer;
+        }
+        .info-trigger:hover {
+            text-decoration: underline;
+        }
+        /* Match pair display */
+        .info-panel-match {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            margin-bottom: 0.75rem;
+            padding-bottom: 0.75rem;
+            border-bottom: 1px dashed #dee2e6;
+        }
+        .info-panel-match:last-child {
+            border-bottom: none;
+            margin-bottom: 0;
+            padding-bottom: 0;
+        }
+        .info-panel-match-arrow {
+            color: #6c757d;
+            font-size: 1.25rem;
+        }
     </style>
 </head>
 
@@ -740,12 +878,7 @@
                                         {{ item.set_letter }}{{ item.theme_index }}: {{ item.short_label | default('Theme ' ~ item.theme_index) }}
                                     </a>
                                     <div class="text-muted" style="font-size: 0.7rem; line-height: 1.3; max-height: 3.9em; overflow: hidden;">
-                                        {% set words = item.embedded_string.split() %}
-                                        {% if words | length <= 50 %}
                                         {{ item.embedded_string }}
-                                        {% else %}
-                                        {{ words[:50] | join(' ') }}...
-                                        {% endif %}
                                     </div>
                                 </div>
                                 {% endfor %}
@@ -811,7 +944,7 @@
                             </div>
                             {% endif %}
                         </div>
-                        <p class="text-muted small mb-0">Green = paraphrase ceiling, Red = word-salad floor, Purple = permutation baseline (with 95% CI).</p>
+                        <p class="text-muted small mb-0">Green = paraphrase ceiling, Red = word-salad floor.</p>
                     </div>
                 </div>
 
@@ -859,27 +992,22 @@
                                 <em>Transport filtered at {{ "%.0f"|format(ot_k.ot.filter_stats.threshold * 100) }}% threshold: {{ "%.1f"|format(ot_k.ot.filter_stats.mass_retained_pct) }}% mass retained, {{ ot_k.ot.filter_stats.edges_filtered }}/{{ ot_k.ot.filter_stats.edges_original }} edges</em>
                             </div>
                             {% endif %}
-                            <!-- Identifiability warning (permutation diagnostic) -->
-                            {% if ot_k.ot.identifiability_warning is defined and ot_k.ot.identifiability_warning %}
-                            <div class="alert alert-warning py-1 px-2 mt-2 mb-0 small">
-                                <strong>⚠ Low alignment identifiability:</strong>
-                                Mass ratio: {{ "%.2f"|format(ot_k.ot.identifiability_ratio) }}x ({{ "%.1f"|format(ot_k.ot.shared_mass * 100) }}% vs {{ "%.1f"|format(ot_k.ot.perm_shared_mass_mean * 100) }}% permuted).
-                                {% if ot_k.ot.splits_joins_ratio is defined %}
-                                Fragmentation ratio: {{ "%.2f"|format(ot_k.ot.splits_joins_ratio) }}x ({{ "%.1f"|format(ot_k.ot.true_splits_joins) }} vs {{ "%.1f"|format(ot_k.ot.perm_splits_joins_mean) }} permuted).
-                                {% endif %}
-                                <a href="#note-permutation-baseline" class="note-link">Neither metric shows pair-specific structure.</a>
+                            <!-- Cost matrix structure (theme preferences) -->
+                            {% if ot_k.ot.cost_structure is defined %}
+                            <div class="small text-muted mt-1">
+                                <em>Theme preferences: {{ "%.0f"|format(ot_k.ot.cost_structure.relative_preference * 100) }}% relative preference <a href="#note-theme-preferences" class="note-link">?</a> — {{ ot_k.ot.cost_structure.interpretation }}</em>
                             </div>
                             {% endif %}
                             <!-- Expandable baseline details -->
-                            {% if ot_k.ot.paraphrase_upper_bound is defined or ot_k.ot.null_shared_mass_mean is defined or ot_k.ot.perm_shared_mass_mean is defined %}
+                            {% if ot_k.ot.paraphrase_upper_bound is defined or ot_k.ot.null_shared_mass_mean is defined or ot_k.ot.cost_structure is defined %}
                             <div class="mt-2 pt-2 border-top">
                                 <a class="collapse-toggle small text-muted" data-toggle="collapse" href="#baseline-details-{{ pair_idx }}-{{ k_val|replace('.', '-') }}" role="button" aria-expanded="false">
-                                    <span class="arrow">▶</span> Show baseline values (paraphrase ceiling, word-salad floor, permutation)
+                                    <span class="arrow">▶</span> Show baseline values and theme structure
                                 </a>
                                 <div class="collapse" id="baseline-details-{{ pair_idx }}-{{ k_val|replace('.', '-') }}">
                                     <div class="row mt-2 small">
                                         <div class="col-md-6">
-                                            <strong>Shared Mass:</strong>
+                                            <strong>Shared Mass Baselines:</strong>
                                             <ul class="list-unstyled mb-0 ml-3">
                                                 {% if ot_k.ot.paraphrase_upper_bound is defined %}
                                                 <li><span class="text-success">▲</span> Paraphrase ceiling <a href="#note-paraphrase-ceiling" class="note-link">?</a>: {{ "%.1f"|format(ot_k.ot.paraphrase_upper_bound * 100) }}%</li>
@@ -887,18 +1015,16 @@
                                                 {% if ot_k.ot.null_shared_mass_mean is defined %}
                                                 <li><span class="text-danger">▼</span> Word-salad floor <a href="#note-wordsalad-floor" class="note-link">?</a>: {{ "%.1f"|format(ot_k.ot.null_shared_mass_mean * 100) }}%</li>
                                                 {% endif %}
-                                                {% if ot_k.ot.perm_shared_mass_mean is defined %}
-                                                <li><span class="text-purple" style="color: #8e44ad;">◆</span> Permutation baseline <a href="#note-permutation-baseline" class="note-link">?</a>: {{ "%.1f"|format(ot_k.ot.perm_shared_mass_mean * 100) }}% <span class="text-muted">(mass ratio: {{ "%.2f"|format(ot_k.ot.identifiability_ratio) }}x)</span></li>
-                                                {% endif %}
                                             </ul>
                                         </div>
                                         <div class="col-md-6">
-                                            {% if ot_k.ot.true_splits_joins is defined %}
-                                            <strong>Splits/Joins (fragmentation):</strong>
+                                            {% if ot_k.ot.cost_structure is defined %}
+                                            <strong>Theme Preference Structure <a href="#note-theme-preferences" class="note-link">?</a>:</strong>
                                             <ul class="list-unstyled mb-0 ml-3">
-                                                <li>● True alignment: {{ "%.2f"|format(ot_k.ot.true_splits_joins) }} avg</li>
-                                                <li><span class="text-purple" style="color: #8e44ad;">◆</span> Permuted: {{ "%.2f"|format(ot_k.ot.perm_splits_joins_mean) }} avg <span class="text-muted">(ratio: {{ "%.2f"|format(ot_k.ot.splits_joins_ratio) }}x)</span></li>
-                                                <li class="text-muted small">Higher permuted = true alignment is cleaner</li>
+                                                <li>Relative preference: {{ "%.0f"|format(ot_k.ot.cost_structure.relative_preference * 100) }}%</li>
+                                                <li>Preference strength: {{ "%.3f"|format(ot_k.ot.cost_structure.avg_preference_strength) }}</li>
+                                                <li>Spikiness: {{ "%.2f"|format(ot_k.ot.cost_structure.spikiness) }}</li>
+                                                <li class="text-muted small">{{ ot_k.ot.cost_structure.interpretation }}</li>
                                             </ul>
                                             {% else %}
                                             <strong>Alignment:</strong>
@@ -919,13 +1045,22 @@
                         </div>
                     </div>
 
-                    <!-- Sankey diagram -->
+                    <!-- Sankey diagram with dual color mode toggle -->
                     <div class="card mb-3">
-                        <div class="card-header py-2">
+                        <div class="card-header py-2 d-flex justify-content-between align-items-center">
                             <strong>Transport Flow <a href="#note-sankey-colours" class="note-link">?</a></strong>
+                            <div class="btn-group btn-group-sm sankey-color-toggle" role="group" aria-label="Sankey colour mode">
+                                <button type="button" class="btn btn-outline-primary active" data-mode="sim">Similarity</button>
+                                <button type="button" class="btn btn-outline-primary" data-mode="k-rel">K-relative</button>
+                            </div>
                         </div>
                         <div class="card-body p-2">
-                            <iframe srcdoc="{{ ot_k.transport_sankey.html | e }}" style="width: 100%; height: 660px; border: none;" frameborder="0"></iframe>
+                            <div class="sankey-frame" data-mode="sim">
+                                <iframe srcdoc="{{ ot_k.transport_sankey.html | e }}" style="width: 100%; height: 660px; border: none;" frameborder="0"></iframe>
+                            </div>
+                            <div class="sankey-frame" data-mode="k-rel" style="display: none;">
+                                <iframe srcdoc="{{ ot_k.transport_sankey_k_rel.html | e }}" style="width: 100%; height: 660px; border: none;" frameborder="0"></iframe>
+                            </div>
                         </div>
                     </div>
 
@@ -1000,7 +1135,11 @@
 
                 <!-- Coverage & Hit Rates -->
                 <h5 id="summary-{{ pair_idx }}">Coverage &amp; Hit Rates <a href="#note-coverage-hitrates" class="note-link" title="About coverage metrics">?</a></h5>
-                <p class="text-muted small">Thematic analysis doesn't have ground truth, so traditional precision/recall don't apply. Instead, we measure coverage (did themes find matches?) and fidelity (how close are the best matches?). Based on {{ comp.stats.similarity_metric }} similarity.</p>
+                <p class="text-muted small">Thematic analysis doesn't have ground truth, so traditional precision/recall don't apply. Instead, we measure coverage (did themes find matches?) and fidelity (how close are the best matches?). Based on {{ comp.stats.similarity_metric }} similarity.
+                {% if comp.stats.calibration_path %}
+                <span class="badge badge-success">Using calibrated values</span>
+                {% endif %}
+                </p>
                 <div class="row mb-4">
                     <div class="col-md-6">
                         <div class="card h-100">
@@ -1039,7 +1178,11 @@
                 <!-- SECTION 3: HUNGARIAN MATCHING                  -->
                 <!-- ============================================== -->
                 <h5 id="hungarian-{{ pair_idx }}">Hungarian Matching (1:1) <a href="#note-hungarian" class="note-link" title="About Hungarian algorithm">?</a></h5>
-                <p class="text-muted">The Hungarian algorithm finds the optimal one-to-one pairing that maximizes total similarity. Each theme maps to at most one theme in the other set -- no reuse allowed.</p>
+                <p class="text-muted">The Hungarian algorithm finds the optimal one-to-one pairing that maximizes total similarity. Each theme maps to at most one theme in the other set -- no reuse allowed.
+                {% if comp.stats.calibration_path %}
+                <span class="badge badge-success">Using calibrated values</span>
+                {% endif %}
+                </p>
 
                 <div class="alert alert-secondary small mb-3">
                     <strong>Intuition:</strong> "If I had to explain set B's themes to someone who only knew set A, which single theme in A would each B theme correspond to, with no reuse?"
@@ -1114,17 +1257,30 @@
                     </div>
                     <div class="card-body">
                         {% if comp.stats.hungarian.all_pairs|length > 0 %}
-                        <p class="small text-muted">Hungarian algorithm finds the optimal one-to-one assignment.</p>
+                        <p class="small text-muted">Hungarian algorithm finds the optimal one-to-one assignment.
+                        {% if comp.stats.calibration_path %}
+                        Similarity values are calibrated.
+                        {% endif %}
+                        </p>
                         <table class="table table-sm table-striped">
                             <thead>
                                 <tr>
-                                    <th width="40%">Theme in {{ comp.a.name }}</th>
-                                    <th width="40%">Theme in {{ comp.b.name }}</th>
-                                    <th width="20%">Angular Similarity</th>
+                                    <th width="35%">Theme in {{ comp.a.name }}</th>
+                                    <th width="35%">Theme in {{ comp.b.name }}</th>
+                                    {% if comp.stats.calibration_path %}
+                                    <th width="15%">Calibrated</th>
+                                    <th width="15%">Raw Angular</th>
+                                    {% else %}
+                                    <th width="30%">Angular Similarity</th>
+                                    {% endif %}
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for i, j, similarity in comp.stats.hungarian.all_pairs %}
+                                {% for pair_data in comp.stats.hungarian.all_pairs %}
+                                {% set i = pair_data[0] %}
+                                {% set j = pair_data[1] %}
+                                {% set similarity = pair_data[2] %}
+                                {% set similarity_raw = pair_data[3] if pair_data|length > 3 else similarity %}
                                 {% set theme_a = comp.embedded_a[i] %}
                                 {% set theme_b = comp.embedded_b[j] %}
                                 <tr>
@@ -1144,7 +1300,12 @@
                                             {{ theme_b.set_letter }}{{ theme_b.theme_index }}: {{ theme_b.short_label | default(theme_b.theme_name[:18]) }}
                                         </a>
                                     </td>
+                                    {% if comp.stats.calibration_path %}
                                     <td class="small text-center">{{ "%.3f"|format(similarity) }}</td>
+                                    <td class="small text-center text-muted">{{ "%.3f"|format(similarity_raw) }}</td>
+                                    {% else %}
+                                    <td class="small text-center">{{ "%.3f"|format(similarity) }}</td>
+                                    {% endif %}
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -1161,14 +1322,90 @@
                 <h4 id="similarity-{{ pair_idx }}" class="section-heading">Similarity Metrics</h4>
                 <p class="text-muted small">Various distance and similarity metrics between theme embeddings.</p>
 
-                <!-- Angular Similarity Heatmaps -->
-                <h5>Angular Similarity <a href="#note-angular-distance" class="note-link" title="About angular distance">?</a></h5>
-                <p class="text-muted small">Angular distance uses the angle between embedding vectors (arccos of cosine), normalised to [0,1]. Unlike cosine, it satisfies the triangle inequality, making it a proper metric.</p>
+                {% if comp.stats.calibration_path %}
+                <!-- Calibrated Similarity (PRIMARY - used for all statistics) -->
+                <h5>
+                    <span class="badge badge-success">Primary</span>
+                    Calibrated Similarity
+                </h5>
+                <p class="text-muted small">
+                    <strong>All statistics (fidelity, coverage, thresholding, Hungarian matching) use these calibrated values.</strong>
+                    Similarities transformed using a calibration model trained on paraphrases.
+                </p>
+                <div class="row mb-4">
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header bg-success text-white d-flex justify-content-between align-items-center">
+                                Continuous Values (Calibrated)
+                            </div>
+                            <div class="card-body">
+                                {% if comp.plots.heatmaps_rescaled %}
+                                <img class="img-fluid img-thumbnail lightbox-trigger" src="data:image/png;base64,{{ comp.plots.heatmaps_rescaled.base64 }}" alt="Calibrated similarity heatmap">
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <div class="card">
+                            <div class="card-header bg-success text-white">Binary Match (threshold={{ comparison.config.threshold }})</div>
+                            <div class="card-body">
+                                {% if comp.plots.heatmaps_rescaled_thresholded %}
+                                <img class="img-fluid img-thumbnail lightbox-trigger" src="data:image/png;base64,{{ comp.plots.heatmaps_rescaled_thresholded.base64 }}" alt="Calibrated thresholded heatmap">
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Calibrated similarity matrix as table -->
+                <div class="card mb-4">
+                    <div class="card-header bg-success text-white">
+                        <a class="text-white collapse-toggle" data-toggle="collapse" href="#rescaled-matrix-table-{{ pair_idx }}">
+                            <span class="arrow">▶</span> Calibrated Similarity Matrix (Table)
+                        </a>
+                    </div>
+                    <div class="collapse" id="rescaled-matrix-table-{{ pair_idx }}">
+                        <div class="card-body table-responsive">
+                            <table class="table table-sm table-bordered" style="font-size: 0.75rem;">
+                                <thead>
+                                    <tr>
+                                        <th></th>
+                                        {% for j in range(comp.stats.selected_similarity_matrix[0]|length) %}
+                                        <th class="text-center" style="writing-mode: vertical-rl; transform: rotate(180deg); max-width: 30px;">{{ j+1 }}</th>
+                                        {% endfor %}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for i, row in enumerate(comp.stats.selected_similarity_matrix) %}
+                                    <tr>
+                                        <th>{{ i+1 }}</th>
+                                        {% for val in row %}
+                                        <td class="text-center {% if val >= comparison.config.threshold %}table-success{% endif %}">{{ "%.2f"|format(val) }}</td>
+                                        {% endfor %}
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+
+                <!-- Raw Angular Similarity Heatmaps -->
+                <h5>
+                    {% if comp.stats.calibration_path %}
+                    <span class="badge badge-secondary">Raw</span>
+                    {% endif %}
+                    Angular Similarity <a href="#note-angular-distance" class="note-link" title="About angular distance">?</a>
+                </h5>
+                <p class="text-muted small">Angular distance uses the angle between embedding vectors (arccos of cosine), normalised to [0,1]. Unlike cosine, it satisfies the triangle inequality, making it a proper metric.
+                {% if comp.stats.calibration_path %}<strong class="text-warning">These are RAW values before calibration.</strong>{% endif %}
+                </p>
                 <div class="row mb-4">
                     <div class="col-md-6">
                         <div class="card">
                             <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                                Continuous Values
+                                Continuous Values (Raw)
                                 <button class="btn btn-sm btn-light copy-csv-btn" onclick="copyMatrixCSV('angular-{{ pair_idx }}')">Copy CSV</button>
                             </div>
                             <div class="card-body">
@@ -1177,10 +1414,93 @@
                         </div>
                     </div>
                     <div class="col-md-6">
+                        <!-- Raw angular matrix as table -->
+                        <div class="card h-100">
+                            <div class="card-header bg-secondary text-white">
+                                <a class="text-white collapse-toggle" data-toggle="collapse" href="#angular-matrix-table-{{ pair_idx }}">
+                                    <span class="arrow">▶</span> Raw Angular Matrix (Table)
+                                </a>
+                            </div>
+                            <div class="collapse" id="angular-matrix-table-{{ pair_idx }}">
+                                <div class="card-body table-responsive">
+                                    <table class="table table-sm table-bordered" style="font-size: 0.75rem;">
+                                        <thead>
+                                            <tr>
+                                                <th></th>
+                                                {% for j in range(comp.stats.angle_similarity_matrix[0]|length) %}
+                                                <th class="text-center" style="writing-mode: vertical-rl; transform: rotate(180deg); max-width: 30px;">{{ j+1 }}</th>
+                                                {% endfor %}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for i, row in enumerate(comp.stats.angle_similarity_matrix) %}
+                                            <tr>
+                                                <th>{{ i+1 }}</th>
+                                                {% for val in row %}
+                                                <td class="text-center">{{ "%.3f"|format(val) }}</td>
+                                                {% endfor %}
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Raw Cosine Similarity -->
+                <h5>
+                    {% if comp.stats.calibration_path %}
+                    <span class="badge badge-secondary">Raw</span>
+                    {% endif %}
+                    Cosine Similarity
+                </h5>
+                <p class="text-muted small">Raw cosine similarity between embedding vectors. Not a proper metric (doesn't satisfy triangle inequality).
+                {% if comp.stats.calibration_path %}<strong class="text-warning">These are RAW values before calibration.</strong>{% endif %}
+                </p>
+                <div class="row mb-4">
+                    <div class="col-md-6">
                         <div class="card">
-                            <div class="card-header bg-secondary text-white">Binary Match (threshold={{ comparison.config.threshold }})</div>
+                            <div class="card-header bg-info text-white">
+                                Continuous Values (Raw)
+                            </div>
                             <div class="card-body">
-                                <img class="img-fluid img-thumbnail lightbox-trigger" src="data:image/png;base64,{{ comp.plots.thresholded_heatmaps.base64 }}" alt="Thresholded heatmap">
+                                <img class="img-fluid img-thumbnail lightbox-trigger" src="data:image/png;base64,{{ comp.plots.heatmaps_cosine.base64 }}" alt="Cosine similarity heatmap">
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-6">
+                        <!-- Raw cosine matrix as table -->
+                        <div class="card h-100">
+                            <div class="card-header bg-secondary text-white">
+                                <a class="text-white collapse-toggle" data-toggle="collapse" href="#cosine-matrix-table-{{ pair_idx }}">
+                                    <span class="arrow">▶</span> Raw Cosine Matrix (Table)
+                                </a>
+                            </div>
+                            <div class="collapse" id="cosine-matrix-table-{{ pair_idx }}">
+                                <div class="card-body table-responsive">
+                                    <table class="table table-sm table-bordered" style="font-size: 0.75rem;">
+                                        <thead>
+                                            <tr>
+                                                <th></th>
+                                                {% for j in range(comp.stats.similarity_matrix[0]|length) %}
+                                                <th class="text-center" style="writing-mode: vertical-rl; transform: rotate(180deg); max-width: 30px;">{{ j+1 }}</th>
+                                                {% endfor %}
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                                            {% for i, row in enumerate(comp.stats.similarity_matrix) %}
+                                            <tr>
+                                                <th>{{ i+1 }}</th>
+                                                {% for val in row %}
+                                                <td class="text-center">{{ "%.3f"|format(val) }}</td>
+                                                {% endfor %}
+                                            </tr>
+                                            {% endfor %}
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -1444,20 +1764,35 @@
             <h5 id="note-wordsalad-floor">Word Salad Floor</h5>
             <p class="small">Word salad is generated by randomly shuffling words from themes, destroying semantic meaning. This represents what you'd expect from random text with similar vocabulary. The further above this baseline, the more genuine the semantic similarity.</p>
 
-            <h5 id="note-permutation-baseline">Permutation Baseline (Alignment Identifiability)</h5>
-            <p class="small">The permutation baseline tests whether the similarity structure is <strong>pair-specific</strong>. It scrambles which A themes map to which B themes and recomputes OT. If shared mass collapses under permutation, the geometry encodes meaningful pair-specific structure. If not, the cost matrix is too flat and alignments are underdetermined -- OT may find "any plausible path" rather than the true alignment. The <strong>identifiability ratio</strong> (observed / permuted) should be >> 1.0 for meaningful results. A ratio close to 1.0 or a warning indicates the alignment may not be pair-specific.</p>
+            <h5 id="note-theme-preferences">Theme Preference Structure</h5>
+            <p class="small">This measures whether themes have <strong>preferred partners</strong> that enable meaningful alignment, or are largely interchangeable (diffuse overlap).</p>
+            <ul class="small">
+                <li><strong>Relative preference:</strong> How much better is each theme's best match compared to its average match, as a percentage of mean cost. Higher values (>15%) indicate themes have clear preferred partners.</li>
+                <li><strong>Preference strength:</strong> The absolute difference between best and average match costs. Larger values mean stronger preferences.</li>
+                <li><strong>Spikiness:</strong> How varied the cost matrix is (std/range). Higher values (>0.2) mean some pairs are much more similar than others.</li>
+            </ul>
+            <p class="small text-muted">When preferences are weak (<8%), the two analyses describe overlapping conceptual territory but themes don't map neatly onto each other -- they're interchangeable from the OT perspective. This isn't necessarily a problem; it characterises the relationship as diffuse overlap rather than one-to-one correspondence.</p>
 
             <h5 id="note-effect-size">Effect Size (MADs)</h5>
             <p class="small">Effect size shows how many MADs (median absolute deviations) above the word-salad baseline the observed value falls. This measures how distinct the observed alignment is from random text -- higher values indicate more meaningful semantic similarity. MAD is a robust measure less sensitive to outliers than standard deviation.</p>
 
             <h5 id="note-sankey-colours">Sankey Colour Scale</h5>
-            <p class="small">Link colours use a K-relative scale showing how close each match is to being dropped:</p>
+            <p class="small">The Sankey diagram supports two colour modes, selectable via the toggle button:</p>
+
+            <p class="small"><strong>1. Similarity-based (default):</strong> Uses absolute similarity thresholds for consistent interpretation across different K values.</p>
             <ul class="small">
-                <li><strong>Green:</strong> strong match (low cost, well below K threshold)</li>
-                <li><strong>Amber:</strong> moderate match</li>
-                <li><strong>Red:</strong> marginal match (cost approaching K, close to being dropped at this threshold)</li>
+                <li><strong>Green:</strong> similarity >= {{ comparison.config.color_green | default(0.75) }} (strong semantic match)</li>
+                <li><strong>Amber:</strong> moderate similarity</li>
+                <li><strong>Red:</strong> similarity <= {{ comparison.config.color_red | default(0.4) }} (weak match)</li>
             </ul>
-            <p class="small text-muted">The colour scale adapts to each K value. Links with cost near K appear red because they are on the boundary -- the OT algorithm is nearly indifferent between keeping them or destroying the mass.</p>
+
+            <p class="small"><strong>2. K-relative:</strong> Shows how close each match is to being dropped at the current K threshold.</p>
+            <ul class="small">
+                <li><strong>Green:</strong> cost &lt; {{ comparison.config.k_color_green | default(0.2) }}×K (strong match, well below threshold)</li>
+                <li><strong>Amber:</strong> moderate cost</li>
+                <li><strong>Red:</strong> cost &gt; {{ comparison.config.k_color_red | default(1.1) }}×K (marginal match, close to being dropped)</li>
+            </ul>
+            <p class="small text-muted">In K-relative mode, the scale adapts to each K value. Links with cost near K appear red because the OT algorithm is nearly indifferent between keeping them or destroying the mass. This mode is useful for understanding the sensitivity of matches to the K parameter.</p>
 
             <h5 id="note-transport-heatmap">Transport Heatmap</h5>
             <p class="small">The transport heatmap shows how mass flows from A themes (rows) to B themes (columns). Cell values show percentage of total transported mass. Darker cells indicate stronger transport links.</p>
@@ -1476,26 +1811,145 @@
             <pre class="bg-light p-3" style="white-space: pre-wrap; font-size: 0.75rem;">{{ comparison.config | tojson(indent=2) }}</pre>
         </div>
 
+        {% if calibration_info %}
+        <hr class="mt-5">
+
+        <div id="calibration" class="calibration-info mt-4">
+            <h3>Calibration Model</h3>
+            <p class="text-muted">Similarity scores are transformed using a calibration model trained on paraphrases of varying semantic similarity.</p>
+
+            <div class="row">
+                <div class="col-md-6">
+                    <h5>Training Information</h5>
+                    <table class="table table-sm">
+                        <tbody>
+                            <tr>
+                                <td><strong>Embedding Model</strong></td>
+                                <td><code>{{ calibration_info.metadata.embedding_model }}</code></td>
+                            </tr>
+                            <tr>
+                                <td><strong>Template</strong></td>
+                                <td><code>{{ calibration_info.metadata.embedding_template }}</code></td>
+                            </tr>
+                            {% if calibration_info.metadata.validation %}
+                            <tr>
+                                <td><strong>Training Samples</strong></td>
+                                <td>{{ calibration_info.metadata.validation.n_train }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Test Samples</strong></td>
+                                <td>{{ calibration_info.metadata.validation.n_test }}</td>
+                            </tr>
+                            <tr>
+                                <td><strong>Category Accuracy</strong></td>
+                                <td>{{ "%.1f" | format(calibration_info.metadata.validation.category_accuracy * 100) }}%</td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
+
+                    <h5>Target Values</h5>
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Category</th>
+                                <th>Target</th>
+                                <th>Raw Mean</th>
+                                <th>Raw Range</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for cat, target in calibration_info.metadata.targets.items() %}
+                            <tr>
+                                <td>{{ cat }}</td>
+                                <td>{{ "%.2f" | format(target) }}</td>
+                                {% if calibration_info.metadata.category_stats[cat] %}
+                                <td>{{ "%.3f" | format(calibration_info.metadata.category_stats[cat].mean) }}</td>
+                                <td>{{ "%.3f" | format(calibration_info.metadata.category_stats[cat].min) }} - {{ "%.3f" | format(calibration_info.metadata.category_stats[cat].max) }}</td>
+                                {% else %}
+                                <td>-</td>
+                                <td>-</td>
+                                {% endif %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="col-md-6">
+                    <h5>Calibration Curve</h5>
+                    <p class="small text-muted">Raw angular similarity (x-axis) mapped to calibrated semantic similarity (y-axis). Coloured points show training data for each paraphrase category.</p>
+
+                    {% if calibration_info.plot_base64 %}
+                    <img src="data:image/png;base64,{{ calibration_info.plot_base64 }}"
+                         alt="Calibration curve"
+                         style="max-width: 100%; height: auto; border-radius: 4px;"
+                         class="img-fluid mb-3">
+                    {% else %}
+                    <svg viewBox="0 0 300 220" style="max-width: 100%; height: auto; background: #f8f9fa; border-radius: 4px;">
+                        <!-- axes -->
+                        <line x1="40" y1="180" x2="280" y2="180" stroke="#333" stroke-width="1"/>
+                        <line x1="40" y1="180" x2="40" y2="20" stroke="#333" stroke-width="1"/>
+
+                        <!-- axis labels -->
+                        <text x="160" y="210" text-anchor="middle" font-size="10" fill="#666">Raw Similarity</text>
+                        <text x="15" y="100" text-anchor="middle" font-size="10" fill="#666" transform="rotate(-90 15 100)">Calibrated</text>
+
+                        <!-- tick marks and labels -->
+                        <text x="40" y="195" text-anchor="middle" font-size="8" fill="#666">0.5</text>
+                        <text x="160" y="195" text-anchor="middle" font-size="8" fill="#666">0.75</text>
+                        <text x="280" y="195" text-anchor="middle" font-size="8" fill="#666">1.0</text>
+                        <text x="35" y="180" text-anchor="end" font-size="8" fill="#666">0</text>
+                        <text x="35" y="100" text-anchor="end" font-size="8" fill="#666">0.5</text>
+                        <text x="35" y="20" text-anchor="end" font-size="8" fill="#666">1.0</text>
+
+                        <!-- grid lines -->
+                        <line x1="40" y1="100" x2="280" y2="100" stroke="#ddd" stroke-width="0.5" stroke-dasharray="4"/>
+                        <line x1="160" y1="20" x2="160" y2="180" stroke="#ddd" stroke-width="0.5" stroke-dasharray="4"/>
+
+                        <!-- diagonal reference line (identity) -->
+                        <line x1="40" y1="180" x2="280" y2="20" stroke="#ccc" stroke-width="1" stroke-dasharray="4"/>
+
+                        <!-- calibration curve -->
+                        <polyline fill="none" stroke="#0d6efd" stroke-width="2" points="
+                            {% for pt in calibration_info.transformation %}{{ 40 + (pt.raw - 0.5) * 480 }},{{ 180 - pt.calibrated * 160 }} {% endfor %}
+                        "/>
+
+                        <!-- data points -->
+                        {% for pt in calibration_info.transformation %}
+                        <circle cx="{{ 40 + (pt.raw - 0.5) * 480 }}" cy="{{ 180 - pt.calibrated * 160 }}" r="2" fill="#0d6efd"/>
+                        {% endfor %}
+                    </svg>
+                    {% endif %}
+
+                    <h5 class="mt-3">Sample Transformations</h5>
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Raw</th>
+                                <th>Calibrated</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for pt in calibration_info.transformation %}
+                            {% if loop.index0 % 4 == 0 %}
+                            <tr>
+                                <td>{{ "%.3f" | format(pt.raw) }}</td>
+                                <td>{{ "%.3f" | format(pt.calibrated) }}</td>
+                            </tr>
+                            {% endif %}
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
         <hr class="mt-5">
 
         <div id="additional-data" class="additional-data mt-4">
-            <h3>Additional Data</h3>
-            <p class="text-muted">Download raw data files for further analysis.</p>
-            <div class="list-group">
-                {% for key, comp in comparison.by_comparisons().items() %}
-                {% if comparison.comparison_plots.embeddings_csv and comparison.comparison_plots.embeddings_csv[key] %}
-                <a href="data:text/csv;base64,{{ comparison.comparison_plots.embeddings_csv[key] }}"
-                   download="{{ comp.a.name }}_{{ comp.b.name }}_embeddings.csv"
-                   class="list-group-item list-group-item-action d-flex align-items-center">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" fill="currentColor" class="bi bi-download mr-2" viewBox="0 0 16 16">
-                        <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
-                        <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
-                    </svg>
-                    {{ comp.a.name }} vs {{ comp.b.name }} -- Embeddings CSV
-                </a>
-                {% endif %}
-                {% endfor %}
-            </div>
+            
         </div>
 
         <footer class="screen-footer mt-4 pt-3 border-top text-muted small text-center">
@@ -1508,6 +1962,18 @@
     <div class="lightbox-overlay" id="lightbox">
         <span class="lightbox-close">&times;</span>
         <img src="" alt="Enlarged view" id="lightbox-img">
+    </div>
+
+    <!-- Info Panel (offcanvas) for theme details and notes -->
+    <div class="info-panel-overlay" id="info-panel-overlay"></div>
+    <div class="info-panel" id="info-panel">
+        <div class="info-panel-header">
+            <h5 id="info-panel-title">Details</h5>
+            <button class="info-panel-close" id="info-panel-close" aria-label="Close">&times;</button>
+        </div>
+        <div class="info-panel-body" id="info-panel-body">
+            <!-- Content dynamically populated -->
+        </div>
     </div>
 
     <script>
@@ -1623,6 +2089,11 @@
                     contentPane.style.display = isActive ? 'block' : 'none';
                 }
             });
+
+            // Preserve Sankey color mode for newly visible pane
+            if (typeof applySankeyColorMode === 'function') {
+                applySankeyColorMode();
+            }
         }
 
         // Sync all pairs to a given K value
@@ -1754,6 +2225,244 @@
         // Placeholder - would extract data from the corresponding similarity matrix
         alert('CSV copy functionality coming soon');
     }
+
+    // Sankey colour mode toggle (with persistence across K changes)
+    var sankeyColorMode = 'sim'; // Global state: 'sim' or 'k-rel'
+
+    function applySankeyColorMode(mode) {
+        if (mode) sankeyColorMode = mode;
+        // Apply to all Sankey cards
+        document.querySelectorAll('.sankey-color-toggle').forEach(function(btnGroup) {
+            var card = btnGroup.closest('.card');
+            var simFrame = card.querySelector('.sankey-frame[data-mode="sim"]');
+            var kRelFrame = card.querySelector('.sankey-frame[data-mode="k-rel"]');
+
+            // Update button states
+            btnGroup.querySelectorAll('button').forEach(function(b) {
+                b.classList.toggle('active', b.getAttribute('data-mode') === sankeyColorMode);
+            });
+
+            // Show/hide the appropriate Sankey frame
+            if (simFrame) simFrame.style.display = sankeyColorMode === 'sim' ? '' : 'none';
+            if (kRelFrame) kRelFrame.style.display = sankeyColorMode === 'k-rel' ? '' : 'none';
+        });
+    }
+
+    (function() {
+        // Set up click handlers for toggle buttons
+        document.querySelectorAll('.sankey-color-toggle button').forEach(function(btn) {
+            btn.addEventListener('click', function() {
+                var mode = this.getAttribute('data-mode');
+                applySankeyColorMode(mode);
+            });
+        });
+    })();
+
+    // =============================================
+    // INFO PANEL (offcanvas) FUNCTIONALITY
+    // =============================================
+    (function() {
+        var panel = document.getElementById('info-panel');
+        var overlay = document.getElementById('info-panel-overlay');
+        var closeBtn = document.getElementById('info-panel-close');
+        var title = document.getElementById('info-panel-title');
+        var body = document.getElementById('info-panel-body');
+
+        // Theme data for populating the panel
+        var themeData = {
+            {% for analysis_name, themes in comparison.embedded_strings.items() %}
+            '{{ analysis_name | replace("'", "\\'") }}': {
+                {% for item in themes %}
+                {{ item.theme_index }}: {
+                    'set_letter': '{{ item.set_letter }}',
+                    'theme_index': {{ item.theme_index }},
+                    'theme_name': {{ item.theme_name | tojson }},
+                    'short_label': {{ (item.short_label | default('Theme ' ~ item.theme_index)) | tojson }},
+                    'embedded_string': {{ item.embedded_string | tojson }}
+                }{% if not loop.last %},{% endif %}
+                {% endfor %}
+            }{% if not loop.last %},{% endif %}
+            {% endfor %}
+        };
+
+        // Note explanations content
+        var noteContent = {};
+        document.querySelectorAll('.notes-section h5[id^="note-"]').forEach(function(h5) {
+            var noteId = h5.id;
+            var content = [];
+            var sibling = h5.nextElementSibling;
+            while (sibling && sibling.tagName !== 'H5') {
+                content.push(sibling.outerHTML);
+                sibling = sibling.nextElementSibling;
+            }
+            noteContent[noteId] = {
+                title: h5.textContent,
+                content: content.join('')
+            };
+        });
+
+        function openPanel() {
+            panel.classList.add('active');
+            overlay.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closePanel() {
+            panel.classList.remove('active');
+            overlay.classList.remove('active');
+            document.body.style.overflow = '';
+        }
+
+        // Close handlers
+        closeBtn.addEventListener('click', closePanel);
+        overlay.addEventListener('click', closePanel);
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape' && panel.classList.contains('active')) {
+                closePanel();
+            }
+        });
+
+        // Show a single theme
+        function showTheme(analysisName, themeIndex) {
+            var analysis = themeData[analysisName];
+            if (!analysis) return;
+            var theme = analysis[themeIndex];
+            if (!theme) return;
+
+            title.textContent = 'Theme Details';
+            body.innerHTML = renderThemeHtml(theme, analysisName);
+            openPanel();
+        }
+
+        // Show a pair of matched themes
+        function showThemePair(analysisA, indexA, analysisB, indexB, similarity) {
+            var themeA = themeData[analysisA] && themeData[analysisA][indexA];
+            var themeB = themeData[analysisB] && themeData[analysisB][indexB];
+
+            if (!themeA || !themeB) return;
+
+            title.textContent = 'Matched Themes';
+            var html = '<div class="info-panel-section">';
+            html += '<h6>Theme A</h6>';
+            html += renderThemeHtml(themeA, analysisA);
+            html += '</div>';
+            html += '<div class="info-panel-section">';
+            html += '<h6 class="mt-3">Theme B</h6>';
+            html += renderThemeHtml(themeB, analysisB);
+            html += '</div>';
+            if (similarity !== undefined) {
+                html += '<div class="info-panel-section">';
+                html += '<h6>Match Info</h6>';
+                html += '<div class="info-panel-content">';
+                html += '<strong>Similarity:</strong> ' + similarity;
+                html += '</div></div>';
+            }
+            body.innerHTML = html;
+            openPanel();
+        }
+
+        // Show a note/explanation
+        function showNote(noteId) {
+            var note = noteContent[noteId];
+            if (!note) return;
+
+            title.textContent = note.title;
+            body.innerHTML = '<div class="info-panel-content">' + note.content + '</div>';
+            openPanel();
+        }
+
+        // Render theme HTML
+        function renderThemeHtml(theme, analysisName) {
+            var html = '<div class="info-panel-theme">';
+            html += '<div class="d-flex align-items-center mb-2">';
+            html += '<span class="badge badge-primary mr-2">' + theme.set_letter + theme.theme_index + '</span>';
+            html += '<span class="badge badge-secondary">' + analysisName + '</span>';
+            html += '</div>';
+            html += '<div class="info-panel-theme-name">' + escapeHtml(theme.short_label) + '</div>';
+            html += '<div class="text-muted small mb-2"><em>' + escapeHtml(theme.theme_name) + '</em></div>';
+            html += '<div class="info-panel-embedded">' + escapeHtml(theme.embedded_string) + '</div>';
+            html += '</div>';
+            return html;
+        }
+
+        function escapeHtml(text) {
+            var div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Expose functions globally
+        window.infoPanel = {
+            showTheme: showTheme,
+            showThemePair: showThemePair,
+            showNote: showNote,
+            close: closePanel
+        };
+
+        // Handle clicks on note links
+        document.addEventListener('click', function(e) {
+            var noteLink = e.target.closest('a.note-link[href^="#note-"]');
+            if (noteLink) {
+                e.preventDefault();
+                var noteId = noteLink.getAttribute('href').substring(1);
+                showNote(noteId);
+            }
+        });
+
+        // Handle clicks on theme links in match tables (those in table rows with both themes)
+        document.addEventListener('click', function(e) {
+            var themeLink = e.target.closest('.theme-label-link');
+            if (!themeLink) return;
+
+            // Check if this is in a match table row (has arrow indicator)
+            var tr = themeLink.closest('tr');
+            if (tr) {
+                var links = tr.querySelectorAll('.theme-label-link');
+                if (links.length === 2) {
+                    // This is a matched pair row
+                    e.preventDefault();
+
+                    var linkA = links[0];
+                    var linkB = links[1];
+
+                    // Parse analysis name and theme index from href
+                    // href format: #theme-AnalysisName-ThemeIndex
+                    var parseThemeLink = function(link) {
+                        var href = link.getAttribute('href');
+                        var match = href.match(/#theme-(.+)-(\d+)$/);
+                        if (match) {
+                            return {
+                                analysisName: match[1].replace(/-/g, ' '),
+                                themeIndex: parseInt(match[2], 10)
+                            };
+                        }
+                        return null;
+                    };
+
+                    var infoA = parseThemeLink(linkA);
+                    var infoB = parseThemeLink(linkB);
+
+                    if (infoA && infoB) {
+                        // Get similarity from the row if present
+                        var simCell = tr.querySelector('td:last-child');
+                        var similarity = simCell ? simCell.textContent.trim() : undefined;
+                        showThemePair(infoA.analysisName, infoA.themeIndex, infoB.analysisName, infoB.themeIndex, similarity);
+                        return;
+                    }
+                }
+            }
+
+            // Single theme link (not in a match row)
+            e.preventDefault();
+            var href = themeLink.getAttribute('href');
+            var match = href.match(/#theme-(.+)-(\d+)$/);
+            if (match) {
+                var analysisName = match[1].replace(/-/g, ' ');
+                var themeIndex = parseInt(match[2], 10);
+                showTheme(analysisName, themeIndex);
+            }
+        });
+    })();
     </script>
 </body>
 </html>

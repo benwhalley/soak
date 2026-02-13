@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "soaking"
-version = "0.3.15"
+version = "0.4.0"
 description = "soak: graph-based pipelines and tools for LLM-assisted qualitative text analysis"
 authors = [
   { name = "Ben Whalley", email = "ben.whalley@plymouth.ac.uk" }
@@ -33,7 +33,7 @@ dependencies = [
     "umap-learn",
     "asyncpg>=0.30.0",
     "jinja-markdown>=1.210911",
-    "struckdown",
+    "struckdown>=0.3.17",
     "trogon>=0.6.0",
     "nltk>=3.9.2",
     "rank-bm25>=0.2.2",
@@ -55,13 +55,14 @@ dependencies = [
     "plotly>=5.18.0",
     "tenacity>=8.2.0",
     "hdbscan>=0.8.33",
+    "pygam>=0.12.0",
+    "transformers>=4.51.0",
+    "sentence-transformers>=2.5.1",
+    "rpy2>=3.5.0"
 ]
 
 [project.optional-dependencies]
-local = [
-    "transformers>=4.51.0",
-    "sentence-transformers>=2.5.1",
-]
+
 scrub = [
   "scrubadub>=2.0.0",
   "scrubadub-spacy>=2.0.0",
@@ -85,7 +86,7 @@ package = true
 
 [tool.uv.sources]
 # Local development version
-struckdown = { path = "/Users/benwhalley/dev/struckdown", editable = true }
+# struckdown = { path = "/Users/benwhalley/dev/struckdown", editable = true }
 spacy-transformers = { git = "https://github.com/explosion/spacy-transformers.git", rev = "bf2fe03" }
 umap-learn = { git = "https://github.com/lmcinnes/umap", branch = "master" }
 

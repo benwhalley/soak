@@ -8,7 +8,7 @@ import anyio
 import pandas as pd
 from box import Box
 from pydantic import Field
-from struckdown import StruckdownLLMError
+from struckdown import LLMError
 from struckdown.parsing import parse_syntax
 
 from soak.error_handlers import managed_llm_call

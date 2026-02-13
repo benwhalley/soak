@@ -20,7 +20,7 @@ import pandas as pd
 from pydantic import Field, PrivateAttr
 from rank_bm25 import BM25Okapi
 from sklearn.metrics.pairwise import cosine_similarity
-from struckdown import ChatterResult, StruckdownLLMError, chatter_async
+from struckdown import ChatterResult, LLMError, chatter_async
 from struckdown.parsing import parse_syntax
 from tqdm import tqdm
 

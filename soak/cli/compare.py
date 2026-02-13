@@ -1,5 +1,9 @@
 """Compare command for comparing analyses."""
 
+import os
+
+os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+
 import asyncio
 import hashlib
 import json
@@ -11,13 +15,9 @@ from pathlib import Path
 
 import typer
 
-from ._common import (
-    TEMPLATES_DIR,
-    check_and_prompt_credentials,
-    get_pdb_on_exception,
-    get_soak_version,
-    resolve_analysis_path,
-)
+from ._common import (TEMPLATES_DIR, check_and_prompt_credentials,
+                      get_pdb_on_exception, get_soak_version,
+                      resolve_analysis_path)
 
 logger = logging.getLogger(__name__)
 
@@ -28,12 +28,6 @@ def generate_compare_filename(
     threshold: float = 0.6,
     similarity: str = "angular",
     shepard_k: float = 1.0,
-    rescale: str = "clip",
-    rescale_min: float = 0.5,
-    rescale_max: float = 0.9,
-    rescale_percentiles: str = "5,95",
-    rescale_sigmoid: str = "0.7,10",
-    rescale_temp: float = 0.5,
     no_paraphrase_bound: bool = False,
     extension: str = ".html",
     extra_options: dict | None = None,
@@ -48,13 +42,14 @@ def generate_compare_filename(
 
     Examples:
         PROF_vs_NOTPROF_e5b_t75_a3f2.html
-        A_vs_B_vs_C_cos_t60_rsada_b7c1.html
+        A_vs_B_vs_C_cos_t60_b7c1.html
     """
+
     # abbreviate input names (remove common suffixes, shorten)
     def abbreviate(name: str) -> str:
         for suffix in ["_dump", "_analysis", "_results", "_output"]:
             if name.endswith(suffix):
-                name = name[:-len(suffix)]
+                name = name[: -len(suffix)]
         if len(name) > 12:
             name = name[:12]
         return name
@@ -66,8 +61,6 @@ def generate_compare_filename(
     opts = []
 
     # embedding model: strip "local/" prefix and take last part after "/"
-    # e.g. "local/intfloat/e5-base" -> "e5-base"
-    # "text-embedding-3-large" (default) -> omit
     model_name = embedding_model.replace("local/", "").split("/")[-1]
     if model_name != "text-embedding-3-large":
         opts.append(model_name)
@@ -88,30 +81,6 @@ def generate_compare_filename(
     if similarity == "shepard" and shepard_k != 1.0:
         opts.append(f"sk{shepard_k:.1f}".replace(".", ""))
 
-    # rescale method and parameters
-    if rescale == "clip":
-        if rescale_min != 0.5 or rescale_max != 0.9:
-            opts.append(f"clip{int(rescale_min*100)}-{int(rescale_max*100)}")
-    elif rescale == "adaptive":
-        if rescale_percentiles != "5,95":
-            opts.append(f"ada{rescale_percentiles.replace(',', '-')}")
-        else:
-            opts.append("ada")
-    elif rescale == "sigmoid":
-        if rescale_sigmoid != "0.7,10":
-            opts.append(f"sig{rescale_sigmoid.replace(',', '-').replace('.', '')}")
-        else:
-            opts.append("sig")
-    elif rescale == "temperature":
-        if rescale_temp != 0.5:
-            opts.append(f"temp{str(rescale_temp).replace('.', '')}")
-        else:
-            opts.append("temp")
-    elif rescale == "rank":
-        opts.append("rank")
-    elif rescale == "off":
-        opts.append("rsoff")
-
     # no paraphrase bound
     if no_paraphrase_bound:
         opts.append("nopara")
@@ -122,17 +91,10 @@ def generate_compare_filename(
         "threshold": threshold,
         "similarity": similarity,
         "shepard_k": shepard_k,
-        "rescale": rescale,
-        "rescale_min": rescale_min,
-        "rescale_max": rescale_max,
-        "rescale_percentiles": rescale_percentiles,
-        "rescale_sigmoid": rescale_sigmoid,
-        "rescale_temp": rescale_temp,
         "no_paraphrase_bound": no_paraphrase_bound,
     }
     if extra_options:
         hash_data.update(extra_options)
-    # sort keys for deterministic hash
     hash_str = json.dumps(hash_data, sort_keys=True, default=str)
     options_hash = hashlib.sha256(hash_str.encode()).hexdigest()[:6]
 
@@ -295,10 +257,14 @@ def _print_comparison_stats(
             lines.append(f"  Baselines:")
             if ceiling_sim is not None:
                 ceiling_align = 1 - (ceiling_cost or 0)
-                lines.append(f"    Paraphrase ceiling:   {ceiling_sim:.1%} shared mass, {ceiling_align:.1%} alignment")
+                lines.append(
+                    f"    Paraphrase ceiling:   {ceiling_sim:.1%} shared mass, {ceiling_align:.1%} alignment"
+                )
             if floor_sim is not None:
                 floor_align = 1 - (floor_cost or 0)
-                lines.append(f"    Word-salad floor:     {floor_sim:.1%} shared mass, {floor_align:.1%} alignment")
+                lines.append(
+                    f"    Word-salad floor:     {floor_sim:.1%} shared mass, {floor_align:.1%} alignment"
+                )
 
     # determine which K values to show
     if ot_k_values:
@@ -322,41 +288,55 @@ def _print_comparison_stats(
             lines.append(f"  K = {k_val}{marker}")
 
             # shared mass metrics
-            shared_mass = ot_data.get('shared_mass', 0)
-            null_shared_mass = ot_data.get('null_shared_mass_mean')
-            paraphrase_ceiling = ot_data.get('paraphrase_upper_bound')
+            shared_mass = ot_data.get("shared_mass", 0)
+            null_shared_mass = ot_data.get("null_shared_mass_mean")
+            paraphrase_ceiling = ot_data.get("paraphrase_upper_bound")
 
             if paraphrase_ceiling is not None and null_shared_mass is not None:
-                lines.append(f"    Shared Mass:          {shared_mass:.1%}  (floor: {null_shared_mass:.1%}, ceiling: {paraphrase_ceiling:.1%})")
+                lines.append(
+                    f"    Shared Mass:          {shared_mass:.1%}  (floor: {null_shared_mass:.1%}, ceiling: {paraphrase_ceiling:.1%})"
+                )
             else:
                 lines.append(f"    Shared Mass:          {shared_mass:.1%}")
 
             # paraphrase-scaled metrics (if available)
-            pct_ceiling = ot_data.get('shared_mass_pct_of_ceiling')
-            pct_improvement = ot_data.get('shared_mass_improvement_vs_null')
+            pct_ceiling = ot_data.get("shared_mass_pct_of_ceiling")
+            pct_improvement = ot_data.get("shared_mass_improvement_vs_null")
             if pct_ceiling is not None:
-                lines.append(f"      % of ceiling:       {pct_ceiling:.0%}  (vs paraphrase upper bound)")
+                lines.append(
+                    f"      % of ceiling:       {pct_ceiling:.0%}  (vs paraphrase upper bound)"
+                )
             if pct_improvement is not None:
-                lines.append(f"      vs word-salad:      {pct_improvement:.0%} better, relative to ceiling")
+                lines.append(
+                    f"      vs word-salad:      {pct_improvement:.0%} better, relative to ceiling"
+                )
 
             # semantic alignment (1 - cost, so higher = better)
-            avg_cost = ot_data.get('avg_cost', 0)
+            avg_cost = ot_data.get("avg_cost", 0)
             alignment = 1 - avg_cost
-            alignment_ceiling = ot_data.get('alignment_paraphrase_ceiling')
-            alignment_floor = ot_data.get('alignment_null_floor')
+            alignment_ceiling = ot_data.get("alignment_paraphrase_ceiling")
+            alignment_floor = ot_data.get("alignment_null_floor")
 
             if alignment_ceiling is not None and alignment_floor is not None:
-                lines.append(f"    Semantic Alignment:   {alignment:.1%}  (floor: {alignment_floor:.1%}, ceiling: {alignment_ceiling:.1%})")
+                lines.append(
+                    f"    Semantic Alignment:   {alignment:.1%}  (floor: {alignment_floor:.1%}, ceiling: {alignment_ceiling:.1%})"
+                )
             else:
-                lines.append(f"    Semantic Alignment:   {alignment:.1%}  (quality of matches)")
+                lines.append(
+                    f"    Semantic Alignment:   {alignment:.1%}  (quality of matches)"
+                )
 
             # alignment paraphrase-scaled metrics
-            align_pct_ceiling = ot_data.get('alignment_pct_of_ceiling')
-            align_improvement = ot_data.get('alignment_improvement_vs_null')
+            align_pct_ceiling = ot_data.get("alignment_pct_of_ceiling")
+            align_improvement = ot_data.get("alignment_improvement_vs_null")
             if align_pct_ceiling is not None:
-                lines.append(f"      % of ceiling:       {align_pct_ceiling:.0%}  (vs paraphrase upper bound)")
+                lines.append(
+                    f"      % of ceiling:       {align_pct_ceiling:.0%}  (vs paraphrase upper bound)"
+                )
             if align_improvement is not None:
-                lines.append(f"      vs word-salad:      {align_improvement:.0%} better, relative to ceiling")
+                lines.append(
+                    f"      vs word-salad:      {align_improvement:.0%} better, relative to ceiling"
+                )
 
     if elbow_k:
         lines.append(f"")
@@ -641,44 +621,6 @@ def compare(
         envvar="SOAK_PARAPHRASE_MODEL",
         help="Model for paraphrase generation (default: gpt-4.1-mini)",
     ),
-    rescale: str = typer.Option(
-        "clip",
-        "--rescale",
-        envvar="SOAK_RESCALE",
-        help="Rescaling method: 'off', 'clip' (default), 'adaptive', 'sigmoid', 'temperature', 'rank'. "
-             "For clip: use --rescale-min/--rescale-max. For adaptive: use --rescale-percentiles. "
-             "For sigmoid: use --rescale-sigmoid. For temperature: use --rescale-temp.",
-    ),
-    rescale_min: float = typer.Option(
-        0.5,
-        "--rescale-min",
-        envvar="SOAK_RESCALE_MIN",
-        help="Floor for clip method (default: 0.5). Values below become 0.",
-    ),
-    rescale_max: float = typer.Option(
-        0.9,
-        "--rescale-max",
-        envvar="SOAK_RESCALE_MAX",
-        help="Ceiling for clip method (default: 0.9). Values above become 1.",
-    ),
-    rescale_percentiles: str = typer.Option(
-        "5,95",
-        "--rescale-percentiles",
-        envvar="SOAK_RESCALE_PERCENTILES",
-        help="Percentile bounds for adaptive method (default: '5,95'). Format: 'lower,upper'.",
-    ),
-    rescale_sigmoid: str = typer.Option(
-        "0.7,10",
-        "--rescale-sigmoid",
-        envvar="SOAK_RESCALE_SIGMOID",
-        help="Sigmoid params (default: '0.7,10'). Format: 'center,steepness'. Higher steepness = sharper.",
-    ),
-    rescale_temp: float = typer.Option(
-        0.5,
-        "--rescale-temp",
-        envvar="SOAK_RESCALE_TEMP",
-        help="Temperature for power method (default: 0.5). <1 sharpens, >1 flattens.",
-    ),
     filter_threshold: float = typer.Option(
         0.05,
         "--filter-threshold",
@@ -738,10 +680,11 @@ def compare(
     from jinja2 import Environment, FileSystemLoader
 
     from ..comparators.similarity_comparator import (SimilarityComparator,
-                                                     compare_result_similarity,
-                                                     clear_comparison_cache)
+                                                     clear_comparison_cache,
+                                                     compare_result_similarity)
     from ..helpers import format_exception_concise
-    from ..models import QualitativeAnalysis, QualitativeAnalysisPipeline, Theme
+    from ..models import (QualitativeAnalysis, QualitativeAnalysisPipeline,
+                          Theme)
 
     # clear cache if requested
     if clear_cache:
@@ -758,14 +701,7 @@ def compare(
             )
             raise typer.Exit(1)
 
-    # parse rescale options
-    rescale_method = rescale.lower()
-    valid_methods = ["off", "clip", "adaptive", "sigmoid", "temperature", "rank", "calibrated"]
-    if rescale_method not in valid_methods:
-        logger.error(f"Invalid --rescale method: {rescale}. Must be one of: {', '.join(valid_methods)}")
-        raise typer.Exit(1)
-
-    # handle calibration option - if provided, use calibrated rescale method
+    # handle calibration option
     # accepts either a folder (looks for calibration.yaml/.json inside) or a direct file path
     calibration_path = None
     if calibration:
@@ -773,7 +709,6 @@ def compare(
             logger.error(f"Calibration path not found: {calibration}")
             raise typer.Exit(1)
         if calibration.is_dir():
-            # look for calibration.yaml (or .json for backwards compatibility) inside the folder
             yaml_path = calibration / "calibration.yaml"
             json_path = calibration / "calibration.json"
             if yaml_path.exists():
@@ -785,36 +720,7 @@ def compare(
                 raise typer.Exit(1)
         else:
             calibration_path = calibration
-        rescale_method = "calibrated"
         logger.info(f"Using calibration from {calibration_path}")
-
-    # parse percentile bounds for adaptive method
-    try:
-        pct_parts = rescale_percentiles.split(",")
-        rescale_lower_pct = float(pct_parts[0].strip())
-        rescale_upper_pct = float(pct_parts[1].strip())
-    except (ValueError, IndexError):
-        logger.error(f"Invalid --rescale-percentiles format: {rescale_percentiles}. Use 'lower,upper' (e.g., '5,95').")
-        raise typer.Exit(1)
-
-    # parse sigmoid params
-    try:
-        sig_parts = rescale_sigmoid.split(",")
-        rescale_sigmoid_center = float(sig_parts[0].strip())
-        rescale_sigmoid_steepness = float(sig_parts[1].strip())
-    except (ValueError, IndexError):
-        logger.error(f"Invalid --rescale-sigmoid format: {rescale_sigmoid}. Use 'center,steepness' (e.g., '0.7,10').")
-        raise typer.Exit(1)
-
-    logger.info(f"Rescaling method: {rescale_method}")
-    if rescale_method == "clip":
-        logger.info(f"  Clip bounds: [{rescale_min}, {rescale_max}]")
-    elif rescale_method == "adaptive":
-        logger.info(f"  Percentile bounds: [{rescale_lower_pct}%, {rescale_upper_pct}%]")
-    elif rescale_method == "sigmoid":
-        logger.info(f"  Sigmoid: center={rescale_sigmoid_center}, steepness={rescale_sigmoid_steepness}")
-    elif rescale_method == "temperature":
-        logger.info(f"  Temperature: {rescale_temp}")
 
     # determine mode: strings or JSON
     if strings:
@@ -937,14 +843,6 @@ def compare(
                 "compute_paraphrase_bound": not no_paraphrase_bound,
                 "n_paraphrases": n_paraphrases,
                 "paraphrase_model": paraphrase_model,
-                "rescale_method": rescale_method,
-                "rescale_min": rescale_min,
-                "rescale_max": rescale_max,
-                "rescale_lower_pct": rescale_lower_pct,
-                "rescale_upper_pct": rescale_upper_pct,
-                "rescale_sigmoid_center": rescale_sigmoid_center,
-                "rescale_sigmoid_steepness": rescale_sigmoid_steepness,
-                "rescale_temp": rescale_temp,
                 "calibration_path": str(calibration_path) if calibration_path else None,
                 "filter_threshold": filter_threshold,
                 "color_green": color_green,
@@ -963,19 +861,15 @@ def compare(
                 threshold=threshold,
                 similarity=similarity,
                 shepard_k=shepard_k,
-                rescale=rescale_method,
-                rescale_min=rescale_min,
-                rescale_max=rescale_max,
-                rescale_percentiles=rescale_percentiles,
-                rescale_sigmoid=rescale_sigmoid,
-                rescale_temp=rescale_temp,
                 no_paraphrase_bound=no_paraphrase_bound,
                 extension=output,
                 extra_options={
                     "embedding_template": effective_embedding_template,
                     "n_paraphrases": n_paraphrases,
                     "paraphrase_model": paraphrase_model,
-                    "calibration_path": str(calibration_path) if calibration_path else None,
+                    "calibration_path": (
+                        str(calibration_path) if calibration_path else None
+                    ),
                     "filter_threshold": filter_threshold,
                     "color_green": color_green,
                     "color_red": color_red,
@@ -988,7 +882,9 @@ def compare(
         # determine if we should print stats to console
         # only print if: no output specified, or output is .txt
         output_path = Path(effective_output) if effective_output else None
-        print_to_console = not effective_output or (output_path and output_path.suffix == ".txt")
+        print_to_console = not effective_output or (
+            output_path and output_path.suffix == ".txt"
+        )
 
         # generate statistics for each pairwise comparison
         all_stats_text = []
@@ -1017,9 +913,12 @@ def compare(
         # load calibration info for HTML display
         calibration_info = None
         if calibration_path:
-            from ..calibration import load_calibration, calibrate
-            import numpy as np
             import base64
+
+            import numpy as np
+
+            from ..calibration import calibrate, load_calibration
+
             model, cal_metadata = load_calibration(calibration_path)
             method = cal_metadata.get("method", "gam")
             # generate sample transformation points using interpolation
@@ -1036,7 +935,9 @@ def compare(
             plot_path = Path(calibration_path).with_suffix(".png")
             if plot_path.exists():
                 with open(plot_path, "rb") as f:
-                    calibration_info["plot_base64"] = base64.b64encode(f.read()).decode("utf-8")
+                    calibration_info["plot_base64"] = base64.b64encode(f.read()).decode(
+                        "utf-8"
+                    )
 
         # save output if requested
         if effective_output:
@@ -1145,14 +1046,6 @@ def compare(
                 "compute_paraphrase_bound": not no_paraphrase_bound,
                 "n_paraphrases": n_paraphrases,
                 "paraphrase_model": paraphrase_model,
-                "rescale_method": rescale_method,
-                "rescale_min": rescale_min,
-                "rescale_max": rescale_max,
-                "rescale_lower_pct": rescale_lower_pct,
-                "rescale_upper_pct": rescale_upper_pct,
-                "rescale_sigmoid_center": rescale_sigmoid_center,
-                "rescale_sigmoid_steepness": rescale_sigmoid_steepness,
-                "rescale_temp": rescale_temp,
                 "calibration_path": str(calibration_path) if calibration_path else None,
                 "filter_threshold": filter_threshold,
                 "color_green": color_green,
@@ -1172,19 +1065,15 @@ def compare(
                 threshold=threshold,
                 similarity=similarity,
                 shepard_k=shepard_k,
-                rescale=rescale_method,
-                rescale_min=rescale_min,
-                rescale_max=rescale_max,
-                rescale_percentiles=rescale_percentiles,
-                rescale_sigmoid=rescale_sigmoid,
-                rescale_temp=rescale_temp,
                 no_paraphrase_bound=no_paraphrase_bound,
                 extension=output,
                 extra_options={
                     "embedding_template": effective_embedding_template,
                     "n_paraphrases": n_paraphrases,
                     "paraphrase_model": paraphrase_model,
-                    "calibration_path": str(calibration_path) if calibration_path else None,
+                    "calibration_path": (
+                        str(calibration_path) if calibration_path else None
+                    ),
                     "filter_threshold": filter_threshold,
                     "color_green": color_green,
                     "color_red": color_red,
@@ -1196,7 +1085,9 @@ def compare(
 
         # determine if we should print stats to console
         # only print if: no output specified, or output is .txt
-        output_path = Path(effective_output) if effective_output else Path("comparison.html")
+        output_path = (
+            Path(effective_output) if effective_output else Path("comparison.html")
+        )
         print_to_console = not output or output_path.suffix == ".txt"
 
         # generate statistics for each pairwise comparison
@@ -1226,9 +1117,12 @@ def compare(
         # load calibration info for HTML display
         calibration_info = None
         if calibration_path:
-            from ..calibration import load_calibration, calibrate
-            import numpy as np
             import base64
+
+            import numpy as np
+
+            from ..calibration import calibrate, load_calibration
+
             model, cal_metadata = load_calibration(calibration_path)
             method = cal_metadata.get("method", "gam")
             # generate sample transformation points using interpolation
@@ -1245,7 +1139,9 @@ def compare(
             plot_path = Path(calibration_path).with_suffix(".png")
             if plot_path.exists():
                 with open(plot_path, "rb") as f:
-                    calibration_info["plot_base64"] = base64.b64encode(f.read()).decode("utf-8")
+                    calibration_info["plot_base64"] = base64.b64encode(f.read()).decode(
+                        "utf-8"
+                    )
 
         # save output
         if output_path.suffix == ".txt":

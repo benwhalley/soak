@@ -11,15 +11,10 @@ from pathlib import Path
 
 import typer
 
-from ._common import (
-    PIPELINE_DIR,
-    _derive_input_source,
-    check_and_prompt_credentials,
-    generate_all_html_outputs,
-    get_pdb_on_exception,
-    load_pipeline_json,
-    resolve_template,
-)
+from ._common import (PIPELINE_DIR, _derive_input_source,
+                      check_and_prompt_credentials, generate_all_html_outputs,
+                      get_pdb_on_exception, load_pipeline_json,
+                      resolve_template)
 
 logger = logging.getLogger(__name__)
 

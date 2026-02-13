@@ -18,7 +18,7 @@ from litellm.exceptions import (APIConnectionError, APIResponseValidationError,
                                 InternalServerError, NotFoundError,
                                 PermissionDeniedError, Timeout,
                                 UnsupportedParamsError)
-from struckdown import StruckdownLLMError
+from struckdown import LLMError
 from tenacity import (before_sleep_log, retry, retry_if_exception,
                       stop_after_attempt, wait_exponential)
 
@@ -33,10 +33,10 @@ RETRYABLE_EXCEPTIONS = (
 
 
 def _is_retryable_exception(exc: Exception) -> bool:
-    """Check if exception should trigger a retry (handles wrapped StruckdownLLMError)."""
+    """Check if exception should trigger a retry (handles wrapped LLMError)."""
     if isinstance(exc, RETRYABLE_EXCEPTIONS):
         return True
-    if isinstance(exc, StruckdownLLMError):
+    if isinstance(exc, LLMError):
         original = getattr(exc, "original_error", None)
         return isinstance(original, RETRYABLE_EXCEPTIONS)
     return False
@@ -120,16 +120,14 @@ def get_error_behavior(error: Exception, config) -> str:
     """Determine how to handle an error based on its type and config.
 
     Args:
-        error: The exception to handle (may be wrapped in StruckdownLLMError)
+        error: The exception to handle (may be wrapped in LLMError)
         config: DAGConfig instance with error handling settings
 
     Returns:
         ErrorBehavior constant (FAIL/SKIP/RETRY)
     """
-    # unwrap StruckdownLLMError if needed
-    original_error = (
-        error.original_error if isinstance(error, StruckdownLLMError) else error
-    )
+    # unwrap LLMError if needed
+    original_error = error.original_error if isinstance(error, LLMError) else error
     error_type = type(original_error)
 
     # handle configurable errors
@@ -161,14 +159,14 @@ def log_error_to_stderr(
     """Log detailed error information to stderr.
 
     Args:
-        error: The exception (may be StruckdownLLMError with context)
+        error: The exception (may be LLMError with context)
         node_name: Name of the node where error occurred
         item_index: Index of the item being processed (if applicable)
         behavior: ErrorBehavior constant indicating how error will be handled
         config: DAGConfig instance (for log_failed_prompts setting)
     """
-    # unwrap StruckdownLLMError if needed
-    if isinstance(error, StruckdownLLMError):
+    # unwrap LLMError if needed
+    if isinstance(error, LLMError):
         original_error = error.original_error
         error_type = type(original_error).__name__
         model_name = error.model_name
@@ -306,7 +304,7 @@ def handle_llm_error_in_node(
     It handles the standard pattern: calculate behavior, log, determine whether to skip or fail.
 
     Args:
-        error: The StruckdownLLMError or other exception
+        error: The LLMError or other exception
         node_name: Name of the node where error occurred
         config: DAGConfig instance with error handling settings
         item_index: Optional index of the item being processed
@@ -319,9 +317,7 @@ def handle_llm_error_in_node(
         MaxConsecutiveConnectionErrorsExceeded: If threshold of consecutive APIConnectionErrors is reached
     """
     # unwrap error to check for connection errors
-    original_error = (
-        error.original_error if isinstance(error, StruckdownLLMError) else error
-    )
+    original_error = error.original_error if isinstance(error, LLMError) else error
 
     # track consecutive connection errors (APIConnectionError or InternalServerError with connection error message)
     if isinstance(original_error, APIConnectionError):
@@ -352,12 +348,12 @@ def handle_llm_error_in_node(
         if item_index is not None:
             logger.info(
                 f"Skipping {item_type} {item_index} in node '{node_name}' "
-                f"due to {type(error.original_error if isinstance(error, StruckdownLLMError) else error).__name__}"
+                f"due to {type(error.original_error if isinstance(error, LLMError) else error).__name__}"
             )
         else:
             logger.info(
                 f"Skipping {item_type} in node '{node_name}' "
-                f"due to {type(error.original_error if isinstance(error, StruckdownLLMError) else error).__name__}"
+                f"due to {type(error.original_error if isinstance(error, LLMError) else error).__name__}"
             )
         return True  # skip this item
     else:
@@ -372,7 +368,7 @@ async def managed_llm_call(
     This function handles the standard pattern for all LLM calls:
     - Retry with exponential backoff on transient errors (connection, timeout, 5xx)
     - Reset connection error counter on success
-    - Handle StruckdownLLMError with appropriate behavior (skip/fail)
+    - Handle LLMError with appropriate behavior (skip/fail)
     - Let other exceptions propagate
 
     Retry behaviour: N attempts, exponential backoff (max 60s)
@@ -406,12 +402,12 @@ async def managed_llm_call(
         result = await _call_with_retry()
         connection_error_counter.reset()
         return result
-    except StruckdownLLMError as e:
+    except LLMError as e:
         if handle_llm_error_in_node(e, node_name, config, item_index):
             return None  # skip this item
         raise
     except RETRYABLE_EXCEPTIONS as e:
-        # Retryable error that exhausted all retries (not wrapped in StruckdownLLMError)
+        # Retryable error that exhausted all retries (not wrapped in LLMError)
         if handle_llm_error_in_node(e, node_name, config, item_index):
             return None
         raise
