@@ -46,6 +46,7 @@ Use the built-in `zs` (zero-shot) pipeline for thematic analysis:
 
 ```bash
 soak zs data/interview.txt --output my_first_analysis
+
 ```
 
 This will:

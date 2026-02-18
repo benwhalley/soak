@@ -703,6 +703,7 @@ def compare(
 
     # handle calibration option
     # accepts either a folder (looks for calibration.yaml/.json inside) or a direct file path
+    # if not provided, try to auto-detect bundled calibration for the embedding model
     calibration_path = None
     if calibration:
         if not calibration.exists():
@@ -721,6 +722,14 @@ def compare(
         else:
             calibration_path = calibration
         logger.info(f"Using calibration from {calibration_path}")
+    else:
+        # try auto-detection of bundled calibration
+        from ..calibration import get_bundled_calibration
+
+        bundled_path = get_bundled_calibration(embedding_model)
+        if bundled_path:
+            calibration_path = bundled_path
+            logger.info(f"Using bundled calibration for {embedding_model}")
 
     # determine mode: strings or JSON
     if strings:

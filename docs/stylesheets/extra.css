@@ -1,0 +1,37 @@
+/* Custom colour scheme inspired by mindframe */
+/* Primary green: #5a9c6b from mindframe doodle illustrations */
+
+:root {
+  /* Override primary colour to mindframe green */
+  --md-primary-fg-color: #5a9c6b;
+  --md-primary-fg-color--light: #6aac7b;
+  --md-primary-fg-color--dark: #4a8659;
+
+  /* Accent colour - slightly brighter green */
+  --md-accent-fg-color: #6aac7b;
+  --md-accent-fg-color--transparent: rgba(90, 156, 107, 0.1);
+
+  /* Soft text colours matching mindframe */
+  --md-typeset-color: #2d2d2d;
+}
+
+/* Slate (dark) scheme overrides */
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #5a9c6b;
+  --md-accent-fg-color: #6aac7b;
+}
+
+/* Code block styling - light gray background */
+.md-typeset code {
+  background-color: #f4f4f2;
+}
+
+/* Table styling - softer borders */
+.md-typeset table:not([class]) {
+  border: 1px solid #e0e0dc;
+}
+
+.md-typeset table:not([class]) th,
+.md-typeset table:not([class]) td {
+  border: 1px solid #e8e8e5;
+}
