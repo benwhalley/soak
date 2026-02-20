@@ -1,0 +1,12 @@
+{# Tab navigation component - requires Alpine.js #}
+<div class="soak-tabs" x-data>
+    {% for tab in tabs %}
+    <button
+        class="soak-tab"
+        :class="{ 'active': $store.tabs.activeTab === '{{ tab.id }}' }"
+        @click="$store.tabs.activeTab = '{{ tab.id }}'"
+    >
+        {{ tab.label }}
+    </button>
+    {% endfor %}
+</div>

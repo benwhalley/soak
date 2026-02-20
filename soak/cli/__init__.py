@@ -51,7 +51,8 @@ def main(
 
 from .compare import compare
 from .coverage_cmd import coverage
-from .misc import calibrate, test, tui
+from .export import export
+from .misc import calibrate, test
 # import and register commands
 from .run import run
 from .show import show
@@ -59,8 +60,8 @@ from .show import show
 app.command()(run)
 app.command()(compare)
 app.command()(coverage)
+app.command()(export)
 app.command()(show)
-app.command()(tui)
 app.command()(test)
 app.command()(calibrate)
 

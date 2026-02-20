@@ -118,6 +118,8 @@ class Transform(ItemsNode, CompletionDAGNode):
         # Call chatter with semaphore to limit concurrency
         async with semaphore:
             try:
+                logger.debug(f"Calling LLM with prompt: {rt}")
+                logger.debug(f"Context: {merged_context}")
                 result = await managed_llm_call(
                     node_name=self.name,
                     config=self.dag.config,

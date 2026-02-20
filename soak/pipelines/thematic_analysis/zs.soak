@@ -1,0 +1,121 @@
+name: Thematic analysis
+default_context:
+  persona:
+    default: Experienced qualitative researcher
+    description: Analyst persona
+    help_text: The perspective and expertise from which the analysis is conducted
+  research_question:
+    default: To understand the experience of participants
+    description: Research question
+    help_text: The main question guiding the thematic analysis
+  theme_size_guidance:
+    default: "A typical analysis will produce 7 themes. Never more than 10. Strongly prefer fewer/larger themes with greater explanatory depth and power."
+    description: Guidance on the number of themes to produce
+    help_text: ""
+    input_type: textarea
+  specific_research_question:
+    default: ""
+    description: Specific focus
+    help_text: Optional specific aspect or sub-question to focus on
+    input_type: textarea
+scrub: false
+randomise_document_order: true
+config:
+    report_texts: [narrative, meta_narrative]
+default_config:
+  models:
+    default: gpt-4.1-mini
+    best: gpt-4.1
+    cheap: gpt-4.1-mini
+  embeddings: text-embedding-large-3
+  seed: 1
+
+methodology_templates:
+  overview: |
+      
+
+  
+nodes:
+  - name: chunks
+    type: Split
+    split_unit: words
+    chunk_size: 15000
+    min_split: 500
+    overlap: 200
+    inputs:
+      - documents
+      
+  - name: codes_from_chunks
+    type: Map
+    template: initial_codes.sd
+    inputs:
+      - chunks
+
+  - name: groupedcodes
+    type: Cluster
+    inputs: [codes_from_chunks]
+    items_field: codes      # extract Code objects from CodeList.codes
+    method:
+      name: hdbscan
+      min_cluster_size: 2
+      max_cluster_size: 50
+      
+  - name: consolidated_codes
+    type: Map
+    inputs: [groupedcodes]
+    template: consolidate_codes.sd
+
+  - name: codes
+    type: Reduce
+    items_field: codes
+    inputs: [consolidated_codes]
+  
+  - name: checkquotes
+    type: VerifyQuotes
+    model_name: cheap
+    inputs: [codes]
+    check_fairness: false
+    
+  - name: big_code_groups
+    type: Cluster
+    inputs: [codes]
+    items_field: codes
+    method:
+      name: hdbscan
+      min_cluster_size: 50
+      
+  - name: theme_groups
+    type: Map
+    template: make_theme_group.sd
+    inputs:
+      - big_code_groups
+
+  - name: flat_themes
+    type: Reduce
+    items_field: themes
+    inputs:
+      - theme_groups
+    
+  - name: themes
+    type: Transform
+    template: final_themes.sd
+    inputs:
+      - theme_groups
+
+  - name: narrative
+    type: Transform
+    template: narrative_report.sd
+    temperature: 1.0
+    model: best
+    inputs:
+      - themes
+    
+  - name: meta_narrative
+    type: Transform
+    template: meta_narrative.sd
+    inputs:
+      - themes
+      - narrative
+    
+
+    

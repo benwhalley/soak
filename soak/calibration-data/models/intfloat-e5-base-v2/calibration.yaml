@@ -1,0 +1,71 @@
+version: '1.0'
+method: scam
+embedding_model: local/intfloat/e5-base-v2
+embedding_template: '{text}'
+calibration_file: calibration.pkl
+targets:
+  same: 0.9
+  close: 0.75
+  diverging: 0.5
+  distant: 0.3
+  unrelated: 0.1
+category_stats:
+  close:
+    mean: 0.8744081505917464
+    std: 0.018617568544228767
+    min: 0.8063346029977841
+    max: 0.940191878119935
+  distant:
+    mean: 0.782083869954438
+    std: 0.014806698346543083
+    min: 0.7352890010766033
+    max: 0.8328870650468396
+  diverging:
+    mean: 0.8253639393816254
+    std: 0.01665064591146128
+    min: 0.7615126126039345
+    max: 0.8891581549733474
+  same:
+    mean: 0.9068296892075385
+    std: 0.018525808743054012
+    min: 0.8140380238799318
+    max: 0.9728581798645373
+  unrelated:
+    mean: 0.7507172663278056
+    std: 0.010364144565530413
+    min: 0.7211152117502917
+    max: 0.7891290109566307
+group_columns:
+- doi
+validation:
+  holdout_fraction: 0.2
+  n_train: 9375
+  n_test: 2000
+  mse: 0.006233626333080404
+  mae: 0.06487364928391216
+  category_accuracy: 0.805
+  per_category_accuracy:
+    same: 0.7875
+    close: 0.71
+    diverging: 0.835
+    distant: 0.8875
+    unrelated: 0.805
+  n_groups_train: 78
+  n_groups_test: 20
+cli:
+  command: /Users/benwhalley/dev/soaking/.venv/bin/soak calibrate --paraphrases soak/calibration-data/paraphrases-gpt-5.2.csv
+    --embedding-model local/intfloat/e5-base-v2 -g doi --method scam --df 7 --n-anchors
+    100 --output soak/calibration-data/models/intfloat-e5-base-v2-df7/
+  timestamp: '2026-02-15T21:00:04.538504'
+  options:
+    llm_model: gpt-4.1-mini
+    embedding_model: local/intfloat/e5-base-v2
+    embedding_template: '{text}'
+    df: 7
+    n_anchors: 100
+    holdout: 0.2
+    seed: 42
+    method: scam
+    head: null
+    sample: null
+    paraphrases: soak/calibration-data/paraphrases-gpt-5.2.csv

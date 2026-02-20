@@ -90,6 +90,9 @@ soak zs "soak-data/cfs/a*" -t simple -o cfs-simple-1
 # to use your own data:
 soak zs mydata/*.txt -t simple -o mydata_analysis
 
+# different models:
+soak zs "soak-data/cfs/a*" -t simple -o cfs-simple-1-mistral --model azure_ai/mistral-large-3
+
 ```
 
 You should see something like this:
@@ -109,7 +112,10 @@ open cfs-simple-1_dump/cfs-simple-1_simple.html
 soak zs  "soak-data/cfs/a*" -o cfs-simple-2 --model="gpt-5-mini"
 
 # Compare results
-soak cfs-simple-1_dump cfs-simple-2_dump -o comparison_1_2.html
+soak compare cfs-simple-1_dump cfs-simple-2_dump -o comparison_1_2 --embedding-model local/BAAI/bge-large-en-v1.5 
+
+
+soak compare cfs-simple-1_dump cfs-simple-1-mistral_dump -o comparison_1_mistral --embedding-model local/BAAI/bge-large-en-v1.5 
 ```
 
 

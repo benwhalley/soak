@@ -1,0 +1,43 @@
+{# Offcanvas inspector panel - requires Alpine.js #}
+<div
+    class="offcanvas-backdrop"
+    :class="{ 'open': $store.inspector.open }"
+    @click="$store.inspector.close()"
+></div>
+
+<div
+    class="offcanvas-panel"
+    :class="{ 'open': $store.inspector.open }"
+    x-show="$store.inspector.open"
+    x-transition:enter="transition ease-out duration-300"
+    x-transition:enter-start="transform translate-x-full"
+    x-transition:enter-end="transform translate-x-0"
+>
+    <div class="offcanvas-header">
+        <h3 class="offcanvas-title" x-text="$store.inspector.title || 'Theme Comparison'"></h3>
+        <button class="offcanvas-close" @click="$store.inspector.close()">&times;</button>
+    </div>
+    <div class="offcanvas-body">
+        <template x-if="$store.inspector.type === 'similarity'">
+            <div>
+                <!-- similarity score -->
+                <div class="inspector-similarity" :class="$store.inspector.getSimilarityClass()">
+                    <div class="inspector-similarity-value" x-text="$store.inspector.similarity?.toFixed(2)"></div>
+                    <div class="inspector-similarity-label">Calibrated Similarity</div>
+                </div>
+
+                <!-- theme A -->
+                <div class="inspector-theme">
+                    <div class="inspector-theme-name" x-text="$store.inspector.themeA?.name"></div>
+                    <div class="inspector-theme-description" x-text="$store.inspector.themeA?.description"></div>
+                </div>
+
+                <!-- theme B -->
+                <div class="inspector-theme">
+                    <div class="inspector-theme-name" x-text="$store.inspector.themeB?.name"></div>
+                    <div class="inspector-theme-description" x-text="$store.inspector.themeB?.description"></div>
+                </div>
+            </div>
+        </template>
+    </div>
+</div>

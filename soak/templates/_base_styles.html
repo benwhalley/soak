@@ -122,3 +122,250 @@
         }
 
         html { scroll-behavior: smooth; }
+
+        /* =============================================
+           TAB NAVIGATION
+           ============================================= */
+        .soak-tabs {
+            display: flex;
+            gap: 0;
+            border-bottom: 2px solid #e1e8ed;
+            margin-bottom: 1.5rem;
+        }
+        .soak-tab {
+            padding: 0.75rem 1.25rem;
+            font-size: 0.9rem;
+            font-weight: 500;
+            color: #666;
+            background: none;
+            border: none;
+            cursor: pointer;
+            position: relative;
+            transition: color 0.2s;
+        }
+        .soak-tab:hover { color: #333; }
+        .soak-tab.active {
+            color: #2980b9;
+        }
+        .soak-tab.active::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: #2980b9;
+        }
+        .soak-tab-panel { display: none; }
+        .soak-tab-panel.active { display: block; }
+
+        /* =============================================
+           SELF-SIMILARITY MATRIX
+           ============================================= */
+        .self-similarity-table {
+            border-collapse: collapse;
+            font-size: 0.8rem;
+            margin: 1rem 0;
+        }
+        .self-similarity-table th,
+        .self-similarity-table td {
+            padding: 0.4rem 0.5rem;
+            text-align: center;
+            border: 1px solid #e1e8ed;
+        }
+        .self-similarity-table th {
+            background: #f8f9fa;
+            font-weight: 600;
+            max-width: 120px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        .self-similarity-table th.row-header {
+            text-align: left;
+        }
+        .self-similarity-cell {
+            cursor: pointer;
+            transition: transform 0.1s, box-shadow 0.1s;
+            min-width: 50px;
+        }
+        .self-similarity-cell:hover {
+            transform: scale(1.05);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+            z-index: 10;
+            position: relative;
+        }
+        .self-similarity-cell.diagonal {
+            background: #f0f0f0 !important;
+            color: #999;
+            cursor: default;
+        }
+
+        /* similarity colour scale matching web app (3 colours) */
+        /* < 0.5: red, 0.5-0.7: yellow, >= 0.7: green */
+        .sim-high { background: rgb(80, 200, 90); color: #333; }
+        .sim-medium { background: rgb(240, 200, 90); color: #333; }
+        .sim-low { background: rgb(200, 80, 80); color: white; }
+
+        /* =============================================
+           TOGGLE SWITCH
+           ============================================= */
+        .toggle-switch {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.8rem;
+            color: #666;
+        }
+        .toggle-switch input[type="checkbox"] {
+            display: none;
+        }
+        .toggle-switch .toggle-track {
+            width: 40px;
+            height: 20px;
+            background: #ccc;
+            border-radius: 10px;
+            position: relative;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .toggle-switch .toggle-track::after {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            background: white;
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+            transition: left 0.2s;
+        }
+        .toggle-switch input:checked + .toggle-track {
+            background: #2980b9;
+        }
+        .toggle-switch input:checked + .toggle-track::after {
+            left: 22px;
+        }
+        .toggle-switch .toggle-label {
+            cursor: pointer;
+        }
+
+        /* =============================================
+           OFFCANVAS / INSPECTOR PANEL
+           ============================================= */
+        :root {
+            --header-height: 42px;
+        }
+        .offcanvas-panel {
+            position: fixed;
+            top: var(--header-height);
+            right: 0;
+            width: 400px;
+            max-width: 90vw;
+            height: calc(100vh - var(--header-height));
+            background: white;
+            box-shadow: -4px 0 20px rgba(0,0,0,0.15);
+            z-index: 1040;
+            transform: translateX(100%);
+            transition: transform 0.3s ease;
+            overflow-y: auto;
+        }
+        .offcanvas-panel.open {
+            transform: translateX(0);
+        }
+        .offcanvas-header {
+            padding: 1rem;
+            border-bottom: 1px solid #e1e8ed;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            background: white;
+            z-index: 10;
+        }
+        .offcanvas-title {
+            font-size: 1rem;
+            font-weight: 600;
+            margin: 0;
+        }
+        .offcanvas-close {
+            background: none;
+            border: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            color: #666;
+            padding: 0;
+            line-height: 1;
+        }
+        .offcanvas-close:hover { color: #333; }
+        .offcanvas-body {
+            padding: 1rem;
+        }
+        .offcanvas-backdrop {
+            position: fixed;
+            top: var(--header-height);
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.3);
+            z-index: 1035;
+            display: none;
+        }
+        .offcanvas-backdrop.open {
+            display: block;
+        }
+
+        /* inspector-specific styles */
+        .inspector-theme {
+            background: #f8f9fa;
+            border-radius: 6px;
+            padding: 1rem;
+            margin-bottom: 1rem;
+        }
+        .inspector-theme-name {
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 0.5rem;
+        }
+        .inspector-theme-description {
+            font-size: 0.9rem;
+            color: #555;
+            line-height: 1.5;
+        }
+        .inspector-similarity {
+            text-align: center;
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 6px;
+        }
+        .inspector-similarity-value {
+            font-size: 2rem;
+            font-weight: 700;
+        }
+        .inspector-similarity-label {
+            font-size: 0.8rem;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        /* =============================================
+           CDN FALLBACK MESSAGE
+           ============================================= */
+        .cdn-fallback-message {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            border-radius: 4px;
+            padding: 0.75rem 1rem;
+            margin-bottom: 1rem;
+            font-size: 0.85rem;
+            color: #856404;
+        }
+
+        @media print {
+            .soak-tabs { display: none; }
+            .soak-tab-panel { display: block !important; }
+            .offcanvas-panel { display: none !important; }
+            .offcanvas-backdrop { display: none !important; }
+        }

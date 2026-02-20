@@ -1153,6 +1153,9 @@ class VerifyQuotes(CompletionDAGNode):
         )
         logger.info(f"Document boundaries created: {len(doc_boundaries)} documents")
 
+        # Store boundaries for output (web UI needs this for position mapping)
+        self._doc_boundaries = doc_boundaries
+
         # Backward compatibility: support both old inputs[0] and new quotes_from
         source_node = self.quotes_from or (self.inputs[0] if self.inputs else None)
         if not source_node:
@@ -1287,10 +1290,10 @@ class VerifyQuotes(CompletionDAGNode):
                     try:
                         async with semaphore:
                             result = await self.llm_as_judge(quote, span_text)
-                            df.at[idx, "llm_explanation"] = result["explanation"]
-                            df.at[idx, "llm_is_contained"] = result["is_contained"]
+                            df.at[idx, "llm_explanation"] = result.get("explanation")
+                            df.at[idx, "llm_is_contained"] = result.get("is_contained")
                             # Store ChatterResult for export and cache statistics
-                            if result["chatter_result"]:
+                            if result.get("chatter_result"):
                                 self._llm_results_by_type["existence"][quote_hash] = (
                                     result["chatter_result"]
                                 )
@@ -1323,6 +1326,15 @@ class VerifyQuotes(CompletionDAGNode):
             logger.info(
                 f"LLM existence verification complete for {len(poor_matches)} quotes"
             )
+
+        # Add code_name to all matches by linking via quote_hash
+        # This is done regardless of check_fairness so verification results always have code info
+        quote_hash_to_context = {
+            item["quote"].hash(): item for item in quotes_with_context
+        }
+        df["code_name"] = df["quote_hash"].apply(
+            lambda h: quote_hash_to_context.get(h, {}).get("code", {})
+        ).apply(lambda c: getattr(c, "name", None) if c else None)
 
         # Stage 2: Fairness verification for themes (optional)
         if self.check_fairness and self.verification_type == "theme":
@@ -1525,7 +1537,15 @@ class VerifyQuotes(CompletionDAGNode):
             )
 
         # Store output for downstream nodes to access via context
-        self.output = self.sentence_matches
+        # Include document boundaries for position mapping in web UI
+        self.output = {
+            "matches": self.sentence_matches,
+            "doc_boundaries": [
+                {"name": name, "start": start, "end": end}
+                for name, start, end in self._doc_boundaries
+            ],
+            "stats": self.stats,
+        }
 
         logger.info(
             f"VerifyQuotes '{self.name}' complete: {n_quotes} quotes, "

@@ -1,0 +1,80 @@
+# Calibration Configuration
+# =========================
+# This file defines the target values and embedding models for calibration.
+
+# Target values for semantic categories
+# These map raw angular similarity to interpretable scores.
+# Values were empirically optimised to match natural embedding gaps.
+targets:
+  same: 0.9
+  close: 0.75
+  diverging: 0.5
+  distant: 0.3
+  unrelated: 0.1
+
+# Paraphrase generation settings
+paraphrase_generation:
+  llm_model: gpt-5.2
+  prompt_file: paraphrases.sd
+  source_file: thematic_analysis_papers.csv
+  source_column: theme_description
+  group_column: doi
+
+# Calibration fitting settings
+calibration:
+  method: scam
+  df: 7  # Smooth S-curve, preserves ordering above 0.9
+  holdout: 0.2
+  seed: 42
+
+# Embedding models to calibrate
+# Format: model_name, folder_name, template (optional, defaults to "{text}")
+models:
+  # Recommended models
+  - name: local/BAAI/bge-large-en-v1.5
+    folder: BAAI-bge-large-en-v1.5
+    recommended: true
+    notes: Best overall accuracy and robustness
+
+  - name: local/thenlper/gte-base
+    folder: thenlper-gte-base
+    notes: High accuracy, lower separation
+
+  - name: local/BAAI/bge-base-en-v1.5
+    folder: BAAI-bge-base-en-v1.5
+    notes: Good balance of speed and accuracy
+
+  # Large/high-quality models
+  - name: local/thenlper/gte-large
+    folder: thenlper-gte-large
+    notes: Larger variant of gte-base
+
+  # Small/fast models
+  - name: local/BAAI/bge-small-en-v1.5
+    folder: BAAI-bge-small-en-v1.5
+    notes: Fast, lower accuracy
+
+  - name: local/sentence-transformers/all-MiniLM-L6-v2
+    folder: all-MiniLM-L6-v2
+    notes: Fastest, lowest accuracy
+
+  - name: local/sentence-transformers/all-mpnet-base-v2
+    folder: all-mpnet-base-v2
+    notes: Best raw separation, moderate accuracy
+
+  # Models requiring special templates
+  - name: local/intfloat/e5-base
+    folder: intfloat-e5-base
+    template: "passage: {text}"
+    notes: Requires passage prefix template
+
+  # OpenAI models (require API key)
+  - name: text-embedding-3-small
+    folder: text-embedding-3-small
+    recommended: true
+    notes: requires OpenAI API key
+
+  - name: text-embedding-3-large
+    folder: text-embedding-3-large
+    recommended: false
+    notes: requires OpenAI API key

@@ -1,0 +1,71 @@
+version: '1.0'
+method: scam
+embedding_model: openai/text-embedding-3-small
+embedding_template: '{text}'
+calibration_file: calibration.pkl
+targets:
+  same: 0.9
+  close: 0.75
+  diverging: 0.5
+  distant: 0.3
+  unrelated: 0.1
+category_stats:
+  close:
+    mean: 0.7930472652922143
+    std: 0.030788694505537614
+    min: 0.6922922252176249
+    max: 0.8820738359657087
+  distant:
+    mean: 0.5960855743953418
+    std: 0.030972648252578762
+    min: 0.4990836592721889
+    max: 0.7147718248020449
+  diverging:
+    mean: 0.6998263126151116
+    std: 0.0305973674590523
+    min: 0.5863919490201606
+    max: 0.8013577571348485
+  same:
+    mean: 0.8434586068235339
+    std: 0.029683386102075566
+    min: 0.7329816482820063
+    max: 0.9420705516158681
+  unrelated:
+    mean: 0.5212735518092293
+    std: 0.013834950927987132
+    min: 0.47886418540685205
+    max: 0.5812383057299417
+group_columns:
+- doi
+validation:
+  holdout_fraction: 0.2
+  n_train: 9375
+  n_test: 2000
+  mse: 0.004797361930647423
+  mae: 0.05409609585318877
+  category_accuracy: 0.822
+  per_category_accuracy:
+    same: 0.7725
+    close: 0.7325
+    diverging: 0.7975
+    distant: 0.8125
+    unrelated: 0.995
+  n_groups_train: 78
+  n_groups_test: 20
+cli:
+  command: /Users/benwhalley/dev/soaking/.venv/bin/soak calibrate --paraphrases soak/calibration-data/paraphrases-gpt-5.2.csv
+    --embedding-model openai/text-embedding-3-small -g doi --method scam --df 7 --n-anchors
+    100 --output soak/calibration-data/models/text-embedding-3-small-df7/
+  timestamp: '2026-02-15T21:01:35.935002'
+  options:
+    llm_model: gpt-4.1-mini
+    embedding_model: openai/text-embedding-3-small
+    embedding_template: '{text}'
+    df: 7
+    n_anchors: 100
+    holdout: 0.2
+    seed: 42
+    method: scam
+    head: null
+    sample: null
+    paraphrases: soak/calibration-data/paraphrases-gpt-5.2.csv

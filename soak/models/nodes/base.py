@@ -38,12 +38,24 @@ class DAGNode(BaseModel):
     inputs: Optional[List[str]] = []
     template: Optional[str] = None
     output: Optional[OutputUnion] = Field(default=None)
+    model: Optional[str] = Field(
+        default=None,
+        description="Model alias (e.g., 'default', 'best') or model ID to use for this node",
+    )
 
     def get_model(self):
+        # First check explicit model_name attribute (legacy)
         model_name = getattr(self, "model_name", None)
         if model_name:
-            m = LLM(model_name=model_name)
-            return m
+            return LLM(model_name=model_name)
+
+        # Check model alias/ID field
+        if self.model:
+            # Resolve alias to actual model ID via DAG config
+            resolved_model = self.dag.config.resolve_model_alias(self.model)
+            return LLM(model_name=resolved_model)
+
+        # Fall back to default model from DAG config
         return self.dag.config.get_model()
 
     def validate_template(self):
@@ -203,6 +215,7 @@ class CompletionDAGNode(DAGNode):
     _prompt_tokens: int = PrivateAttr(default=0)
     _completion_tokens: int = PrivateAttr(default=0)
     _llm_results: List[ChatterResult] = PrivateAttr(default_factory=list)
+    _input_count: int = PrivateAttr(default=0)  # tracks expected input count for progress
 
     def _accumulate_costs(self, result: ChatterResult) -> None:
         """Extract and accumulate costs from a ChatterResult"""

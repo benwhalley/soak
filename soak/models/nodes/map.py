@@ -53,6 +53,9 @@ class Map(ItemsNode, CompletionDAGNode):
         Returns:
             Flat list of results (ChatterResult or rendered strings)
         """
+        # Track input count for progress reporting
+        self._input_count = len(items)
+
         # Convert items to Box items for templates
         boxed_items = []
         for item in items:
@@ -174,6 +177,18 @@ class Map(ItemsNode, CompletionDAGNode):
                             result.fresh_cost,
                             result.prompt_tokens + result.completion_tokens,
                         )
+
+                    # call progress callback for web UI if available
+                    if self.dag.config.progress_callback:
+                        try:
+                            self.dag.config.progress_callback(
+                                self.name,
+                                len(self._llm_results),
+                                self._input_count,
+                                self._total_cost,
+                            )
+                        except Exception:
+                            pass  # don't let callback errors affect execution
 
         return results
 

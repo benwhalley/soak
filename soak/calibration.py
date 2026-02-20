@@ -4,6 +4,7 @@ import json
 import logging
 import pickle
 import warnings
+from importlib import resources
 from pathlib import Path
 from typing import Optional
 
@@ -42,6 +43,7 @@ def fit_calibration_scam(
     holdout_fraction: float = 0.2,
     random_seed: int = 42,
     groups: np.ndarray | None = None,
+    n_anchors: int = 0,
 ) -> tuple[dict, dict | None]:
     """Fit monotonic scam model via R for calibration.
 
@@ -56,6 +58,8 @@ def fit_calibration_scam(
         holdout_fraction: Fraction of data to hold out for validation (0-1)
         random_seed: Random seed for reproducible train/test split
         groups: Optional grouping variable for random effects (e.g., doi)
+        n_anchors: Number of anchor points at floor (0,0) and ceiling (1,1)
+                   to force the curve to span the full 0-1 range
 
     Returns:
         Tuple of (lookup_dict, validation_stats or None)
@@ -84,6 +88,25 @@ def fit_calibration_scam(
     y = np.array([targets[cat] for cat in categories])
     X = similarities
     categories_arr = np.array(categories)
+
+    # add anchor points to force curve through (0,0) and (1,1)
+    if n_anchors > 0:
+        anchor_X = np.concatenate([
+            np.full(n_anchors, 0.0),  # floor anchors at raw=0
+            np.full(n_anchors, 1.0),  # ceiling anchors at raw=1
+        ])
+        anchor_y = np.concatenate([
+            np.zeros(n_anchors),  # target=0 at floor
+            np.ones(n_anchors),   # target=1 at ceiling
+        ])
+        X = np.concatenate([X, anchor_X])
+        y = np.concatenate([y, anchor_y])
+        # extend categories with placeholder (won't be used for validation)
+        categories_arr = np.concatenate([categories_arr, np.full(2 * n_anchors, "_anchor")])
+        if groups is not None:
+            # use a unique group for anchors to avoid affecting random effects
+            groups = np.concatenate([groups, np.full(2 * n_anchors, "_anchor_group")])
+        logger.info(f"Added {2 * n_anchors} anchor points at (0,0) and (1,1)")
 
     # create dataframe for R
     df_data = pd.DataFrame(
@@ -191,7 +214,8 @@ def fit_calibration_scam(
         model = scam.scam(robjects.Formula(formula_str), data=r_df_full)
 
     # create lookup table for later interpolation
-    x_lookup = np.linspace(0.5, 1.0, 500)
+    # extend from 0 to include anchor region for smooth curve plotting
+    x_lookup = np.linspace(0.0, 1.0, 500)
     df_lookup = pd.DataFrame({"similarity": x_lookup})
     if groups is not None:
         # use first group level as placeholder (will be excluded)
@@ -247,9 +271,9 @@ def fit_calibration_scam(
 
 DEFAULT_TARGETS = {
     "same": 0.9,
-    "close": 0.8,
-    "diverging": 0.6,
-    "distant": 0.4,
+    "close": 0.75,
+    "diverging": 0.5,
+    "distant": 0.3,
     "unrelated": 0.1,
 }
 
@@ -823,7 +847,7 @@ def generate_paraphrases(
     results = chatter(
         prompt,
         contexts,
-        model=LLM(model=llm_model),
+        model=LLM(model_name=llm_model),
         max_concurrent=max_concurrent,
         on_complete=on_complete,
     )
@@ -862,3 +886,141 @@ def generate_paraphrases(
 
     logger.info(f"Generated {len(records)} paraphrase pairs")
     return pd.DataFrame(records)
+
+
+# --- Bundled calibration support ---
+
+# Mapping from embedding model names to bundled calibration folder names
+BUNDLED_CALIBRATION_MODELS = {
+    # Local models (sentence-transformers)
+    "local/intfloat/e5-base": "intfloat-e5-base",
+    "local/BAAI/bge-large-en-v1.5": "BAAI-bge-large-en-v1.5",
+    "local/sentence-transformers/all-mpnet-base-v2": "all-mpnet-base-v2",
+    "local/sentence-transformers/all-MiniLM-L6-v2": "all-MiniLM-L6-v2",
+    "local/sentence-t5-large": "sentence-t5-large",
+    "local/thenlper/gte-base": "thenlper-gte-base",
+    "local/thenlper/gte-large": "thenlper-gte-large",
+    "local/BAAI/bge-base-en-v1.5": "BAAI-bge-base-en-v1.5",
+    "local/BAAI/bge-small-en-v1.5": "BAAI-bge-small-en-v1.5",
+    # OpenAI models
+    "text-embedding-3-large": "text-embedding-3-large",
+    "text-embedding-3-small": "text-embedding-3-small",
+}
+
+
+def get_bundled_calibration_path() -> Path:
+    """Get path to bundled calibration data directory.
+
+    Returns:
+        Path to the calibration-data directory within the package.
+    """
+    # Use importlib.resources for package-relative paths
+    with resources.as_file(resources.files("soak") / "calibration-data") as path:
+        return Path(path)
+
+
+def list_bundled_calibrations() -> list[dict]:
+    """List all available bundled calibrations.
+
+    Returns:
+        List of dicts with model info: name, folder, has_calibration, validation_stats
+    """
+    base_path = get_bundled_calibration_path()
+    models_path = base_path / "models"
+
+    if not models_path.exists():
+        return []
+
+    results = []
+    for folder in sorted(models_path.iterdir()):
+        if not folder.is_dir():
+            continue
+
+        yaml_path = folder / "calibration.yaml"
+        if not yaml_path.exists():
+            continue
+
+        import yaml
+
+        metadata = yaml.safe_load(yaml_path.read_text())
+        results.append(
+            {
+                "folder": folder.name,
+                "embedding_model": metadata.get("embedding_model", "unknown"),
+                "embedding_template": metadata.get("embedding_template", "{text}"),
+                "method": metadata.get("method", "scam"),
+                "category_accuracy": metadata.get("validation", {}).get(
+                    "category_accuracy"
+                ),
+                "mae": metadata.get("validation", {}).get("mae"),
+                "n_train": metadata.get("validation", {}).get("n_train"),
+            }
+        )
+
+    return results
+
+
+def get_bundled_calibration(
+    embedding_model: str,
+) -> Optional[Path]:
+    """Get path to bundled calibration for a given embedding model.
+
+    Args:
+        embedding_model: Name of embedding model (e.g., 'local/intfloat/e5-base')
+
+    Returns:
+        Path to calibration.yaml if found, None otherwise.
+    """
+    folder_name = BUNDLED_CALIBRATION_MODELS.get(embedding_model)
+    if not folder_name:
+        # Try matching by suffix
+        for model_name, folder in BUNDLED_CALIBRATION_MODELS.items():
+            if embedding_model.endswith(model_name.split("/")[-1]):
+                folder_name = folder
+                break
+
+    if not folder_name:
+        return None
+
+    base_path = get_bundled_calibration_path()
+    yaml_path = base_path / "models" / folder_name / "calibration.yaml"
+
+    if yaml_path.exists():
+        return yaml_path
+
+    return None
+
+
+def get_bundled_paraphrases_path(llm_model: str = "gpt-5.2") -> Optional[Path]:
+    """Get path to bundled paraphrases CSV for a specific LLM model.
+
+    Args:
+        llm_model: LLM model name used to generate paraphrases (default: gpt-5.2)
+
+    Returns:
+        Path to paraphrases-{llm_model}.csv if it exists, None otherwise.
+    """
+    base_path = get_bundled_calibration_path()
+    csv_path = base_path / f"paraphrases-{llm_model}.csv"
+    return csv_path if csv_path.exists() else None
+
+
+def list_bundled_paraphrases() -> list[Path]:
+    """List all available bundled paraphrase files.
+
+    Returns:
+        List of paths to paraphrases-*.csv files.
+    """
+    base_path = get_bundled_calibration_path()
+    return sorted(base_path.glob("paraphrases-*.csv"))
+
+
+def get_bundled_source_themes_path() -> Optional[Path]:
+    """Get path to bundled source themes CSV.
+
+    Returns:
+        Path to thematic_analysis_papers.csv if it exists, None otherwise.
+    """
+    base_path = get_bundled_calibration_path()
+    csv_path = base_path / "thematic_analysis_papers.csv"
+    return csv_path if csv_path.exists() else None
