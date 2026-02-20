@@ -81,6 +81,7 @@ nav:
       - Adapting Pipelines: how-to/adapting-pipelines.md
   - Explanation:
       - What is soak?: explanation/what-is-soak.md
+      - Model Aliases: explanation/model-aliases.md
       - Calibration: explanation/calibration.md
       - Advanced Coverage Methods: explanation/hyde-coverage.md
       - Quote Verification Approach: explanation/quote-verification-approach.md
