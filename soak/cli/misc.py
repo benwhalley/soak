@@ -173,8 +173,8 @@ def calibrate(
         from ..calibration import _check_r_available
 
         if not _check_r_available():
-            logger.error("R and scam package required for calibration.")
-            logger.error("Install: uv pip install rpy2")
+            logger.error("R and scam package required for scam calibration.")
+            logger.error("Install with: pip install 'soaking[calibration]'")
             logger.error("Then in R: install.packages('scam')")
             raise typer.Exit(1)
 
