@@ -12,6 +12,8 @@ from .base import (  # Exceptions; Base models; Utility functions
     Theme, Themes, TrackedItem, extract_content, extract_prompt,
     get_action_lookup, get_default_llm_credentials, get_embedding,
     get_embedding_async, memory, safe_json_dump, semaphore)
+# Context variable models
+from .context import ContextVariable, get_context_defaults, normalize_context
 # DAG execution
 from .dag import (DAG, DAGConfig, DAGNodeUnion, Edge, OutputUnion,
                   get_template_variables, render_strict_template, run_node)
@@ -35,6 +37,7 @@ __all__ = [
     "Code",
     "CodeList",
     "CodeSlugStr",
+    "ContextVariable",
     "Document",
     "QualitativeAnalysis",
     "QualitativeAnalysisComparison",
@@ -71,10 +74,12 @@ __all__ = [
     "extract_content",
     "extract_prompt",
     "get_action_lookup",
+    "get_context_defaults",
     "get_default_llm_credentials",
     "get_embedding",
     "get_embedding_async",
     "get_template_variables",
+    "normalize_context",
     "render_strict_template",
     "run_node",
     "safe_json_dump",

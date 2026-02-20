@@ -68,8 +68,11 @@ def run(
         envvar="SOAK_SEED",
         help="Random seed for reproducible outputs and document shuffling (default: 42)",
     ),
-    model_name: str = typer.Option(
-        None, "--model", "-m", envvar="SOAK_MODEL", help="LLM model name"
+    model: list[str] = typer.Option(
+        None,
+        "--model",
+        "-m",
+        help="Model configuration. Use 'model_id' for default or 'alias=model_id' format (can be used multiple times)",
     ),
     progress: bool = typer.Option(
         None,
@@ -218,8 +221,25 @@ def run(
             pipeline.default_context[key] = value
             logger.info(f"Set context variable: {key}={value}")
 
-    if model_name is not None:
-        pipeline.config.model_name = model_name
+    # Parse model configurations
+    # Supports: --model gpt-4 (sets default) or --model best=gpt-5 (sets alias)
+    model_aliases = {}
+    if model:
+        for m in model:
+            if "=" in m:
+                alias, model_id = m.split("=", 1)
+                model_aliases[alias.strip()] = model_id.strip()
+                logger.info(f"Set model alias: {alias}={model_id}")
+            else:
+                # Simple model name - set as default
+                model_aliases["default"] = m.strip()
+                pipeline.config.model_name = m.strip()
+                logger.info(f"Set default model: {m}")
+
+    # Pass model aliases to pipeline config
+    if model_aliases:
+        pipeline.config.models = model_aliases
+
     if seed is not None:
         pipeline.config.seed = seed
         logger.info(f"Set seed to {seed}")
@@ -266,8 +286,9 @@ def run(
     for inp in input:
         cmd_parts.append(str(inp))
     cmd_parts.extend(["-o", output])
-    if model_name:
-        cmd_parts.extend(["--model", model_name])
+    if model:
+        for m in model:
+            cmd_parts.extend(["--model", m])
     if sample is not None:
         cmd_parts.extend(["--sample", str(sample)])
     if head is not None:
@@ -283,7 +304,7 @@ def run(
     # Generate config hash for dump folder naming
     config_hash = hash_run_config(
         input_files=input,
-        model_name=model_name,
+        model_name=model_aliases.get("default") if model_aliases else None,
         context=context,
         template=template,
     )
@@ -291,7 +312,7 @@ def run(
     metadata = {
         "command": " ".join(cmd_parts),
         "pipeline_file": str(pipyml),
-        "model_name": model_name,
+        "model_aliases": model_aliases or {},
         "templates": template,
         "unique_id": config_hash,
         "sample_n": sample,

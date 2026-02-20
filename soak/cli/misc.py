@@ -1,4 +1,4 @@
-"""Miscellaneous CLI commands: tui, test, calibrate."""
+"""Miscellaneous CLI commands: test, calibrate."""
 
 import hashlib
 import logging
@@ -9,17 +9,6 @@ import typer
 from ._common import check_and_prompt_credentials
 
 logger = logging.getLogger(__name__)
-
-
-def tui():
-    """Open the terminal user interface for building commands."""
-    # import here to avoid circular imports and loading trogon at module level
-    from trogon import Trogon
-    from typer.main import get_group
-
-    from . import app
-
-    Trogon(get_group(app), app_name="soak").run()
 
 
 def test():
@@ -161,9 +150,9 @@ def calibrate(
 
     The calibration maps raw angular similarity to a 0.1-0.9 scale where:
     - 0.9 = same meaning (paraphrase quality)
-    - 0.8 = close meaning
-    - 0.5 = partial overlap
-    - 0.3 = weak relation
+    - 0.75 = close meaning
+    - 0.5 = diverging (partial overlap)
+    - 0.3 = distant (weak relation)
     - 0.1 = unrelated
 
     The resulting calibration files can be used with `soak compare --calibration`.
@@ -413,7 +402,7 @@ def calibrate(
 
         re_info = f" + RE ({group_col[0]})" if groups is not None else ""
         print(f"  Method: Monotonic scam (R){re_info}")
-        print(f"  df: {spline_df}, Holdout: {holdout:.0%}")
+        print(f"  df: {spline_df}, Anchors: {n_anchors}, Holdout: {holdout:.0%}")
         model, validation_stats = fit_calibration_scam(
             similarities,
             df[category_col].tolist(),
@@ -422,6 +411,7 @@ def calibrate(
             holdout_fraction=holdout,
             random_seed=seed,
             groups=groups,
+            n_anchors=n_anchors,
         )
     else:  # gam
         print(f"  Method: Monotonic GAM (Python)")

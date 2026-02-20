@@ -1,0 +1,102 @@
+{# Alpine.js stores and components for interactive features #}
+<script>
+document.addEventListener('alpine:init', () => {
+    // Tab store
+    Alpine.store('tabs', {
+        activeTab: 'themes',
+        setTab(tabId) {
+            this.activeTab = tabId;
+        }
+    });
+
+    // Inspector store for offcanvas panel
+    Alpine.store('inspector', {
+        open: false,
+        type: null,
+        title: '',
+        themeA: null,
+        themeB: null,
+        similarity: null,
+        rawSimilarity: null,
+
+        openSimilarity(themeA, themeB, calibrated, raw) {
+            this.type = 'similarity';
+            this.title = 'Theme Comparison';
+            this.themeA = themeA;
+            this.themeB = themeB;
+            this.similarity = calibrated;
+            this.rawSimilarity = raw;
+            this.open = true;
+        },
+
+        close() {
+            this.open = false;
+        },
+
+        getSimilarityClass() {
+            const sim = this.similarity;
+            // 3-color scheme: < 0.5 red, 0.5-0.7 yellow, >= 0.7 green
+            if (sim >= 0.7) return 'sim-high';
+            if (sim >= 0.5) return 'sim-medium';
+            return 'sim-low';
+        }
+    });
+
+    // Self-similarity matrix store
+    Alpine.store('selfSimilarity', {
+        useCalibrated: true,
+
+        toggleCalibrated() {
+            this.useCalibrated = !this.useCalibrated;
+        },
+
+        getMatrix() {
+            if (!window.SOAK_DATA?.selfSimilarity) return [];
+            return this.useCalibrated
+                ? window.SOAK_DATA.selfSimilarity.calibrated_matrix
+                : window.SOAK_DATA.selfSimilarity.raw_matrix;
+        },
+
+        getCellValue(i, j) {
+            const matrix = this.getMatrix();
+            if (!matrix || !matrix[i]) return 0;
+            return matrix[i][j] || 0;
+        },
+
+        getCellClass(i, j) {
+            if (i === j) return 'diagonal';
+            const val = this.getCellValue(i, j);
+            // 3-color scheme: < 0.5 red, 0.5-0.7 yellow, >= 0.7 green
+            if (val >= 0.7) return 'sim-high';
+            if (val >= 0.5) return 'sim-medium';
+            return 'sim-low';
+        },
+
+        inspectCell(i, j) {
+            if (i === j) return; // don't inspect diagonal
+            const data = window.SOAK_DATA;
+            if (!data?.themes || !data?.selfSimilarity) return;
+
+            const themeA = data.themes[i];
+            const themeB = data.themes[j];
+            const calibrated = data.selfSimilarity.calibrated_matrix[i][j];
+            const raw = data.selfSimilarity.raw_matrix[i][j];
+
+            Alpine.store('inspector').openSimilarity(themeA, themeB, calibrated, raw);
+        }
+    });
+});
+
+// helper function for similarity cell colours (CSS fallback)
+// 3-color scheme: < 0.5 red, 0.5-0.7 yellow, >= 0.7 green
+function getSimilarityColor(value) {
+    if (value >= 0.7) return 'rgb(80, 200, 90)';
+    if (value >= 0.5) return 'rgb(240, 200, 90)';
+    return 'rgb(200, 80, 80)';
+}
+
+function getSimilarityTextColor(value) {
+    if (value >= 0.5) return '#333';
+    return 'white';
+}
+</script>

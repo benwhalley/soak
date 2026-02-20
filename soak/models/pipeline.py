@@ -161,12 +161,54 @@ class QualitativeAnalysisPipeline(DAG):
         except importlib.metadata.PackageNotFoundError:
             soak_version = "dev"
 
+        # compute self-similarity matrix for simple.html template
+        self_similarity = None
+        themes_json = "[]"
+        self_similarity_json = "null"
+
+        if "simple" in template_name:
+            import json
+
+            try:
+                analysis_result = self.result()
+                themes_data = []
+
+                # extract theme data for JSON embedding
+                if analysis_result.themes:
+                    for t in analysis_result.themes:
+                        if hasattr(t, "model_dump"):
+                            themes_data.append(t.model_dump())
+                        elif isinstance(t, dict):
+                            themes_data.append(t)
+                        else:
+                            themes_data.append({"name": str(t), "description": ""})
+
+                themes_json = json.dumps(themes_data, default=str)
+
+                # compute self-similarity if we have multiple themes
+                if len(themes_data) > 1:
+                    try:
+                        from ..analysis.self_similarity import compute_self_similarity_matrix
+
+                        self_similarity = compute_self_similarity_matrix(themes_data)
+                        self_similarity_json = json.dumps(self_similarity, default=str)
+                    except ImportError:
+                        logger.debug("Self-similarity module not available")
+                    except Exception as e:
+                        logger.warning(f"Could not compute self-similarity: {e}")
+
+            except Exception as e:
+                logger.debug(f"Could not prepare template data: {e}")
+
         return template.render(
             pipeline=self,
             result=self.result(),
             detail=dd,
             execution_order=execution_order,
             soak_version=soak_version,
+            self_similarity=self_similarity,
+            themes_json=themes_json,
+            self_similarity_json=self_similarity_json,
         )
 
     def result(self):

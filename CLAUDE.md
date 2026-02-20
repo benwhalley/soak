@@ -191,3 +191,15 @@ Entry: `soak/cli.py` (Typer)
 - Multi-model support
 - Metrics
 - CSV/HTML export per model + combined statistics
+
+## Development Philosophy
+
+**Backwards compatibility is NOT a priority** during this development phase. Focus on getting the design right. Breaking changes to models, APIs, and data formats are acceptable -- we can always migrate data or reset the database.
+
+
+## Django Web UI (`django_soak/`)
+
+**CSS conventions:**
+- All offcanvas/sidebar elements must use `top: var(--header-height, 42px)` to sit below the main nav
+- Use `height: calc(100vh - var(--header-height, 42px))` for full-height panels
+- Backdrop elements also need `top: var(--header-height)` to avoid covering the nav

@@ -132,7 +132,7 @@ async def _generate_llm_labels(
     from struckdown import LLM, LLMCredentials, chatter_async
 
     # load prompt template from .sd file
-    prompt_path = Path(__file__).parent.parent / "pipelines" / "make_labels.sd"
+    prompt_path = Path(__file__).parent.parent / "templates" / "make_labels.sd"
     prompt_template = prompt_path.read_text()
 
     # format themes as numbered list

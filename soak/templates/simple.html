@@ -9,6 +9,11 @@
           integrity="sha512-rt/SrQ4UNIaGfDyEXZtNcyWvQeOq0QLygHluFQcSjaGB04IxWhal71tKuzP6K8eYXYB6vJV4pHkXcmFGGQ1/0w=="
           crossorigin="anonymous" referrerpolicy="no-referrer" />
 
+    <!-- Alpine.js for reactivity -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"
+            integrity="sha384-Rl3e8p6X+Qm4rkpDlYY6J5GIYB/LsWkDPg7hCuJyGrQq2Z+gL5d5YH5lVHnKfJDH"
+            crossorigin="anonymous"></script>
+
     <style>
 {% include '_base_styles.html' %}
 
@@ -151,10 +156,30 @@
 
         details.meta-info summary { cursor: pointer; font-weight: 600; color: #555; }
         details.meta-info summary:hover { color: #2980b9; }
+
+        a.code-badge {
+            color: inherit;
+            text-decoration: none;
+        }
+        a.code-badge:hover {
+            text-decoration: underline;
+        }
+
+        /* Overlap tab controls */
+        .overlap-controls {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 1rem;
+        }
+
+        /* Responsive self-similarity table */
+        .self-similarity-wrapper {
+            overflow-x: auto;
+        }
     </style>
 </head>
 
-<body>
+<body x-data>
 {% set header_subtitle = 'analysis results' %}
 {% include '_header.html' %}
 
@@ -167,7 +192,7 @@
             <strong>{{k}}:</strong> {{ v }}<br>
             {% endfor %}
         </div>
-        
+
         <details class="meta-info">
             <summary>Source files: {{ pipeline.config.input_source or "files" }} ({{ pipeline.config.document_paths|length }})</summary>
             <ul style="margin-top: 10px; margin-bottom: 0;">
@@ -176,8 +201,6 @@
             {% endfor %}
             </ul>
         </details>
-        
-        
         {% endif %}
 
         {% for node_name in pipeline.config.report_texts %}
@@ -190,69 +213,126 @@
         </div>
         {% endif %}
         {% endfor %}
-        
-        
-        <div class="section-divider"></div>
-        
-        <style>
-            a.code-badge {
-  color: inherit;
-  text-decoration: none;
-}
-
-a.code-badge:hover {
-  text-decoration: underline;
-}
-</style>
-
-        <h2>Themes</h2>
-        {% set node_result = pipeline.nodes_dict['themes'].result().response_obj %}
-    
-        {% for theme in node_result.themes %}
-        <div class="theme-card">
-            <div class="theme-name">{{ theme.name }}</div>
-            <div class="theme-description">{{ theme.description }}</div>
-            {% if theme.code_slugs %}
-            <div class="theme-codes">
-                <div class="theme-codes-label">Related Codes:</div>
-                {% for slug in theme.code_slugs %}
-                    <a href="#code-{{ slug }}" class="code-badge">{{ slug }}
-                    </a>        
-                {% endfor %}
-            </div>
-            {% endif %}
-        </div>
-        {% endfor %}
-        
 
         <div class="section-divider"></div>
-        
-        {% set node_result = pipeline.nodes_dict['codes'].result().response_obj %}
 
-        <h2>Codes</h2>
-        {% for code in node_result.codes %}
-        <div class="code-card" id="code-{{ code.slug }}">
-            <div class="code-name">
-                {{ code.name }}
-                <span class="code-slug">{{ code.slug }}</span>
-            </div>
-            <div class="code-description">{{ code.description }}</div>
-            {% if code.resolved_quotes %}
-            <div class="quotes-section">
-                <div class="quotes-label">Supporting Quotes ({{ code.quotes|length }})</div>
-                {% for quote in code.all_quotes %}
-                <div class="quote">
-                    {{ quote }}
-                </div>
-                {% endfor %}
-            </div>
-            {% else %}
-                <div>
-                    There was a problem recalling the quotes selected for this Code.
-                </div>
+        <!-- Tab Navigation -->
+        <div class="soak-tabs">
+            <button class="soak-tab" :class="{ 'active': $store.tabs.activeTab === 'themes' }" @click="$store.tabs.activeTab = 'themes'">Themes</button>
+            {% if self_similarity and self_similarity.n_themes > 1 %}
+            <button class="soak-tab" :class="{ 'active': $store.tabs.activeTab === 'overlap' }" @click="$store.tabs.activeTab = 'overlap'">Overlap</button>
             {% endif %}
+            <button class="soak-tab" :class="{ 'active': $store.tabs.activeTab === 'codes' }" @click="$store.tabs.activeTab = 'codes'">Codes</button>
         </div>
-        {% endfor %}
+
+        <!-- Themes Tab -->
+        <div class="soak-tab-panel" :class="{ 'active': $store.tabs.activeTab === 'themes' }">
+            <h2>Themes</h2>
+            {% set node_result = pipeline.nodes_dict['themes'].result().response_obj %}
+
+            {% for theme in node_result.themes %}
+            <div class="theme-card">
+                <div class="theme-name">{{ theme.name }}</div>
+                <div class="theme-description">{{ theme.description }}</div>
+                {% if theme.code_slugs %}
+                <div class="theme-codes">
+                    <div class="theme-codes-label">Related Codes:</div>
+                    {% for slug in theme.code_slugs %}
+                        <a href="#code-{{ slug }}" class="code-badge" @click="$store.tabs.activeTab = 'codes'">{{ slug }}</a>
+                    {% endfor %}
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+
+        {% if self_similarity and self_similarity.n_themes > 1 %}
+        <!-- Overlap Tab -->
+        <div class="soak-tab-panel" :class="{ 'active': $store.tabs.activeTab === 'overlap' }">
+            <h2>Theme Overlap</h2>
+            <p style="color: #666; font-size: 0.9rem; margin-bottom: 1rem;">
+                This matrix shows how similar each theme is to every other theme. Click a cell to compare two themes.
+            </p>
+
+            <div class="overlap-controls">
+                <label class="toggle-switch">
+                    <span class="toggle-label">Raw</span>
+                    <input type="checkbox" x-model="$store.selfSimilarity.useCalibrated">
+                    <span class="toggle-track"></span>
+                    <span class="toggle-label">Calibrated</span>
+                </label>
+            </div>
+
+            <div class="self-similarity-wrapper">
+                <table class="self-similarity-table">
+                    <thead>
+                        <tr>
+                            <th></th>
+                            {% for label in self_similarity.short_labels %}
+                            <th title="{{ self_similarity.themes[loop.index0] }}">{{ label }}</th>
+                            {% endfor %}
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row_idx in range(self_similarity.n_themes) %}
+                        <tr>
+                            <th class="row-header" title="{{ self_similarity.themes[row_idx] }}">{{ self_similarity.short_labels[row_idx] }}: {{ self_similarity.themes[row_idx][:30] }}{% if self_similarity.themes[row_idx]|length > 30 %}...{% endif %}</th>
+                            {% for col_idx in range(self_similarity.n_themes) %}
+                            <td
+                                class="self-similarity-cell"
+                                :class="$store.selfSimilarity.getCellClass({{ row_idx }}, {{ col_idx }})"
+                                @click="$store.selfSimilarity.inspectCell({{ row_idx }}, {{ col_idx }})"
+                                :title="$store.selfSimilarity.getCellValue({{ row_idx }}, {{ col_idx }}).toFixed(3)"
+                            >
+                                <span x-text="$store.selfSimilarity.getCellValue({{ row_idx }}, {{ col_idx }}).toFixed(2)"></span>
+                            </td>
+                            {% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+
+            <div style="margin-top: 1rem; font-size: 0.8rem; color: #666;">
+                <strong>Legend:</strong>
+                <span style="background: #27ae60; color: white; padding: 2px 6px; border-radius: 3px; margin-left: 0.5rem;">&ge;0.7</span>
+                <span style="background: #2ecc71; color: white; padding: 2px 6px; border-radius: 3px; margin-left: 0.25rem;">0.5-0.7</span>
+                <span style="background: #f1c40f; color: #333; padding: 2px 6px; border-radius: 3px; margin-left: 0.25rem;">0.4-0.5</span>
+                <span style="background: #e67e22; color: white; padding: 2px 6px; border-radius: 3px; margin-left: 0.25rem;">0.25-0.4</span>
+                <span style="background: #e74c3c; color: white; padding: 2px 6px; border-radius: 3px; margin-left: 0.25rem;">&lt;0.25</span>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Codes Tab -->
+        <div class="soak-tab-panel" :class="{ 'active': $store.tabs.activeTab === 'codes' }">
+            {% set node_result = pipeline.nodes_dict['codes'].result().response_obj %}
+
+            <h2>Codes</h2>
+            {% for code in node_result.codes %}
+            <div class="code-card" id="code-{{ code.slug }}">
+                <div class="code-name">
+                    {{ code.name }}
+                    <span class="code-slug">{{ code.slug }}</span>
+                </div>
+                <div class="code-description">{{ code.description }}</div>
+                {% if code.resolved_quotes %}
+                <div class="quotes-section">
+                    <div class="quotes-label">Supporting Quotes ({{ code.quotes|length }})</div>
+                    {% for quote in code.all_quotes %}
+                    <div class="quote">
+                        {{ quote }}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                    <div>
+                        There was a problem recalling the quotes selected for this Code.
+                    </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
 
         <div class="section-divider"></div>
 
@@ -302,5 +382,32 @@ a.code-badge:hover {
             <p class="mb-0">Generated by <strong>soak</strong> v{{ soak_version | default('unknown') }}</p>
         </footer>
     </div>
+
+    <!-- Inspector Panel -->
+    {% include '_offcanvas.html' %}
+
+    <!-- Alpine.js Components -->
+    {% include '_alpine_components.html' %}
+
+    <!-- Embedded Data for Standalone Operation -->
+    <script id="soak-data" type="application/json">
+    {
+        "themes": {{ themes_json | safe }},
+        "selfSimilarity": {{ self_similarity_json | safe }}
+    }
+    </script>
+
+    <script>
+        // parse embedded data for Alpine.js
+        try {
+            const dataEl = document.getElementById('soak-data');
+            if (dataEl) {
+                window.SOAK_DATA = JSON.parse(dataEl.textContent);
+            }
+        } catch (e) {
+            console.warn('Could not parse embedded SOAK_DATA:', e);
+            window.SOAK_DATA = { themes: [], selfSimilarity: null };
+        }
+    </script>
 </body>
 </html>

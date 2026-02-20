@@ -60,7 +60,7 @@ def resolve_pipeline(pipeline: str, localdir: Path, pipelinedir: Path) -> Path:
     """Resolve pipeline name to file path.
 
     Searches localdir first, then builtin pipelinedir.
-    Tries with/without .soak extension.
+    Tries with/without .soak extension, including subfolders.
 
     Raises:
         FileNotFoundError: If pipeline file not found in any location
@@ -71,8 +71,12 @@ def resolve_pipeline(pipeline: str, localdir: Path, pipelinedir: Path) -> Path:
         pipelinedir / f"{pipeline}",
         pipelinedir / f"{pipeline}.soak",
     ]
+    # also search subfolders (e.g., "zs" finds "thematic_analysis/zs.soak")
+    candidates.extend(pipelinedir.glob(f"**/{pipeline}"))
+    candidates.extend(pipelinedir.glob(f"**/{pipeline}.soak"))
+
     for cand in candidates:
-        if cand.is_file():
+        if isinstance(cand, Path) and cand.is_file():
             return cand
     raise FileNotFoundError(f"Pipeline file not found. Tried: {candidates}")
 

@@ -1,3 +1,4 @@
+_archive/
 __pycache__
 .DS_Store
 .env
@@ -17,3 +18,6 @@ FILTH.md
 REDACTED_INFO.md
 notebooks/.ipynb_checkpoints
 notebooks
+site/*
+_archive
+soak/_archive_pipelines

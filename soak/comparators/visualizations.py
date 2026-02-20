@@ -409,36 +409,41 @@ def create_transport_sankey(
     )
 
     # annotations for labels outside plot area
+    # use "A1: label" format for consistency with advanced OT view
     annotations = []
 
     for i, name in enumerate(names_a_sorted):
+        # truncate long labels but keep prefix
+        label_text = name[:35] + "..." if len(name) > 38 else name
         annotations.append(
             dict(
                 x=-0.01,
                 y=1 - y_a[i],
                 xref="paper",
                 yref="paper",
-                text=f"{wrap_text(name, 50)}",
+                text=f"A{i+1}: {wrap_text(label_text, 45)}",
                 showarrow=False,
                 xanchor="right",
                 yanchor="middle",
-                font=dict(size=13),
+                font=dict(size=12),
                 align="right",
             )
         )
 
     for j, name in enumerate(names_b_sorted):
+        # truncate long labels but keep prefix
+        label_text = name[:35] + "..." if len(name) > 38 else name
         annotations.append(
             dict(
                 x=1.01,
                 y=1 - y_b[j],
                 xref="paper",
                 yref="paper",
-                text=f"{wrap_text(name, 50)}",
+                text=f"B{j+1}: {wrap_text(label_text, 45)}",
                 showarrow=False,
                 xanchor="left",
                 yanchor="middle",
-                font=dict(size=13),
+                font=dict(size=12),
                 align="left",
             )
         )

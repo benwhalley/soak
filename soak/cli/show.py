@@ -65,23 +65,24 @@ def show(
     if name is None:
         logger.info(f"Available {item_type}s:")
         for ext in extensions:
-            for item_path in sorted(items_dir.glob(f"*{ext}")):
-                logger.info(f"  {item_path.stem}")
+            for item_path in sorted(items_dir.glob(f"**/*{ext}")):
+                # show relative path from items_dir for subfolders
+                rel_path = item_path.relative_to(items_dir)
+                display_name = str(rel_path.with_suffix(""))
+                logger.info(f"  {display_name}")
         logger.info(f"\nUsage: soak show {item_type} <name>")
         return
 
-    # Find the item
+    # Find the item - check direct path first, then search subfolders
     candidates = [items_dir / name]
     for ext in extensions:
-        candidates.extend(
-            [
-                items_dir / f"{name}{ext}",
-            ]
-        )
+        candidates.append(items_dir / f"{name}{ext}")
+        # also search in subfolders by name (e.g., "zs" finds "thematic_analysis/zs.soak")
+        candidates.extend(items_dir.glob(f"**/{name}{ext}"))
 
     item_path = None
     for cand in candidates:
-        if cand.is_file():
+        if isinstance(cand, Path) and cand.is_file():
             item_path = cand
             break
 

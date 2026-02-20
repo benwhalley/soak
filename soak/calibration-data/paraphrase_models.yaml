@@ -1,0 +1,21 @@
+source:
+  file: thematic_analysis_papers.csv
+  column: theme_description
+  group_column: doi
+prompt: paraphrases.sd
+llm_models:
+- name: gpt-5.2
+  output_file: paraphrases-gpt-5.2.csv
+  status: complete
+  notes: Highest quality, ~$9 for 448 themes
+- name: gpt-4.1-mini
+  output_file: paraphrases-gpt-4.1-mini.csv
+  status: complete
+  notes: Fast and cheap, ~$0.50 for 448 themes
+- name: gpt-5-mini
+  output_file: paraphrases-gpt-5-mini.csv
+  status: complete
+  notes: Balance of quality and cost
+generation:
+  max_concurrent: 20
+  seed: 42

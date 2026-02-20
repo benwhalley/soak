@@ -37,7 +37,7 @@ async def _generate_paraphrases_for_theme(
     from struckdown import LLM, chatter_async
 
     # load prompt template from .sd file
-    prompt_path = Path(__file__).parent.parent / "pipelines" / "paraphrase_theme.sd"
+    prompt_path = Path(__file__).parent.parent / "templates" / "paraphrase_theme.sd"
     prompt_template = prompt_path.read_text()
 
     # render template with context

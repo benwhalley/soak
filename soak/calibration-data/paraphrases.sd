@@ -1,0 +1,214 @@
+<system>
+
+# TASK: GENERATE PARAPHRASES AT CONTROLLED SEMANTIC DISTANCES
+You are an assistant for academic qualitative research. Your task is to generate paraphrases of a given qualitative research theme at **multiple, predefined levels of semantic similarity**, for the purpose of **calibrating and evaluating embedding similarity metrics**.
+
+You will be given:
+- A **target theme** (the text to paraphrase).
+- Optionally, a set of **context themes** from the same original study, provided to help you reason about similarity and divergence from the original text.  
+
+# OUTPUT REQUIREMENTS
+You will generate paraphrases in **five semantic bands**: 
+`same`, `close`, `diverging`, `distant`, or `unrelated`
+
+Instructions/descriptions of each band are given below.
+A heuristic description of each band is:
+
+- `same`: "Could replace the original without a careful reader noticing any change in meaning"
+- `close`: "A reader would recognise these as the same point, but notice they're phrased or framed differently"
+- `diverging`: "A reader would see the connection, but wouldn't consider them interchangeable---they emphasise or argue something distinct"
+- `distant`: "Related by domain or vocabulary, but addressing a different question or making a different kind of claim"
+- `unrelated`: "No topical connection; a search for one would never retrieve the other"
+
+You will create a set of 5 texts within each band, one band at a time.
+
+- Follow the semantic constraints for the band precisely.
+- Respond **only** in the requested structured format (JSON or tool call), with no explanatory prose.
+
+IMPORTANT: Generate texts approximately the same length as the original.
+
+### SUMMARY OF THE SIMILARITY BANDS
+
+| Band           | Target Similarity | What Can Change                                      | What's Preserved                                      | Boundary Test                                                                 |
+|----------------|-------------------|------------------------------------------------------|-------------------------------------------------------|-------------------------------------------------------------------------------|
+| **same**       | 0.90–0.95         | Word choice, syntax, sentence structure              | All concepts, technical terms, scope, claim strength  | "Would a reader easily notice?" If yes → too different                       |
+| **close**      | 0.70–0.80         | Abstraction level, examples, register, framing angle | Core claim, main concepts, argument direction         | "Same point, different words?" If the *point* shifted → too different         |
+| **diverging**  | 0.50–0.60         | Scope, emphasis, secondary concepts, theoretical lens| Domain, general topic area, some key terms            | "Connected but not interchangeable?" If interchangeable → too close           |
+| **distant**    | 0.30–0.40         | Core claim, level of analysis, specific focus        | Broad domain or vocabulary family                     | "Same neighbourhood, different address?" If same address → too close          |
+| **unrelated**  | 0.00–0.15         | Everything: domain, topic, register, vocabulary      | Nothing                                               | "Could a search for one retrieve the other?" If plausibly yes → still related |
+
+</system>
+
+<header>
+
+# TEXTS
+
+{% if context_themes %}
+
+## THEME SET
+The text you will paraphrase is part of a set.
+These texts are provided for reference. 
+Do not reproduce them, but you may use them to help you think about similar or diverging ideas and use these when creating new texts.
+
+{{context_themes}}
+
+{% endif %}
+
+# TARGET TEXT TO PARAPHRASE
+
+{{theme}}
+
+</header>
+
+
+<system append local>
+
+# GUIDANCE: DEFINITION OF THE SIMILARITY BAND
+
+### `same`: DIRECT PARAPHRASES (SAME MEANING, ~0.9 - 0.99 similarity target)
+
+- NO semantic movement. 
+- Meaning is preserved as closely as possible, 
+- Changes are only to surface level features of the prose.
+- Paraphrases do not add or remove any concepts
+- Close in length, style, sentence structure, etc
+- Technical terms or unusual words must be preserved (or VERY close synonyms used)
+
+TLDR: Could replace the original without a careful reader noticing any change in meaning
+
+Examples:
+- "Participants described pacing as crucial for managing energy levels, learning to halt activities before exhaustion occurred rather than pushing through."
+- "Pacing was described by participants as essential for managing energy levels—learning to stop activities before exhaustion set in, rather than pushing through."
+- "Participants characterised pacing as essential to managing energy levels, learning to cease activities before exhaustion set in rather than pushing through."
+
+</system>
+
+# INSTRUCTION: GENERATE NEW TEXTS
+Create 5 new texts, for the `same` semantic band. 
+[[respond{5}:same]]
+
+
+<checkpoint>
+
+<system append local>
+
+# GUIDANCE: DEFINITION OF THE SIMILARITY BAND
+
+### `close`: CLOSE PARAPHRASES OF THE TEXT (~0.7 - 0.8 similarity target)
+- Meaning broadly preserved but with small drift, or slightly reframed.
+- At casual glance the text might look different but content and 
+meaning is essentially the same.
+- Might use a different/higher level of abstraction, but keep the same meaning
+- If the new text is more concise, it MUST preserve ALL meaning
+- If the new text is more verbose, it will not add any new meaning
+- May add/remove/change specific examples or terms, but keeping the same core idea
+- May use different conceptual language but capture the sentiment or meaning
+- Technical terms or unusual might be swapped for *close* synonyms
+- Might be the same idea written for a different audience
+
+TLDR: A reader would recognise these as the same point, but notice they're phrased or framed differently.
+
+Examples:
+- "People found that carefully regulating their activity levels helped them conserve energy—the key was stopping before they hit the wall, not after."
+- "A recurring theme was the importance of pacing: knowing when to rest before becoming depleted, rather than continuing until collapse."
+- "Managing energy meant learning to recognise early warning signs and stopping activity pre-emptively, rather than persisting until exhausted."
+
+</system>
+
+# INSTRUCTION: GENERATE NEW TEXTS
+Create 5 new texts, for the `close` semantic band. 
+[[respond{5}:close]]
+
+
+<checkpoint>
+
+<system append local>
+
+# GUIDANCE: DEFINITION OF THE SIMILARITY BAND
+
+### `diverging`: DIVERGING PARAPHRASES WHERE MEANING SHIFTS (~0.5 - 0.6 similarity target)
+
+- Only partial overlap
+- Some shared core, but clear loss or substitution of original meaning.
+- Might focus on only one aspect of the original, dropping secondary elements.
+- Might expand, (e.g. create a parent that includes the original).
+- Might reframe using a different theoretical lens
+- Technical terms or unusual words likely to change
+
+TLDR: A reader would see the connection, but wouldn't consider them interchangeable---they emphasise or argue something distinct.
+
+Examples:
+- "Participants struggled with the psychological difficulty of stopping activities they enjoyed, even when they knew rest was necessary."
+- "Pacing required participants to fundamentally revise their relationship with productivity and self-worth."
+- "Learning to pace often conflicted with external expectations from employers and family members who didn't understand the need for pre-emptive rest."
+
+</system>
+
+# INSTRUCTION: GENERATE NEW TEXTS
+Create 5 new texts, for the `diverging` semantic band. 
+[[respond{5}:diverging]]
+
+
+<checkpoint>
+
+<system append local>
+
+# GUIDANCE: DEFINITION OF THE SIMILARITY BAND
+
+## `distant`: DISTANTLY RELATED TEXTS (~0.3 - 0.4 similarity target)
+- These are not just paraphrases. 
+- Texts have only a weak thematic relation to the original.
+- May cover related but distinct concepts.
+- Might shift focus to different ends or different means.
+- Could shift to a different level of analysis (individual vs system, micro vs macro).
+- New texts should NOT directly equivalent. 
+- The semantic link should be fairly weak; these are distantly-related texts.
+
+TLDR: Related by domain or vocabulary, but addressing a different question or making a different kind of claim
+
+
+Examples:
+- "Healthcare providers often lacked training in advising patients on activity management for chronic conditions."
+- "Fatigue severity fluctuated unpredictably, making long-term planning difficult for many participants."
+- "Online communities provided spaces where people could share practical tips about living with chronic illness."
+
+</system>
+
+# INSTRUCTION: GENERATE NEW TEXTS
+Create 5 new texts, for the `distant` semantic band. 
+[[respond{5}:distant]]
+
+<checkpoint>
+
+<system append local>
+
+# GUIDANCE: DEFINITION OF THE SIMILARITY BAND
+
+## `unrelated`: UNRELATED TEXTS (~0.0 - 0.1 similarity target)
+- Not paraphrases: completely unrelated
+- The purpose is to anchor the 'bottom end' of our scale.
+- ENSURE the meaning is COMPLETELY unrelated to the original.
+- Avoid the same domain entirely (e.g., if the original is about health, don't write about illness, medicine, or bodies).
+- New texts will have NO meaningful semantic overlap. 
+- Even surface level features of the prose may differ to the original (length, style, 
+sentence structure, etc).
+
+IMPORTANT: DO NOT simply invert the meaning. 
+Opposites are still conceptually related. 
+The new text should be orthogonal to the original. 
+You will need to be creative and consider carefully any possible ways the 
+new text could be related to the original: avoid ANY semantic crossover.
+
+TLDR: No topical connection; a search for one would never retrieve the other
+
+Examples:
+
+- "The syntactic structure of verb-second languages places the finite verb in second position in main clauses."
+- "Baroque architecture is characterised by dramatic use of light, ornate decoration, and grandiose scale."
+- "The 1986 Tax Reform Act significantly altered the treatment of passive investment losses in the United States."
+
+</system>
+
+# INSTRUCTION: GENERATE NEW TEXTS
+Create 5 new texts, for the `unrelated` semantic band. 
+[[respond{5}:unrelated]]

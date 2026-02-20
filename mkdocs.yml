@@ -8,14 +8,14 @@ theme:
   name: material
   palette:
     - scheme: default
-      primary: indigo
-      accent: indigo
+      primary: teal
+      accent: green
       toggle:
         icon: material/brightness-7
         name: Switch to dark mode
     - scheme: slate
-      primary: indigo
-      accent: indigo
+      primary: teal
+      accent: green
       toggle:
         icon: material/brightness-4
         name: Switch to light mode
@@ -81,7 +81,11 @@ nav:
       - Adapting Pipelines: how-to/adapting-pipelines.md
   - Explanation:
       - What is soak?: explanation/what-is-soak.md
+      - Calibration: explanation/calibration.md
+      - Advanced Coverage Methods: explanation/hyde-coverage.md
       - Quote Verification Approach: explanation/quote-verification-approach.md
+  - Papers:
+      - Methods Paper Draft: papers/methods-paper-draft-1.md
   - Reference:
       - CLI Reference: reference/cli.md
       - Node Reference: reference/node-reference.md
@@ -89,6 +93,9 @@ nav:
 
 plugins:
   - search
+
+extra_css:
+  - stylesheets/extra.css
 
 extra:
   social:

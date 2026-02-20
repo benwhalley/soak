@@ -7,7 +7,7 @@ import random
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import (TYPE_CHECKING, Annotated, Any, Dict, List, Optional, Set,
+from typing import (TYPE_CHECKING, Annotated, Any, Callable, Dict, List, Optional, Set,
                     Tuple, Union)
 
 import anyio
@@ -20,6 +20,7 @@ from soak.document_utils import (extract_text, get_scrubber, is_spreadsheet,
 from soak.export_utils import export_to_csv
 from soak.models.base import (SOAK_MAX_RUNTIME, TrackedItem,
                               get_default_llm_credentials)
+from soak.models.context import ContextVariable, get_context_defaults, normalize_context
 from soak.models.cost_tracker import GlobalCostTracker
 from soak.models.progress import ProgressManager
 
@@ -37,6 +38,10 @@ class DAGConfig(BaseModel):
     documents: List[Union[str, "TrackedItem"]] = []
     input_source: Optional[str] = None  # summary of input (e.g., "data/*.txt")
     model_name: str = "gpt-4.1-mini"
+    models: Dict[str, str] = Field(
+        default_factory=dict,
+        description="Model alias mappings (e.g., {'default': 'gpt-4.1-mini', 'best': 'gpt-4.1'})",
+    )
     chunk_size: int = 20000  # characters, so ~5k tokens or ~4k English words
     extra_context: Dict[str, Any] = {}
     llm_credentials: LLMCredentials = Field(
@@ -80,14 +85,54 @@ class DAGConfig(BaseModel):
     # debugging
     pdb_on_exception: bool = False  # drop into pdb on unhandled exceptions
 
+    # progress callback for web UI (called when items complete)
+    progress_callback: Optional[Callable[[str, int, int, float], None]] = Field(
+        default=None, exclude=True
+    )  # callback(node_name, done, total, cost)
+
+    # node completion callback for web UI (called when each node finishes)
+    node_complete_callback: Optional[Callable[["DAGNode"], None]] = Field(
+        default=None, exclude=True
+    )  # callback(node) - called when node completes (success or failure)
+
     # report configuration
     report_texts: List[str] = Field(
         default_factory=lambda: ["narrative"]
     )  # Transform nodes to show as text in HTML reports
 
-    def get_model(self):
-        """Create LLM instance with configured model_name."""
-        return LLM(model_name=self.model_name)
+    def get_model(self, alias: Optional[str] = None):
+        """Create LLM instance with configured model.
+
+        Args:
+            alias: Optional model alias (e.g., 'default', 'best').
+                   If provided and exists in models dict, uses that model.
+                   Otherwise falls back to model_name.
+        """
+        model_name = self.resolve_model_alias(alias)
+        return LLM(model_name=model_name)
+
+    def resolve_model_alias(self, alias: Optional[str] = None) -> str:
+        """Resolve a model alias to an actual model ID.
+
+        Args:
+            alias: Model alias (e.g., 'default', 'best').
+                   If None, returns model_name.
+                   If alias exists in models dict, returns mapped model ID.
+                   Otherwise returns alias directly (assumes it's a model ID).
+
+        Returns:
+            Resolved model ID string.
+        """
+        if alias is None:
+            return self.model_name
+
+        # Check if alias exists in models mapping
+        if alias in self.models:
+            return self.models[alias]
+
+        # Check if it's actually a model ID (not an alias)
+        # Return as-is to support both alias and direct model ID usage
+        return alias
 
     def _create_tracked_items_from_file(
         self, path: str, path_metadata: Dict[str, Any], doc_index: int
@@ -303,9 +348,25 @@ async def run_node(node):
             await anyio.to_thread.run_sync(node.export, node_folder, unique_id)
             logger.info(f"✓ Exported node: {node.name} to {node_folder.name}")
 
+        # Call node completion callback if set (for web UI incremental saving)
+        if node.dag.config.node_complete_callback:
+            await anyio.to_thread.run_sync(
+                node.dag.config.node_complete_callback, node
+            )
+
         return result
     except Exception as e:
         logger.error(f"Node {node.name} failed: {e}")
+        # Store error on node for callback access
+        node._error = e
+        # Call node completion callback on failure too (for partial result saving)
+        if node.dag.config.node_complete_callback:
+            try:
+                await anyio.to_thread.run_sync(
+                    node.dag.config.node_complete_callback, node
+                )
+            except Exception as callback_err:
+                logger.warning(f"Node completion callback failed: {callback_err}")
         raise e
 
 
@@ -386,7 +447,7 @@ class DAG(BaseModel):
 
     name: str
     default_context: Dict[str, Any] = {}
-    default_config: Dict[str, Union[str, int, float]] = {}
+    default_config: Dict[str, Any] = {}  # Allow any value including nested dicts (e.g., models: {default: gpt-4})
     template_dirs: List[str] = []  # additional template search directories
     scrub: Optional[bool] = None  # if False, suppress PII warning
 
@@ -943,6 +1004,28 @@ Export Time: {datetime.now().isoformat()}
         conf = self.config.extra_context.copy()
         conf.update(results)
         return conf
+
+    def get_context_variables(self) -> Dict[str, ContextVariable]:
+        """Get normalized context variables with metadata.
+
+        Converts default_context to ContextVariable instances, supporting both
+        simple values and rich definitions with description/help_text.
+
+        Returns:
+            Dict mapping variable names to ContextVariable instances
+        """
+        return normalize_context(self.default_context)
+
+    def get_context_defaults(self) -> Dict[str, Any]:
+        """Get default values from context variables.
+
+        Extracts just the default values for use in template rendering,
+        handling both simple values and rich ContextVariable definitions.
+
+        Returns:
+            Dict mapping variable names to their default values
+        """
+        return get_context_defaults(self.default_context)
 
     def export_execution(self, output_dir: Path, metadata: Dict[str, Any] = None):
         """Export detailed execution information to a folder structure.
