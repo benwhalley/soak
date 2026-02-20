@@ -30,6 +30,9 @@ def _check_r_available():
 
         importr("scam")
         return True
+    except ImportError:
+        logger.debug("rpy2 not installed (install with: pip install rpy2)")
+        return False
     except Exception as e:
         logger.warning(f"R/scam not available: {e}")
         return False
@@ -65,10 +68,16 @@ def fit_calibration_scam(
         Tuple of (lookup_dict, validation_stats or None)
         lookup_dict contains x_lookup and y_lookup arrays for interpolation
     """
-    from rpy2 import robjects
-    from rpy2.robjects import pandas2ri
-    from rpy2.robjects.conversion import localconverter
-    from rpy2.robjects.packages import importr
+    try:
+        from rpy2 import robjects
+        from rpy2.robjects import pandas2ri
+        from rpy2.robjects.conversion import localconverter
+        from rpy2.robjects.packages import importr
+    except ImportError:
+        raise ImportError(
+            "rpy2 is required for scam calibration. "
+            "Install with: pip install 'soaking[calibration]'"
+        )
 
     scam = importr("scam")
     stats = importr("stats")

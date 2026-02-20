@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "soaking"
-version = "0.5.1"
+version = "0.5.2"
 description = "soak: graph-based pipelines and tools for LLM-assisted qualitative text analysis"
 authors = [
   { name = "Ben Whalley", email = "ben.whalley@plymouth.ac.uk" }
@@ -57,11 +57,12 @@ dependencies = [
     "pygam>=0.12.0",
     "transformers>=4.51.0",
     "sentence-transformers>=2.5.1",
-    "rpy2>=3.5.0",
 ]
 
 [project.optional-dependencies]
-
+calibration = [
+    "rpy2>=3.5.0",
+]
 
 scrub = [
   "scrubadub>=2.0.0",
