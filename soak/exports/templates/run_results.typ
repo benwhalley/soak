@@ -40,7 +40,16 @@
     stroke: none,
     align: (right, left),
     [*Pipeline:*], [{{ pipeline_name|e }}],
+    {% if model_details %}
+    {% for model in model_details %}
+    [*Model ({{ model.alias|e }}):*], [{{ model.name|e }}],
+    {% endfor %}
+    {% else %}
     [*Model:*], [{{ model_name|e }}],
+    {% endif %}
+    {% if embedding_model %}
+    [*Embeddings:*], [{{ embedding_model.name|e }}],
+    {% endif %}
     [*Date:*], [{{ completed_at }}],
     [*Documents:*], [{{ doc_count }} ({{ word_count }} words)],
     {% if duration %}[*Duration:*], [{{ duration }}],{% endif %}
@@ -63,6 +72,19 @@
 = Summary
 
 This analysis identified *{{ theme_count }} themes* and *{{ code_count }} codes* from {{ doc_count }} source documents.
+
+{% if tldr %}
+#v(1em)
+#block(
+  fill: luma(245),
+  inset: 1em,
+  radius: 4pt,
+  width: 100%,
+)[
+  #text(weight: "bold")[TLDR: ]{{ tldr|e }}
+]
+#v(1em)
+{% endif %}
 
 {% if narrative %}
 = Narrative
@@ -164,7 +186,16 @@ This matrix shows the semantic similarity between themes. Higher values indicate
   stroke: (x: none, y: 0.5pt + gray),
   align: (right, left),
   [*Pipeline*], [{{ pipeline_name|e }}],
+  {% if model_details %}
+  {% for model in model_details %}
+  [*Model ({{ model.alias|e }})*], [{{ model.name|e }} ({{ model.model_name|e }}) via {{ model.provider|e }}],
+  {% endfor %}
+  {% else %}
   [*Model*], [{{ model_name|e }}],
+  {% endif %}
+  {% if embedding_model %}
+  [*Embedding Model*], [{{ embedding_model.name|e }} ({{ embedding_model.model_name|e }}) via {{ embedding_model.provider|e }}],
+  {% endif %}
   [*Documents*], [{{ doc_count }}],
   [*Total words*], [{{ word_count }}],
   {% if sample_n %}[*Sample size*], [{{ sample_n }}],{% endif %}
