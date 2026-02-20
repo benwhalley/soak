@@ -191,17 +191,23 @@ class RunPdfExporter:
         word_count: int = 0,
         run_name: Optional[str] = None,
         template: str = "default",
+        model_details: Optional[List[Dict]] = None,
+        embedding_model: Optional[Dict] = None,
+        tldr: str = "",
     ):
         """Initialise the exporter.
 
         Args:
             analysis: QualitativeAnalysis object or dict with themes/codes/narrative
             pipeline_name: Name of the pipeline used
-            model_name: LLM model used
+            model_name: LLM model used (simple string, used if model_details not provided)
             doc_count: Number of documents analysed
             word_count: Total word count
             run_name: Optional run name (defaults to pipeline_name)
             template: Template style - "default" or "apa" for APA 7th edition format
+            model_details: List of model dicts with alias, name, model_name, provider
+            embedding_model: Dict with name, model_name, provider for embedding model
+            tldr: One-line summary of the analysis
         """
         self.analysis = analysis
         self.pipeline_name = pipeline_name
@@ -210,6 +216,9 @@ class RunPdfExporter:
         self.word_count = word_count
         self.run_name = run_name or pipeline_name
         self.template = template
+        self.model_details = model_details or []
+        self.embedding_model = embedding_model or {}
+        self.tldr = tldr
 
     def _get_themes(self) -> List[Dict]:
         """Extract themes from analysis."""
@@ -320,6 +329,8 @@ class RunPdfExporter:
             "run_name": self.run_name,
             "pipeline_name": self.pipeline_name,
             "model_name": self.model_name,
+            "model_details": self.model_details,
+            "embedding_model": self.embedding_model,
             "completed_at": "",
             "doc_count": self.doc_count,
             "word_count": self.word_count,
@@ -329,6 +340,7 @@ class RunPdfExporter:
             "code_count": len(codes),
             "themes": theme_list,
             "codes": code_list,
+            "tldr": self.tldr,
             "narrative": self._get_narrative(),
             "meta_narrative": self._get_meta_narrative(),
             "methods_text": methods_text,
@@ -398,6 +410,9 @@ def export_analysis_pdf(
     word_count: int = 0,
     run_name: Optional[str] = None,
     template: str = "default",
+    model_details: Optional[List[Dict]] = None,
+    embedding_model: Optional[Dict] = None,
+    tldr: str = "",
 ) -> None:
     """Export analysis results to PDF file.
 
@@ -407,11 +422,14 @@ def export_analysis_pdf(
         analysis: QualitativeAnalysis object or dict
         output_path: Path to write PDF file
         pipeline_name: Name of the pipeline used
-        model_name: LLM model used
+        model_name: LLM model used (simple string, used if model_details not provided)
         doc_count: Number of documents analysed
         word_count: Total word count
         run_name: Optional run name
         template: Template style - "default" or "apa"
+        model_details: List of model dicts with alias, name, model_name, provider
+        embedding_model: Dict with name, model_name, provider for embedding model
+        tldr: One-line summary of the analysis
     """
     exporter = RunPdfExporter(
         analysis=analysis,
@@ -421,6 +439,9 @@ def export_analysis_pdf(
         word_count=word_count,
         run_name=run_name,
         template=template,
+        model_details=model_details,
+        embedding_model=embedding_model,
+        tldr=tldr,
     )
     pdf_bytes = exporter.generate_pdf()
     output_path.write_bytes(pdf_bytes)
