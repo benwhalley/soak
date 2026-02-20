@@ -39,7 +39,7 @@ uv run soak PIPELINE INPUT_FILES [OPTIONS]
 
 | Option | Short | Description |
 |--------|-------|-------------|
-| `--model MODEL` | `-m` | Override LLM model (default: from pipeline or `gpt-4o-mini`) |
+| `--model MODEL` | `-m` | Model configuration (see [Model Aliases](#model-aliases) below) |
 | `--output PATH` | `-o` | Output file path without extension (default: derived from pipeline name) |
 | `--template NAME` | `-t` | Template name in `soak/templates/` or path to custom template (default: `pipeline.html`, can be used multiple times) |
 | `--include-documents` | | Include original document text in JSON output |
@@ -65,8 +65,11 @@ uv run soak zs --output results data/interview.txt
 # Multiple files
 uv run soak zs --output analysis data/*.txt
 
-# Custom model
-uv run soak zs --output results --model openai/gpt-4o data/*.txt
+# Set default model
+uv run soak zs --output results --model gpt-4.1 data/*.txt
+
+# Override specific model aliases
+uv run soak zs --output results --model default=gpt-4.1-mini --model best=gpt-4.1 data/*.txt
 
 # Override context variables
 uv run soak zspe -o results data/*.txt \
@@ -136,6 +139,54 @@ results_dump/
 - If output folder exists with JSON but no `--force`: generates only new templates (template-only mode)
 - If output folder exists with `--force`: warns and overwrites everything
 - Template-only mode allows adding new templates without re-running the pipeline
+
+#### Model Aliases
+
+Pipelines can define model aliases in `default_config.models` to assign different models to different roles. The `--model` flag overrides these aliases at runtime.
+
+**Syntax:**
+
+| Form | Effect |
+|------|--------|
+| `--model gpt-4.1` | Sets the `default` alias |
+| `--model alias=model` | Sets a specific alias |
+
+**Example pipeline definition:**
+
+```yaml
+default_config:
+  models:
+    default: gpt-4.1-mini    # routine tasks
+    best: gpt-4.1            # complex reasoning
+  embeddings: text-embedding-3-large
+
+nodes:
+  - name: extract_codes
+    type: Map
+    model: default           # uses 'default' alias
+
+  - name: synthesize
+    type: Transform
+    model: best              # uses 'best' alias
+```
+
+**Override from CLI:**
+
+```bash
+# Set default model only
+uv run soak zs data/*.txt --model gpt-4.1
+
+# Override specific aliases
+uv run soak zs data/*.txt --model default=claude-3-5-sonnet --model best=claude-3-opus
+
+# Multiple aliases
+uv run soak zs data/*.txt \
+  --model default=gpt-4.1-mini \
+  --model best=gpt-4.1 \
+  --model cheap=gpt-4.1-mini
+```
+
+See [Model Aliases](../explanation/model-aliases.md) for full documentation.
 
 ### compare
 

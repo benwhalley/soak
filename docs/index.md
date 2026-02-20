@@ -43,6 +43,7 @@ Conceptual background:
 - [What is soak?](explanation/what-is-soak.md) - Purpose and design philosophy
 - [DAG Architecture](explanation/dag-architecture.md) - Why pipelines, execution model
 - [Node Types](explanation/node-types.md) - Understanding different processing nodes
+- [Model Aliases](explanation/model-aliases.md) - Configuring models for different pipeline roles
 - [Template System](explanation/template-system.md) - Jinja2 and struckdown syntax
 - [Quote Verification Approach](explanation/quote-verification-approach.md) - Design and rationale for quote validation
 
