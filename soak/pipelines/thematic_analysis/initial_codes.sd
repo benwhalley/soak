@@ -37,8 +37,8 @@ Write names and descriptions with concise, concrete details and avoid clichés, 
 
 Provide DIRECT quotes from the participant for each code. 
 Use participants exact wording, including punctuation and any spelling errors.
-If _absolutely_ necessary quotes can consist of multiple excerpts from the text. 
-Use ellipses [...] to shorten very long quotes if needed, but avoid this unless quotes are very long. Never use more than 1 ellipsis per quote. Never hide important information which might change the interpretation of the quote.
+
+If _absolutely_ necessary quotes can consist of multiple excerpts from the text.  Use ellipses [...] to shorten very long quotes if needed, but avoid this unless quotes are very long. NEVER use more than 1 ellipsis per quote. NEVER hide information which could change the interpretation of the quote.
 
 
 ### Response format
@@ -57,6 +57,6 @@ Use the tools/structured formatting to generate a CodeList object (this is a lis
 
 # INSTRUCTION: GENERATE CODES, BASED ON THE TEXT
 
-Be sure to follow all system instructions about code generation and formatting.
+Follow all instructions about generating Codes and formatting your response.
 
 [[codes:codes]]

@@ -52,6 +52,7 @@ def main(
 from .compare import compare
 from .coverage_cmd import coverage
 from .export import export
+from .format import format as format_cmd
 from .misc import calibrate, test
 # import and register commands
 from .run import run
@@ -61,6 +62,7 @@ app.command()(run)
 app.command()(compare)
 app.command()(coverage)
 app.command()(export)
+app.command(name="format")(format_cmd)
 app.command()(show)
 app.command()(test)
 app.command()(calibrate)

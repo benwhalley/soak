@@ -389,7 +389,13 @@ def fit_calibration_gam(
     Returns:
         Tuple of (fitted GAM, validation_stats or None if holdout_fraction=0)
     """
-    from pygam import LinearGAM, s
+    try:
+        from pygam import LinearGAM, s
+    except ImportError:
+        raise ImportError(
+            "pygam is required for calibration. "
+            "Install with: pip install soaking[local-ai]"
+        )
     from sklearn.model_selection import GroupShuffleSplit, train_test_split
 
     # map categories to target values
@@ -776,7 +782,11 @@ def load_calibration(
             f"Calibration metadata not found: {yaml_path} or {json_path}"
         )
 
-    if embedding_model and metadata["embedding_model"] != embedding_model:
+    # normalize model names by stripping provider prefix (e.g., "openai/") for comparison
+    def normalize_model_name(name: str) -> str:
+        return name.split("/")[-1] if "/" in name else name
+
+    if embedding_model and normalize_model_name(metadata["embedding_model"]) != normalize_model_name(embedding_model):
         warnings.warn(
             f"Calibration trained on {metadata['embedding_model']} "
             f"but using {embedding_model}. Results may be inaccurate."

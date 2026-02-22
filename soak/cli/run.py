@@ -74,6 +74,18 @@ def run(
         "-m",
         help="Model configuration. Use 'model_id' for default or 'alias=model_id' format (can be used multiple times)",
     ),
+    embeddings: str = typer.Option(
+        None,
+        "--embeddings",
+        "-e",
+        help="Embedding model to use (e.g., 'text-embedding-3-large', 'text-embedding-3-small')",
+    ),
+    instructor_mode: str = typer.Option(
+        "json",
+        "--instructor-mode",
+        envvar="SOAK_INSTRUCTOR_MODE",
+        help="Instructor mode for structured outputs: 'json' (default, broad compatibility) or 'json_schema' (stricter, uses native structured outputs)",
+    ),
     progress: bool = typer.Option(
         None,
         "--progress/--no-progress",
@@ -236,16 +248,20 @@ def run(
                 pipeline.config.model_name = m.strip()
                 logger.info(f"Set default model: {m}")
 
-    # Pass model aliases to pipeline config
+    # Pass model aliases to pipeline config (merge with existing from pipeline YAML)
     if model_aliases:
-        pipeline.config.models = model_aliases
+        pipeline.config.models = {**pipeline.config.models, **model_aliases}
 
     if seed is not None:
         pipeline.config.seed = seed
         logger.info(f"Set seed to {seed}")
+    if embeddings is not None:
+        pipeline.config.embedding_model = embeddings
+        logger.info(f"Set embedding model to {embeddings}")
     pipeline.config.llm_credentials = LLMCredentials(
         api_key=api_key,
         base_url=base_url,
+        instructor_mode=instructor_mode,
     )
 
     # Set sampling options
@@ -295,6 +311,8 @@ def run(
         cmd_parts.extend(["--head", str(head)])
     if seed is not None:
         cmd_parts.extend(["--seed", str(seed)])
+    if embeddings is not None:
+        cmd_parts.extend(["--embeddings", embeddings])
     if context:
         for ctx in context:
             cmd_parts.extend(["-c", ctx])
@@ -318,6 +336,7 @@ def run(
         "sample_n": sample,
         "head_n": head,
         "seed": seed,
+        "embedding_model": embeddings,
     }
     if context:
         metadata["context_overrides"] = dict([c.split("=", 1) for c in context])

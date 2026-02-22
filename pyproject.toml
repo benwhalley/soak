@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "soaking"
-version = "0.5.4"
+version = "0.6.1"
 description = "soak: graph-based pipelines and tools for LLM-assisted qualitative text analysis"
 authors = [
   { name = "Ben Whalley", email = "ben.whalley@plymouth.ac.uk" }
@@ -54,14 +54,18 @@ dependencies = [
     "plotly>=5.18.0",
     "tenacity>=8.2.0",
     "hdbscan>=0.8.33",
-    "pygam>=0.12.0",
-    "transformers>=4.51.0",
-    "sentence-transformers>=2.5.1",
 ]
 
 [project.optional-dependencies]
 calibration = [
     "rpy2>=3.5.0",
+]
+
+local-ai = [
+    "transformers>=4.51.0",
+    "sentence-transformers>=2.5.1",
+    "struckdown[local]>=0.3.17",
+    "pygam>=0.12.0",
 ]
 
 scrub = [
@@ -73,7 +77,7 @@ scrub = [
 
 
 [tool.setuptools.package-data]
-soak = ["templates/*.html", "templates/*.md", "templates/**/*.html", "templates/**/*.md", "templates/**/*.sd", "pipelines/*.soak", "pipelines/*.sd", "soak-data/**/*", "calibration-data/**/*"]
+soak = ["templates/*.html", "templates/*.md", "templates/**/*.html", "templates/**/*.md", "templates/**/*.sd", "pipelines/**/*.soak", "pipelines/**/*.sd", "soak-data/**/*", "calibration-data/**/*"]
 django_soak = ["templates/**/*.html", "static/**/*"]
 
 [tool.setuptools.packages.find]

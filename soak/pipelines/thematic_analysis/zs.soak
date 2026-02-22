@@ -9,7 +9,7 @@ default_context:
     description: Research question
     help_text: The main question guiding the thematic analysis
   theme_size_guidance:
-    default: "A typical analysis will produce 7 themes. Never more than 10. Strongly prefer fewer/larger themes with greater explanatory depth and power."
+    default: "Produce around 7 themes. Never more than 12. Strongly prefer fewer/larger themes with greater explanatory depth and power. Combine overlapping theme, creating a richer, more nuanced analysis."
     description: Guidance on the number of themes to produce
     help_text: ""
     input_type: textarea
@@ -27,14 +27,13 @@ default_config:
     default: gpt-4.1-mini
     best: gpt-4.1
     cheap: gpt-4.1-mini
-  embeddings: text-embedding-large-3
+  embeddings: text-embedding-3-large
   seed: 1
 
 methodology_templates:
   overview: |
       
 
-  
 nodes:
   - name: chunks
     type: Split
@@ -48,6 +47,7 @@ nodes:
   - name: codes_from_chunks
     type: Map
     template: initial_codes.sd
+    model: default
     inputs:
       - chunks
 
@@ -63,6 +63,7 @@ nodes:
   - name: consolidated_codes
     type: Map
     inputs: [groupedcodes]
+    model: default
     template: consolidate_codes.sd
 
   - name: codes
@@ -72,7 +73,7 @@ nodes:
   
   - name: checkquotes
     type: VerifyQuotes
-    model_name: cheap
+    model: cheap
     inputs: [codes]
     check_fairness: false
     
@@ -87,6 +88,7 @@ nodes:
   - name: theme_groups
     type: Map
     template: make_theme_group.sd
+    model: best
     inputs:
       - big_code_groups
 
@@ -99,6 +101,7 @@ nodes:
   - name: themes
     type: Transform
     template: final_themes.sd
+    model: best
     inputs:
       - theme_groups
 
@@ -113,6 +116,7 @@ nodes:
   - name: meta_narrative
     type: Transform
     template: meta_narrative.sd
+    model: best
     inputs:
       - themes
       - narrative
