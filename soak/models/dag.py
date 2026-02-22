@@ -492,7 +492,7 @@ class DAG(BaseModel):
     def compute_content_hash(self) -> str:
         """Compute hash of pipeline content (templates and config).
 
-        Returns 4-character hex hash starting with a letter (git-style).
+        Returns 4-character alphabetic hash (a-z only).
         """
         import hashlib
 
@@ -508,13 +508,15 @@ class DAG(BaseModel):
         content_parts.append(str(sorted(self.default_config.items())))
 
         content = "".join(content_parts)
-        full_hash = hashlib.sha256(content.encode()).hexdigest()
+        hash_bytes = hashlib.sha256(content.encode()).digest()
 
-        # find first 4-char substring starting with a letter (more git-like)
-        for i in range(len(full_hash) - 3):
-            if full_hash[i].isalpha():
-                return full_hash[i : i + 4]
-        return full_hash[:4]
+        # convert to base26 (a-z only)
+        num = int.from_bytes(hash_bytes[:8], "big")
+        letters = ""
+        for _ in range(4):
+            letters = chr(ord("a") + (num % 26)) + letters
+            num //= 26
+        return letters
 
     def set_pipeline_version(self) -> str:
         """Compute and set the full pipeline version string.
