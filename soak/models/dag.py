@@ -446,6 +446,8 @@ class DAG(BaseModel):
     model_config = {"arbitrary_types_allowed": True}
 
     name: str
+    version: Optional[str] = None  # pipeline version (e.g., "0.1.0")
+    description: Optional[str] = None  # pipeline description
     default_context: Dict[str, Any] = {}
     default_config: Dict[str, Any] = {}  # Allow any value including nested dicts (e.g., models: {default: gpt-4})
     template_dirs: List[str] = []  # additional template search directories
@@ -455,6 +457,9 @@ class DAG(BaseModel):
     config: Optional[DAGConfig] = Field(default_factory=DAGConfig, exclude=False)
     cost_tracker: Optional[GlobalCostTracker] = Field(default=None, exclude=True)
     progress_manager: Optional[ProgressManager] = Field(default=None, exclude=True)
+
+    # computed pipeline version with content hash (version + 4-char hash, e.g., "0.1.0-a1b2")
+    pipeline_version: Optional[str] = Field(default=None)
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
@@ -483,6 +488,46 @@ class DAG(BaseModel):
                     )
 
         return self
+
+    def compute_content_hash(self) -> str:
+        """Compute hash of pipeline content (templates and config).
+
+        Returns 4-character hex hash starting with a letter (git-style).
+        """
+        import hashlib
+
+        content_parts = []
+
+        # include all node templates in hash
+        for node in self.nodes:
+            if hasattr(node, "template") and node.template:
+                content_parts.append(node.template)
+
+        # include default_context and default_config
+        content_parts.append(str(sorted(self.default_context.items())))
+        content_parts.append(str(sorted(self.default_config.items())))
+
+        content = "".join(content_parts)
+        full_hash = hashlib.sha256(content.encode()).hexdigest()
+
+        # find first 4-char substring starting with a letter (more git-like)
+        for i in range(len(full_hash) - 3):
+            if full_hash[i].isalpha():
+                return full_hash[i : i + 4]
+        return full_hash[:4]
+
+    def set_pipeline_version(self) -> str:
+        """Compute and set the full pipeline version string.
+
+        Called after loading to compute version + hash.
+        Returns the computed version string.
+        """
+        content_hash = self.compute_content_hash()
+        if self.version:
+            self.pipeline_version = f"{self.version}-{content_hash}"
+        else:
+            self.pipeline_version = f"0.0.0-{content_hash}"
+        return self.pipeline_version
 
     @property
     def edges(self) -> List["Edge"]:

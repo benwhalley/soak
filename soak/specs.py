@@ -121,6 +121,10 @@ def load_template_bundle(template: Union[Path, str]) -> QualitativeAnalysisPipel
         i.validate_template()
         i.dag = pipeline
 
+    # compute and set the pipeline version (version + content hash)
+    pipeline.set_pipeline_version()
+    logger.debug(f"Pipeline version: {pipeline.pipeline_version}")
+
     # check if pipeline includes a Scrub node and warn if not (unless scrub: false is set)
     has_scrub_node = any(node.type == "Scrub" for node in pipeline.nodes)
     if not has_scrub_node and pipeline.scrub is not False:

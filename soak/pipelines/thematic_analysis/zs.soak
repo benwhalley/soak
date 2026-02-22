@@ -1,4 +1,6 @@
 name: Thematic analysis
+version: 0.1.0
+description: A qualitative thematic analysis of transcript data, based on reflexive thematic analysis. Code are generated independently for each document, and then clustered and combined before being used to generate themes.
 default_context:
   persona:
     default: Experienced qualitative researcher
@@ -9,8 +11,8 @@ default_context:
     description: Research question
     help_text: The main question guiding the thematic analysis
   theme_size_guidance:
-    default: "Produce around 7 themes. Never more than 12. Strongly prefer fewer/larger themes with greater explanatory depth and power. Combine overlapping theme, creating a richer, more nuanced analysis."
-    description: Guidance on the number of themes to produce
+    default: "Produce 7-10 themes. Strongly prefer fewer/larger themes with greater explanatory depth and power. Combine overlapping themes, creating a richer, more nuanced analysis."
+    description: Guidance on the number of themes to produce.
     help_text: ""
     input_type: textarea
   specific_research_question:

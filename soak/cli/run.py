@@ -330,6 +330,7 @@ def run(
     metadata = {
         "command": " ".join(cmd_parts),
         "pipeline_file": str(pipyml),
+        "pipeline_version": pipeline.pipeline_version,
         "model_aliases": model_aliases or {},
         "templates": template,
         "unique_id": config_hash,
