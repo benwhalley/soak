@@ -203,14 +203,11 @@ def _has_code_inputs(context: Dict[str, Any]) -> bool:
     return any(check_value(val) for val in context.values())
 
 
-@ResponseTypes.register("codes")
 class CodeList(BaseModel):
+    """Container for a list of Code objects. Used for wrapping [[code*:x]] outputs."""
+
     codes: List[Code] = Field(..., min_length=0)
 
-    # def to_markdown(self):
-    #     return "\n\n".join(
-    #         [f"- {i.name}: {i.description}\n{[str(q) for q in i.quotes]}" for i in self.codes]
-    #     )
     def __str__(self):
         return "\n\n".join([str(i) for i in self.codes])
 
@@ -265,8 +262,9 @@ class Theme(ResponseModel):
         post_process_theme_code_refs(self, context)
 
 
-@ResponseTypes.register("themes")
 class Themes(BaseModel):
+    """Container for a list of Theme objects. Used for wrapping [[theme*:x]] outputs."""
+
     themes: List[Theme] = Field(..., min_length=1)
 
     def __str__(self):

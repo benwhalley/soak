@@ -67,7 +67,9 @@ Be selective linking to Codes--link only the most relevant.
 
 ### How and why to consolidate themes
 
-Usually, we generate around 7 themes (plus or minus 2). Never more than 12. We prefer fewer/larger themes with greater explanatory depth and power. 
+Usually, we generate around 7 themes (plus or minus 2). 
+The user will also give guidance on the number of themes to produce. ALWAYS follow this guidance. Do not produce too many themes.
+
 
 Themes should represent processes, mechanisms, or meanings, not activities, tools, or surface features. 
 
@@ -150,16 +152,17 @@ Themes do not need to account for every code equally. They need to be:
 
 # TASK: READ ALL THE PRELIMIANRY THEMES CAREFULLY
 
-These were generated in batches. They are likely to overlap or be insufficiently distinct.
+These were generated in batches. They are likely to overlap or be insufficiently distinct. We must rationalise them.
 
 <preliminary-themes>
     
 {% for batch in theme_groups %}
 ------------
-{{batch.themes}}
+{% for theme in batch.themes %}
+- {{ theme.name }}: {{ theme.description }}
+{% endfor %}
 
-
-{%  endfor %}
+{% endfor %}
 
 </preliminary-themes>
 
@@ -180,9 +183,10 @@ and how we will consolidate the material into useful analytic units.
 
 # TASK: CONSOLIDATE THE THEMES
 
-Produce a list of themes in the correct format.
+Produce a final list of themes.
 Be selective linking to Codes--link only the most relevant.
-
 {{theme_size_guidance}}
 
-[[themes:themes]]
+Use your plan and the guidance.
+
+[[theme{ {{min_themes}} , {{max_themes}} }:themes]]

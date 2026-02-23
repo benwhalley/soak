@@ -387,6 +387,7 @@ async def verify_quotes_bm25_first(
     expand_window_neighbors: int = 1,
     show_progress: bool = True,
     progress_manager: Optional["ProgressManager"] = None,
+    embedding_model: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """Verify quotes using BM25-first matching with ellipsis support.
 
@@ -753,6 +754,26 @@ async def verify_quotes_bm25_first(
 
     # Phase 3: Compute cosine similarities using cached embeddings
     logger.info("Phase 3: Computing cosine similarities...")
+
+    # Load calibration if available
+    calibration_model = None
+    calibration_method = None
+    if embedding_model:
+        try:
+            from soak.calibration import get_bundled_calibration, load_calibration
+
+            cal_path = get_bundled_calibration(embedding_model)
+            if cal_path:
+                calibration_model, metadata = load_calibration(cal_path, embedding_model)
+                calibration_method = metadata.get("method", "scam")
+                logger.info(
+                    f"Loaded calibration for {embedding_model} (method={calibration_method})"
+                )
+            else:
+                logger.debug(f"No bundled calibration found for {embedding_model}")
+        except Exception as e:
+            logger.warning(f"Failed to load calibration: {e}")
+
     results = []
     for r in intermediate_results:
         quote_emb = np.array([text_to_embedding[r["_quote_truncated"]]])
@@ -762,6 +783,24 @@ async def verify_quotes_bm25_first(
         # Remove internal fields and add cosine similarity
         result = {k: v for k, v in r.items() if not k.startswith("_")}
         result["cosine_similarity"] = cosine_sim
+
+        # Compute calibrated similarity if calibration available
+        if calibration_model is not None:
+            try:
+                from soak.calibration import calibrate
+
+                # Convert cosine to angular similarity (what calibration expects)
+                angular_sim = 1 - np.degrees(np.arccos(np.clip(cosine_sim, -1.0, 1.0))) / 180.0
+                calibrated = calibrate(
+                    np.array([angular_sim]), calibration_model, method=calibration_method
+                )
+                result["calibrated_similarity"] = float(calibrated[0])
+            except Exception as e:
+                logger.debug(f"Calibration failed for quote: {e}")
+                result["calibrated_similarity"] = None
+        else:
+            result["calibrated_similarity"] = None
+
         results.append(result)
 
     logger.info(f"Verification complete: {len(results)} quotes verified.")
@@ -802,6 +841,11 @@ class VerifyQuotes(CompletionDAGNode):
     trim_method: Literal["fuzzy", "sliding_bm25", "hybrid"] = "fuzzy"
     min_fuzzy_ratio: float = 0.6
     expand_window_neighbors: int = 1  # Search ±N windows around BM25 best match
+
+    # LLM existence check thresholds (quotes below these trigger LLM verification)
+    check_exists_bm25: float = 20.0  # BM25 score threshold
+    check_exists_bm25_ratio: float = 2.0  # BM25 ratio threshold (top1/top2)
+    check_exists_min_similarity: float = 0.5  # Calibrated similarity threshold
 
     # LLM judge templates
     template: Optional[str] = None  # Custom LLM-as-judge prompt template
@@ -1205,6 +1249,7 @@ class VerifyQuotes(CompletionDAGNode):
             expand_window_neighbors=self.expand_window_neighbors,
             show_progress=self.dag.config.show_progress,
             progress_manager=self.dag.progress_manager,
+            embedding_model=self.dag.config.embedding_model,
         )
 
         if not matches:
@@ -1229,10 +1274,28 @@ class VerifyQuotes(CompletionDAGNode):
         df = pd.DataFrame(matches)
 
         # Stage 1.5: LLM-based existence verification for poor matches
-        # ratio < 2 means second match is >50% as 'good' (ambiguous)
+        # Use calibrated similarity if available, otherwise fall back to cosine
         logger.info("Identifying poor matches for LLM verification...")
-        poor_match_mask = ((df["bm25_score"] < 30) & (df["bm25_ratio"] < 2)) | (
-            (df["bm25_score"] < 20) & (df["cosine_similarity"] < 0.7)
+        logger.info(
+            f"Thresholds: bm25={self.check_exists_bm25}, ratio={self.check_exists_bm25_ratio}, "
+            f"min_similarity={self.check_exists_min_similarity}"
+        )
+
+        # Build similarity mask using calibrated similarity if available
+        has_calibrated = "calibrated_similarity" in df.columns and df["calibrated_similarity"].notna().any()
+        if has_calibrated:
+            sim_column = df["calibrated_similarity"].fillna(df["cosine_similarity"])
+            logger.info("Using calibrated similarity for LLM verification threshold")
+        else:
+            sim_column = df["cosine_similarity"]
+            logger.info("Using raw cosine similarity (no calibration available)")
+
+        poor_match_mask = (
+            (df["bm25_score"] < self.check_exists_bm25)
+            & (df["bm25_ratio"] < self.check_exists_bm25_ratio)
+        ) | (
+            (df["bm25_score"] < self.check_exists_bm25)
+            & (sim_column < self.check_exists_min_similarity)
         )
         poor_matches = df[poor_match_mask]
         logger.info(

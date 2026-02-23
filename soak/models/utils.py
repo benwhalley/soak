@@ -255,28 +255,34 @@ def _export_themes_to_csv(themes: List, folder: Path, file_prefix: str) -> None:
 def post_process_chatter_result(result, context: Dict[str, Any]) -> None:
     """Post-process all outputs in a ChatterResult.
 
-    Calls post_process() on any Code, CodeList, Theme, or Themes objects
-    found in the result's outputs. This populates resolved_quotes and
-    resolved_code_refs fields needed for quote verification.
+    Calls post_process() on any object with a post_process method found in
+    the result's outputs. Handles both single objects (e.g., from [[code:c]])
+    and lists (e.g., from [[code*:codes]]). This populates resolved_quotes
+    and resolved_code_refs fields needed for quote verification.
 
     Args:
         result: ChatterResult object with .outputs attribute
         context: Template context dict (passed to post_process methods)
     """
-    from soak.models.base import CodeList, Themes
-
     if result is None or not hasattr(result, "outputs"):
         return
 
-    for output_val in result.outputs.values():
-        if hasattr(output_val, "post_process"):
+    def _call_post_process(obj):
+        """Call post_process on an object if it has the method."""
+        if hasattr(obj, "post_process"):
             try:
-                output_val.post_process(context)
+                obj.post_process(context)
             except Exception as e:
-                # Log but don't fail - post_process errors shouldn't break the pipeline
-                logger.warning(
-                    f"post_process failed for {type(output_val).__name__}: {e}"
-                )
+                logger.warning(f"post_process failed for {type(obj).__name__}: {e}")
+
+    for output_val in result.outputs.values():
+        if isinstance(output_val, list):
+            # handle lists from quantified types like [[code*:codes]]
+            for item in output_val:
+                _call_post_process(item)
+        else:
+            # handle single objects like [[code:c]] or CodeList
+            _call_post_process(output_val)
 
 
 def post_process_code_quotes(code: Code, context: Dict[str, Any]):
@@ -513,7 +519,7 @@ def collect_input_codes(context: Dict[str, Any]) -> List[Code]:
     Returns:
         List of Code objects found in context or ancestor nodes
     """
-    from soak.models.base import TrackedItem
+    from soak.models.base import Code, CodeList, TrackedItem
 
     codes = []
 
@@ -532,6 +538,18 @@ def collect_input_codes(context: Dict[str, Any]) -> List[Code]:
                     f"collect_input_codes: Found direct CodeList in key '{key}' with {len(item.codes)} codes"
                 )
                 codes.extend(item.codes)
+            elif isinstance(item, Code):
+                # direct Code object
+                logger.debug(f"collect_input_codes: Found direct Code in key '{key}'")
+                codes.append(item)
+            elif isinstance(item, TrackedItem):
+                # Check metadata["items"] for Code objects (from Cluster nodes)
+                metadata_items = item.metadata.get("items", [])
+                if metadata_items and isinstance(metadata_items[0], Code):
+                    logger.debug(
+                        f"collect_input_codes: Found {len(metadata_items)} codes in TrackedItem.metadata['items']"
+                    )
+                    codes.extend(metadata_items)
             elif hasattr(item, "outputs"):
                 # ChatterResult -- extract CodeList from outputs
                 logger.debug(
@@ -543,6 +561,11 @@ def collect_input_codes(context: Dict[str, Any]) -> List[Code]:
                             f"collect_input_codes: Found CodeList in ChatterResult output '{output_key}' with {len(output_val.codes)} codes"
                         )
                         codes.extend(output_val.codes)
+                    elif isinstance(output_val, list):
+                        # Check for list of Code objects (from [[code*:codes]])
+                        for sub_item in output_val:
+                            if isinstance(sub_item, Code):
+                                codes.append(sub_item)
 
     # If no codes found in direct context, try traversing DAG ancestors
     # This handles cases where intermediate Reduce nodes stringify the codes
@@ -691,6 +714,30 @@ def unwrap_chatter_items(items: List[Any], items_field: str) -> List[Any]:
     """
     from struckdown import ChatterResult
 
+    def _extract_items(obj: Any, field: str) -> Any:
+        """Extract items from object, handling various response formats.
+
+        Handles:
+        1. Object with the specified field (e.g., CodeList.codes)
+        2. Object with 'response' field (e.g., wrapper models)
+        3. Object is already a list (struckdown unwraps quantified responses)
+        """
+        # If obj is already a list, return it directly
+        # This handles struckdown's automatic unwrapping of [[code*:codes]] etc.
+        if isinstance(obj, list):
+            return obj
+
+        # Try the specified field path
+        extracted = get_nested_attr(obj, field)
+        if extracted is not None:
+            return extracted
+
+        # Fallback: check for 'response' field
+        if hasattr(obj, "response"):
+            return obj.response
+
+        return None
+
     unwrapped = []
     for item in items:
         if item is None:
@@ -698,7 +745,7 @@ def unwrap_chatter_items(items: List[Any], items_field: str) -> List[Any]:
         # handle ChatterResult specially - extract from results dict
         if isinstance(item, ChatterResult):
             for segment_name, segment in item.results.items():
-                extracted = get_nested_attr(segment.output, items_field)
+                extracted = _extract_items(segment.output, items_field)
                 if extracted is not None:
                     if isinstance(extracted, list):
                         unwrapped.extend(extracted)
@@ -706,7 +753,7 @@ def unwrap_chatter_items(items: List[Any], items_field: str) -> List[Any]:
                         unwrapped.append(extracted)
         else:
             # try to extract using the field path
-            extracted = get_nested_attr(item, items_field)
+            extracted = _extract_items(item, items_field)
             if extracted is not None:
                 if isinstance(extracted, list):
                     unwrapped.extend(extracted)

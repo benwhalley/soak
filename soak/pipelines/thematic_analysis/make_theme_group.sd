@@ -62,8 +62,11 @@ Be selective linking to Codes--link only the most relevant.
 
 ### HOW MANY THEMES?
 
-- Typically, generate around 7 (+/- 2) themes but more or less is fine. We will consolidate these later.
+- Do not produce too many themes (never mistake themes for codes). 
+
 - Use fewer themes if there is too much overlap, or the codes are fairly homogenous.
+
+- Prefer larger themes with greater explanatory depth and power.
 
 </system>
 
@@ -80,6 +83,7 @@ Be selective linking to Codes--link only the most relevant.
 
 # TASK: GENERATE THEMES, BASED ON THE CODES
 
-Use the codes. Produce a list of themes in the correct format.
+Use the codes. 
+Produce a list of themes in the correct format.
 
-[[themes:themes]]
+[[theme{0,15}:themes]]

@@ -5,7 +5,7 @@ default_context:
   persona:
     default: Experienced qualitative researcher
     description: Analyst persona
-    help_text: The perspective and expertise from which the analysis is conducted
+    help_text: The perspective and expertise from which the analysis is conducted.
   research_question:
     default: To understand the experience of participants
     description: Research question
@@ -15,11 +15,20 @@ default_context:
     description: Guidance on the number of themes to produce.
     help_text: ""
     input_type: textarea
+  max_themes:
+    default: 12
+    description: Maximum number of themes to generate
+    help_text: Maximum number of themes to generate (hard cap)
+  min_themes:
+    default: 3
+    description: Minimum number of themes to generate
+    help_text: Minimum number of themes to generate (hard cap)
   specific_research_question:
     default: ""
-    description: Specific focus
-    help_text: Optional specific aspect or sub-question to focus on
+    description: Specific research focus
+    help_text: (Optional) specific aspect or sub-question to focus on. This text can direct code and theme-formation.
     input_type: textarea
+  
 scrub: false
 randomise_document_order: true
 config:
@@ -27,7 +36,7 @@ config:
 default_config:
   models:
     default: gpt-4.1-mini
-    best: gpt-4.1
+    best: gpt-4.1-mini
     cheap: gpt-4.1-mini
   embeddings: text-embedding-3-large
   seed: 1

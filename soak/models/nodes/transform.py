@@ -159,6 +159,38 @@ class Transform(ItemsNode, CompletionDAGNode):
 
         return [result] if result else []
 
+    def _normalize_response_obj(self, raw_response):
+        """Normalize response to handle both wrapper objects and plain lists.
+
+        With [[codes:codes]] syntax, response is CodeList with .codes attribute.
+        With [[code*:codes]] syntax, response is plain list [Code, Code, ...].
+
+        This method wraps plain lists in a simple namespace object that has
+        the expected attribute (.codes or .themes) for template compatibility.
+        """
+        from types import SimpleNamespace
+
+        from soak.models.base import Code, CodeList, Theme, Themes
+
+        if raw_response is None:
+            return None
+
+        # Already a wrapper object - return as-is
+        if isinstance(raw_response, (CodeList, Themes)):
+            return raw_response
+
+        # Check if it's a list of Code objects
+        if isinstance(raw_response, list) and len(raw_response) > 0:
+            if all(isinstance(item, Code) for item in raw_response):
+                # Wrap in a namespace with .codes attribute
+                return SimpleNamespace(codes=raw_response)
+            if all(isinstance(item, Theme) for item in raw_response):
+                # Wrap in a namespace with .themes attribute
+                return SimpleNamespace(themes=raw_response)
+
+        # Return as-is for other types
+        return raw_response
+
     def result(self) -> Dict[str, Any]:
         """Returns dict with metadata, prompt, response object, raw ChatterResult, and slot dataframes."""
         import pandas as pd
@@ -177,12 +209,13 @@ class Transform(ItemsNode, CompletionDAGNode):
 
         # Add Transform-specific data
         result["prompt"] = extract_prompt(chatter)
-        result["response_obj"] = (
-            chatter.response if hasattr(chatter, "response") else None
-        )
-        result["response_text"] = (
-            str(chatter.response) if hasattr(chatter, "response") else None
-        )
+
+        # Get raw response and normalize lists of Code/Theme to wrapper objects
+        # This handles the [[code*:codes]] syntax which returns plain lists
+        raw_response = chatter.response if hasattr(chatter, "response") else None
+        response_obj = self._normalize_response_obj(raw_response)
+        result["response_obj"] = response_obj
+        result["response_text"] = str(raw_response) if raw_response else None
         result["chatter_result"] = chatter
 
         # Extract slot dataframes for HTML display
@@ -244,6 +277,39 @@ class Transform(ItemsNode, CompletionDAGNode):
                         ]
                         result["slot_dataframes"][slot_name] = pd.DataFrame(rows)
 
+                    # Handle list of Theme objects (from [[theme*:themes]] syntax)
+                    elif (
+                        isinstance(output, list)
+                        and len(output) > 0
+                        and all(isinstance(t, Theme) for t in output)
+                    ):
+                        rows = []
+                        for theme in output:
+                            rows.append(
+                                {
+                                    "name": (
+                                        theme.name if hasattr(theme, "name") else ""
+                                    ),
+                                    "description": (
+                                        theme.description
+                                        if hasattr(theme, "description")
+                                        else ""
+                                    ),
+                                    "code_slugs": (
+                                        ", ".join(theme.code_slugs)
+                                        if hasattr(theme, "code_slugs")
+                                        else ""
+                                    ),
+                                    "num_codes": (
+                                        len(theme.code_slugs)
+                                        if hasattr(theme, "code_slugs")
+                                        else 0
+                                    ),
+                                }
+                            )
+                        if rows:
+                            result["slot_dataframes"][slot_name] = pd.DataFrame(rows)
+
                     # Convert Codes to DataFrame
                     elif isinstance(output, CodeList):
                         rows = []
@@ -303,6 +369,42 @@ class Transform(ItemsNode, CompletionDAGNode):
                             }
                         ]
                         result["slot_dataframes"][slot_name] = pd.DataFrame(rows)
+
+                    # Handle list of Code objects (from [[code*:codes]] syntax)
+                    elif (
+                        isinstance(output, list)
+                        and len(output) > 0
+                        and all(isinstance(c, Code) for c in output)
+                    ):
+                        rows = []
+                        for code in output:
+                            quotes_text = []
+                            if hasattr(code, "all_quotes"):
+                                quotes_text = [
+                                    q.text if hasattr(q, "text") else str(q)
+                                    for q in code.all_quotes
+                                ]
+                            elif hasattr(code, "quotes"):
+                                quotes_text = [
+                                    q.text if hasattr(q, "text") else str(q)
+                                    for q in code.quotes
+                                ]
+
+                            rows.append(
+                                {
+                                    "slug": code.slug if hasattr(code, "slug") else "",
+                                    "name": code.name if hasattr(code, "name") else "",
+                                    "description": (
+                                        code.description
+                                        if hasattr(code, "description")
+                                        else ""
+                                    ),
+                                    "quotes": " | ".join(quotes_text),
+                                    "num_quotes": len(quotes_text),
+                                }
+                            )
+                        if rows:
+                            result["slot_dataframes"][slot_name] = pd.DataFrame(rows)
 
         return result
 
