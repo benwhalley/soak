@@ -7,7 +7,7 @@ has_children: true
 
 # Explanation
 
-![](../images/u3311749543_httpss.mj.runKSun0h8R-vs_httpss.mj.rungggOgHBnZsM_8e94b8b6-f495-428b-bc3b-d4c70bdf18f9_2.png){: .main-image}
+![](../images/ink-explanation.png){: .main-image}
 
 
 Conceptual background on how soak works. These documents explain the design decisions and architecture.
