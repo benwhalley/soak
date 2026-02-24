@@ -1,3 +1,10 @@
+---
+layout: default
+title: Ground Truth Validation
+parent: How-to Guides
+nav_order: 3
+---
+
 # Ground Truth Validation
 
 Validate your LLM classifications against ground truth labels using the Classifier node's built-in metrics.

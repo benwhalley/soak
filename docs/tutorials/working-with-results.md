@@ -1,3 +1,10 @@
+---
+layout: default
+title: Working with Results
+parent: Tutorials
+nav_order: 3
+---
+
 # Working with Results
 
 This tutorial shows how to analyze and interpret soak output data.

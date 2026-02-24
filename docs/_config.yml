@@ -1,0 +1,22 @@
+title: soak
+plugins:
+- jekyll-remote-theme
+remote_theme: just-the-docs/just-the-docs
+color_scheme: soak
+mermaid:
+  version: "10.6.0"
+repository: benwhalley/soak
+footer_content: ""
+
+aux_links:
+  GitHub:
+    - https://github.com/benwhalley/soak
+aux_links_new_tab: true
+exclude:
+  - analysis/
+  - papers/
+  - tasks/
+  - samples/
+  - "*.sd"
+  - "plan-*.md"
+  - template_resolution.md

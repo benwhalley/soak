@@ -1,3 +1,10 @@
+---
+layout: default
+title: Model Aliases
+parent: Explanation
+nav_order: 5
+---
+
 # Model Aliases
 
 Model aliases provide a flexible way to configure different LLM models for different roles within a pipeline without hardcoding model IDs. This allows pipelines to define semantic roles (e.g., `default`, `best`, `embeddings`) that can be assigned different models at runtime.

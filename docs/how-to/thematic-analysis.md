@@ -1,3 +1,10 @@
+---
+layout: default
+title: Thematic Analysis
+parent: How-to Guides
+nav_order: 1
+---
+
 # Thematic Analysis with soak
 
 This guide explains how soak performs inductive thematic analysis using the `zs.soak` pipeline.
@@ -58,10 +65,10 @@ Identify all relevant codes in the text, provide a Name for each code in 8 to 15
 
 Give a dense Description of the code in 50 words and direct quotes from the participant.
 
-[[codes:codes]]
+[[code*:codes]]
 ```
 
-The `[[codes:codes]]` syntax uses struckdown to extract structured `Code` objects:
+The `[[code*:codes]]` syntax uses struckdown to extract structured `Code` objects:
 
 ```python
 class Code(BaseModel):
@@ -78,7 +85,7 @@ Your task now is to group the initial codes into distinct themes.
 
 Provide a descriptive and specific name of 8 to 15 words for each theme.
 
-[[themes:themes]]
+[[theme*:themes]]
 ```
 
 **Input**: Each chunk
@@ -152,7 +159,7 @@ First, make a short list of notes on the codes we want to keep. Avoid duplicates
 
 Now, form this list of new/aligned codes into the required format.
 
-[[codes:codes]]
+[[code*:codes]]
 ```
 
 This two-step process (notes → structured output) helps the LLM deduplicate effectively.
@@ -186,7 +193,7 @@ Preliminary themes:
 
 {{all_themes}}
 
-[[themes:themes]]
+[[theme*:themes]]
 ```
 
 Each theme includes `code_slugs` that reference codes by their slug identifier.

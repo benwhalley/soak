@@ -1,3 +1,10 @@
+---
+layout: default
+title: Customizing Your Analysis
+parent: Tutorials
+nav_order: 2
+---
+
 # Customizing Your Analysis
 
 This tutorial shows how to adapt soak pipelines to your research needs by modifying prompts and pipeline structure.
@@ -68,7 +75,7 @@ You are a: {{persona}}
 
 Identify all relevant codes in the text...
 
-[[codes:codes]]
+[[code*:codes]]
 ```
 
 ### Step 3: Modify for Your Domain
@@ -119,11 +126,11 @@ Identify all codes, with:
 {{input}}
 </text>
 
-[[codes:codes]]
+[[code*:codes]]
 
 Now identify themes that group related codes...
 
-[[themes:themes]]
+[[theme*:themes]]
 ```
 
 ### Step 4: Run Your Custom Pipeline
@@ -203,7 +210,7 @@ When coding:
 
 {{input}}
 
-[[codes:codes]]
+[[code*:codes]]
 ```
 
 ## Working with Return Types
@@ -213,8 +220,8 @@ soak uses struckdown syntax for structured outputs: `[[return_type:field_name]]`
 ### Available Return Types
 
 **Thematic analysis:**
-- `[[codes:codes]]` - List of Code objects
-- `[[themes:themes]]` - List of Theme objects
+- `[[code*:codes]]` - List of Code objects
+- `[[theme*:themes]]` - List of Theme objects
 - `[[extract:text]]` - Free-form text extraction
 - `[[report]]` - Free-form narrative
 
@@ -412,7 +419,7 @@ Focus exclusively on TREATMENT experiences. Code for:
 
 {{input}}
 
-[[codes:codes]]
+[[code*:codes]]
 
 ---#all_treatments
 
@@ -426,7 +433,7 @@ Merge duplicate treatments from different transcripts.
 
 [[codenotes]]
 
-[[codes:codes]]
+[[code*:codes]]
 
 ---#narrative
 

@@ -1,3 +1,10 @@
+---
+layout: default
+title: Calibration
+parent: Explanation
+nav_order: 8
+---
+
 # Understanding Calibration
 
 Calibration transforms raw embedding similarity scores into interpretable values that correspond to semantic distance categories.

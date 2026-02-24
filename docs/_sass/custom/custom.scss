@@ -1,0 +1,36 @@
+// Custom styles for soak docs
+
+// Full-width images - extend to align with sidebar edge
+.main-content img {
+  margin-left: calc(-1 * (2rem + 1rem));  // content padding + extra to align with nav
+  max-width: calc(100% + 3rem + 2rem);
+  width: calc(100% + 3rem + 2rem);
+  display: block;
+}
+
+// More precise: use the actual main content padding
+@media (min-width: 50rem) {
+  .main-content img {
+    margin-left: -4rem;
+    max-width: calc(100% + 4rem);
+    width: calc(100% + 4rem);
+  }
+}
+
+@media (min-width: 66.5rem) {
+  .main-content img {
+    margin-left: -6rem;
+    max-width: calc(100% + 6rem);
+    width: calc(100% + 6rem);
+  }
+}
+
+// For smaller screens - just edge to edge
+@media (max-width: 50rem) {
+  .main-content img {
+    margin-left: -1rem;
+    margin-right: -1rem;
+    max-width: calc(100% + 2rem);
+    width: calc(100% + 2rem);
+  }
+}

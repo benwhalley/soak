@@ -1,3 +1,10 @@
+---
+layout: default
+title: Node Types
+parent: Explanation
+nav_order: 3
+---
+
 # Node Types
 
 This document explains the different categories of nodes in soak and when to use each type.

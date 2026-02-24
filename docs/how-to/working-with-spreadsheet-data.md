@@ -1,3 +1,10 @@
+---
+layout: default
+title: Working with Spreadsheet Data
+parent: How-to Guides
+nav_order: 4
+---
+
 # Working with Spreadsheet Data (CSV/XLSX)
 
 soak can process CSV and Excel files directly, treating each row as a separate document. This is useful for survey data, coded transcripts, or any tabular data you want to analyze with LLMs.

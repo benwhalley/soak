@@ -1,3 +1,10 @@
+---
+layout: default
+title: CLI Reference
+parent: Reference
+nav_order: 1
+---
+
 # CLI Reference
 
 soak provides a command-line interface for running pipelines and working with results.

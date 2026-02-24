@@ -1,0 +1,76 @@
+<style>
+/* Ancizar Sans Variable Font */
+@font-face {
+    font-family: 'Ancizar Sans';
+    src: url('/assets/fonts/AncizarSans-VariableFont_wght.ttf') format('truetype');
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: swap;
+}
+
+@font-face {
+    font-family: 'Ancizar Sans';
+    src: url('/assets/fonts/AncizarSans-Italic-VariableFont_wght.ttf') format('truetype');
+    font-weight: 100 900;
+    font-style: italic;
+    font-display: swap;
+}
+
+/* Apply Ancizar Sans to body */
+body,
+.main-content,
+.site-nav,
+.site-title {
+    font-family: 'Ancizar Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+}
+
+/* JetBrains Mono for code (via Google Fonts) */
+code, pre, .highlight {
+    font-family: 'JetBrains Mono', 'SF Mono', Monaco, monospace !important;
+}
+
+/* Images: start at left edge of main area, stretch to right edge of viewport */
+.main-content img {
+  display: block;
+  height: auto !important;
+  margin: 1rem 0 !important;
+  /* Remove left padding and stretch to right edge of viewport */
+  margin-left: -2rem !important;
+  margin-right: calc(-100vw + 100% + 2rem) !important;
+  width: calc(100vw - 2rem) !important;
+  max-width: none !important;
+}
+
+@media (min-width: 50rem) {
+  .main-content img {
+    margin-left: -2rem !important;
+    margin-right: calc(-100vw + 100% + 4rem) !important;
+    width: calc(100vw - 4rem) !important;
+    border-bottom: 1px solid #ccc;
+
+  }
+}
+
+/* On very wide screens, cap the width to reasonable max */
+@media (min-width: 100rem) {
+  .main-content img {
+    margin-left: -4rem !important;
+    width: calc(100% + 4rem + 20vw) !important;
+    margin-right: -20vw !important;
+  }
+}
+
+/* Column width images - use this class to fit image to column only */
+.main-content img.main-image {
+  width: 60% !important;
+  max-width: 100% !important;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
+  border-bottom: none !important;
+}
+</style>
+
+<!-- JetBrains Mono from Google Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">

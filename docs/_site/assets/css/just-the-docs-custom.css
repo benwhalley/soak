@@ -1,0 +1,31 @@
+.main-content img {
+  margin-left: -3rem;
+  max-width: calc(100% + 3rem + 2rem);
+  width: calc(100% + 3rem + 2rem);
+  display: block;
+}
+
+@media (min-width: 50rem) {
+  .main-content img {
+    margin-left: -4rem;
+    max-width: calc(100% + 4rem);
+    width: calc(100% + 4rem);
+  }
+}
+@media (min-width: 66.5rem) {
+  .main-content img {
+    margin-left: -6rem;
+    max-width: calc(100% + 6rem);
+    width: calc(100% + 6rem);
+  }
+}
+@media (max-width: 50rem) {
+  .main-content img {
+    margin-left: -1rem;
+    margin-right: -1rem;
+    max-width: calc(100% + 2rem);
+    width: calc(100% + 2rem);
+  }
+}
+
+/*# sourceMappingURL=just-the-docs-custom.css.map */

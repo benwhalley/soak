@@ -1,3 +1,10 @@
+---
+layout: default
+title: Getting Started
+parent: Tutorials
+nav_order: 1
+---
+
 # Getting Started with soak
 
 This tutorial walks you through installing soak and running your first thematic analysis.

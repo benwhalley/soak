@@ -1,3 +1,10 @@
+---
+layout: default
+title: What is soak?
+parent: Explanation
+nav_order: 1
+---
+
 # What is soak?
 
 soak is Python package for LLM-assisted qualitative text analysis. It automates coding, theme generation, and other text processing tasks while maintaining researcher control over the process. a
@@ -106,7 +113,7 @@ Read this text and identify key themes:
 
 {{input}}
 
-Generate codes: [[codes:codes]]
+Generate codes: [[code*:codes]]
 ```
 
 Templates use Jinja2 for logic and struckdown for structured outputs. Non-programmers can write them.
@@ -191,7 +198,7 @@ nodes:
 Generate codes from this text:
 {{input}}
 
-[[codes:codes]]
+[[code*:codes]]
 ```
 
 **Command**:

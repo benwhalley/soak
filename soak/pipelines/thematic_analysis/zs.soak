@@ -1,6 +1,6 @@
 name: Thematic analysis
 version: 0.1.0
-description: A qualitative thematic analysis of transcript data, based on reflexive thematic analysis. Code are generated independently for each document, and then clustered and combined before being used to generate themes.
+description: A qualitative thematic analysis of transcript data, based on reflexive thematic analysis. Codes are generated independently for each document, and then clustered and combined before being used to generate themes.
 default_context:
   persona:
     default: Experienced qualitative researcher

@@ -1,3 +1,10 @@
+---
+layout: default
+title: Node Reference
+parent: Reference
+nav_order: 2
+---
+
 # Node Reference
 
 Complete reference for all node types in soak pipelines.
@@ -280,7 +287,7 @@ And these themes:
 
 [[codenotes]]
 
-[[codes:codes]]
+[[code*:codes]]
 ```
 
 **Multiple Inputs:**
@@ -1028,8 +1035,8 @@ Research question: {{research_question}}
 **Return types for thematic analysis:**
 
 ```
-[[codes:codes]]          # List[Code]
-[[themes:themes]]        # List[Theme]
+[[code*:codes]]          # List[Code]
+[[theme*:themes]]        # List[Theme]
 [[extract:text]]         # Free text
 [[report]]               # Free text (narrative)
 ```

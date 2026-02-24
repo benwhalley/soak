@@ -1,3 +1,10 @@
+---
+layout: default
+title: Template System
+parent: Explanation
+nav_order: 4
+---
+
 # Template System
 
 This document explains how soak's template system works, combining Jinja2 for variable substitution with struckdown for structured LLM outputs.
@@ -126,7 +133,7 @@ or with options:
 ```jinja2
 Identify codes in the text:
 
-[[codes:codes]]
+[[code*:codes]]
 ```
 
 Expected LLM output format:
@@ -157,7 +164,7 @@ Returns:
 ```jinja2
 Group codes into themes:
 
-[[themes:themes]]
+[[theme*:themes]]
 ```
 
 Expected LLM output format:
@@ -336,7 +343,7 @@ Provide extensive descriptions (100-150 words per code).
 Provide concise descriptions (30-50 words per code).
 {% endif %}
 
-[[codes:codes]]
+[[code*:codes]]
 ```
 
 

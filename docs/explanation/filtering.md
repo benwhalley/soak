@@ -1,3 +1,10 @@
+---
+layout: default
+title: Filtering
+parent: Explanation
+nav_order: 9
+---
+
 # Filtering and Chunk Overlap
 
 This document explains how the Filter node works and how soak handles overlapping chunks to avoid text duplication when reconstructing documents.

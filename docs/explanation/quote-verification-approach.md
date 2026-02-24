@@ -1,3 +1,10 @@
+---
+layout: default
+title: Quote Verification
+parent: Explanation
+nav_order: 6
+---
+
 # Quote Verification Approach
 
 ## Problem

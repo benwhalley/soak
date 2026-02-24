@@ -1,3 +1,10 @@
+---
+layout: default
+title: HyDE Coverage
+parent: Explanation
+nav_order: 10
+---
+
 # Advanced Coverage Analysis Methods
 
 ## Overview

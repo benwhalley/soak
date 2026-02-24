@@ -1,3 +1,10 @@
+---
+layout: default
+title: Pre-extraction Workflow
+parent: How-to Guides
+nav_order: 5
+---
+
 # Pre-extraction Workflow
 
 The `zspe` (zero-shot pre-extract) pipeline filters text before analysis. Use this when documents contain irrelevant content or when you want to focus on specific topics.

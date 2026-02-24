@@ -1,4 +1,11 @@
-# Theme Similarity Metrics: A Comprehensive Comparison
+---
+layout: default
+title: Similarity Metrics
+parent: Explanation
+nav_order: 7
+---
+
+# Theme Similarity Metrics
 
 ## Introduction
 

@@ -1,3 +1,10 @@
+---
+layout: default
+title: DAG Architecture
+parent: Explanation
+nav_order: 2
+---
+
 # DAG Architecture
 
 This document explains why soak uses a DAG (Directed Acyclic Graph) architecture and how pipeline execution works.

@@ -1,3 +1,10 @@
+---
+layout: default
+title: Build a Classifier
+parent: How-to Guides
+nav_order: 2
+---
+
 # Building Classification Pipelines
 
 This guide shows how to build pipelines that extract structured data from text using the Classifier node.

@@ -1,4 +1,11 @@
-# Adapting/writing pipelines
+---
+layout: default
+title: Adapting Pipelines
+parent: How-to Guides
+nav_order: 6
+---
+
+# Adapting Pipelines
 
 It's probably best to start from an existing pipeline.
 Export a copy to a local file like this:
@@ -60,7 +67,7 @@ The text to read is:
 Identify all relevant codes in the text, provide a Name 
 for each code in 8 to 15 words in sentence case.
 
-[[codes:codes]]
+[[code*:codes]]
 
 Next is the theme identification stage. 
 Your task is to group the codes into distinct themes.
@@ -71,10 +78,10 @@ and lived experiences of participants.
 
 Create themes from the codes above
 
-[[themes:themes]]
+[[theme*:themes]]
 ```
 
-The [[codes:codes]] and [[themes:themes]] placeholders are used to identify that LLM completions of specific types (codes/themes) should be extracted from the LLM output. That is, it's a prompt to soak to request structured data from the LLM.
+The [[code*:codes]] and [[theme*:themes]] placeholders are used to identify that LLM completions of specific types (codes/themes) should be extracted from the LLM output. That is, it's a prompt to soak to request structured data from the LLM.
 
 To adapt the pipeline to your needs, simply edit the YAML file to add your own nodes and prompts. See the documentation for details of all the node types and options.
 

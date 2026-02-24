@@ -1,3 +1,10 @@
+---
+layout: default
+title: Quote Verification Algorithm
+parent: Reference
+nav_order: 3
+---
+
 # Quote Verification Algorithm
 
 ## Overview
