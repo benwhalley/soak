@@ -55,6 +55,27 @@ class GlobalCostTracker:
         for callback in self._callbacks:
             callback()
 
+    def add_embedding_cost(self, fresh_cost: float, fresh_tokens: int, fresh_count: int) -> None:
+        """Add embedding API costs to the running totals.
+
+        This is called by the embedding cost callback after each embedding batch.
+        Embeddings are tracked as 'prompt tokens' since they're input-only.
+
+        Args:
+            fresh_cost: USD cost from fresh (non-cached) API calls
+            fresh_tokens: Token count from fresh API calls
+            fresh_count: Number of fresh embedding calls
+        """
+        with self._lock:
+            self._total_cost += fresh_cost
+            self._fresh_cost += fresh_cost
+            self._prompt_tokens += fresh_tokens
+            self._fresh_count += fresh_count
+
+        # notify callbacks outside lock to avoid deadlock
+        for callback in self._callbacks:
+            callback()
+
     def get_snapshot(self) -> CostSnapshot:
         """Get immutable snapshot of current costs."""
         with self._lock:

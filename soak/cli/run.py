@@ -109,14 +109,12 @@ def run(
     ),
 ):
     """Run a pipeline on input files."""
-    from struckdown import CostSummary, LLMCredentials, new_run
+    from struckdown import CostSummary, LLMCredentials
 
     from ..document_utils import unpack_zip_to_temp_paths_if_needed
     from ..helpers import (format_exception_concise, hash_run_config,
                            resolve_pipeline)
     from ..specs import load_template_bundle
-
-    new_run()
 
     # Validate that input files are provided
     if not input:
