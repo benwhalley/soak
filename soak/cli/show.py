@@ -5,8 +5,6 @@ import sys
 
 import typer
 
-from ..api import ShowError, get_pipeline, get_template, list_pipelines, list_templates
-
 logger = logging.getLogger(__name__)
 
 
@@ -33,6 +31,9 @@ def show(
         soak show pipeline demo > my_pipeline.soak
         soak show template default > my_template.html
     """
+
+    # deferred import to avoid circular dependency
+    from ..api import ShowError, get_pipeline, get_template, list_pipelines, list_templates
 
     # if item_type is not a known type, treat it as a pipeline name
     if item_type not in ["pipeline", "template"]:
