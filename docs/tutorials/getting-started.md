@@ -11,23 +11,27 @@ This tutorial walks you through installing soak and running your first thematic 
 
 ## Prerequisites
 
-- Python 3.11 or 3.12
+- 3.12+
 - [uv](https://docs.astral.sh/uv/getting-started/installation/) package manager
 - API key for an OpenAI-compatible LLM provider
 
 ## Installation
 
-**Requirements:** Python 3.11+, [uv](https://docs.astral.sh/uv/getting-started/installation)
-
 ```bash
-uv tool install git+https://github.com/benwhalley/soak
+uv tool install soaking
 ```
 
-Set environment variables:
+Run the test command to set environment variables:
 
 ```bash
-export LLM_API_KEY=your_api_key
-export LLM_API_BASE=https://api.openai.com/v1  # Optional
+soak test
+```
+
+This will save these variables to your `.env` file:
+
+```bash
+LLM_API_KEY=your_api_key
+LLM_API_BASE=https://api.openai.com/v1  # Optional
 ```
 
 ## Your First Analysis
@@ -49,12 +53,39 @@ But this is different - it's like my body just stopped working properly.
 
 ### 2. Run the Analysis
 
-Use the built-in `zs` (zero-shot) pipeline for thematic analysis:
+Use the built-in `zs` (zero-shot) pipeline for thematic analysis, based on [Raza et al 2025](https://arxiv.org/abs/2502.01620).
 
 ```bash
-soak zs data/interview.txt --output my_first_analysis
+uv run soak zs "soak-data/UKDA-2000-tab/rtf/2000int00*.rtf" --output social_history -f
+```
+
+
+You can also run the analysis in a Python script. In this instance, we run multiple versions of the analysis, each with different directions:
+
+```python
+#!/usr/bin/env python3
+
+from soak import api
+import json
+from pathlib import Path
+
+cfg = json.loads(Path("perspectives.json").read_text())
+
+for i, (name, block) in enumerate(cfg["perspectives"].items(), 1):
+    result = api.run(
+        "zs",
+        "soak-data/UKDA-2000-tab/rtf/2000int00*.rtf",
+        context=block["context"],
+        output=f"history_{name}",
+        seed=i,
+        skip_nodes=["checkquotes"],
+        force=True,
+        progress=True
+    )
+    print(f"{name}: {len(result.themes)} themes")
 
 ```
+
 
 This will:
 
