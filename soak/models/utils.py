@@ -563,9 +563,14 @@ def collect_input_codes(context: Dict[str, Any]) -> List[Code]:
                         codes.extend(output_val.codes)
                     elif isinstance(output_val, list):
                         # Check for list of Code objects (from [[code*:codes]])
+                        # or Theme objects with resolved_code_refs (from [[theme*:themes]])
                         for sub_item in output_val:
                             if isinstance(sub_item, Code):
                                 codes.append(sub_item)
+                            elif hasattr(sub_item, "resolved_code_refs") and sub_item.resolved_code_refs:
+                                # Theme with resolved codes - extract the codes
+                                for code_dict in sub_item.resolved_code_refs:
+                                    codes.append(Code(**code_dict))
 
     # If no codes found in direct context, try traversing DAG ancestors
     # This handles cases where intermediate Reduce nodes stringify the codes

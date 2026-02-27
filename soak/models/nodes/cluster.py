@@ -357,6 +357,11 @@ class Cluster(DAGNode):
     method: ClusterMethod = Field(default_factory=HDBSCANMethod)
     items_field: Optional[str] = "codes"
     text_field: str = "content"
+    skip_below: int = Field(
+        default=20,
+        description="If input item count is below this threshold, "
+        "skip clustering and return all items as a single cluster.",
+    )
 
     async def run(self) -> BatchList:
         """Execute clustering on input items.
@@ -368,43 +373,24 @@ class Cluster(DAGNode):
         await super().run()
         logger.info(f"Cluster '{self.name}': Starting clustering...")
 
-        # get input data
-        if self.inputs:
-            input_name = self.inputs[0]
-            if input_name == "documents":
-                input_data = self.dag.config.load_documents()
-            else:
-                input_data = self.context[input_name]
-        else:
-            input_data = self.dag.config.load_documents()
-
-        # flatten if BatchList
-        if isinstance(input_data, BatchList):
-            raw_items = input_data.flatten_all()
-            logger.info(f"Flattened BatchList to {len(raw_items)} items")
-        elif isinstance(input_data, list):
-            raw_items = input_data
-        else:
-            raw_items = [input_data]
-
-        # unwrap items from containers (e.g., CodeList -> Code)
-        if self.items_field:
-            items = unwrap_chatter_items(raw_items, self.items_field)
-        else:
-            items = raw_items
+        # gather inputs using helper method
+        items, texts = self._gather_inputs()
 
         if not items:
             logger.warning(f"Cluster '{self.name}': No items to cluster")
             self.output = BatchList(batches=[], group_field="cluster", group_keys=[])
             return self.output
 
-        logger.info(
-            f"Cluster '{self.name}': {len(raw_items)} raw items -> {len(items)} items after unwrap"
-        )
+        logger.info(f"Cluster '{self.name}': {len(items)} items to cluster")
 
-        # extract texts for embedding
-        logger.info(f"Extracting text from {len(items)} items...")
-        texts = [self._extract_text(item) for item in items]
+        # check skip_below threshold
+        if self.skip_below is not None and len(items) < self.skip_below:
+            logger.warning(
+                f"Cluster '{self.name}': {len(items)} items below skip_below={self.skip_below}, "
+                "skipping clustering and returning single cluster"
+            )
+            self.output = self._make_single_cluster(items, texts)
+            return self.output
 
         # deduplicate texts for embedding efficiency
         unique_texts = list(set(texts))
@@ -552,6 +538,115 @@ class Cluster(DAGNode):
                     samples += f", ... (+{size-3} more)"
                 logger.info(f"    {cluster_id}: {size} items [{samples}]")
 
+        return self.output
+
+    def _gather_inputs(self) -> tuple[List[Any], List[str]]:
+        """Gather and process input items for clustering.
+
+        Returns:
+            Tuple of (all_items, all_texts) where all_items are the unwrapped items
+            and all_texts are the extracted text strings for embedding.
+        """
+        # get input data
+        if self.inputs:
+            input_name = self.inputs[0]
+            if input_name == "documents":
+                input_data = self.dag.config.load_documents()
+            else:
+                input_data = self.context[input_name]
+        else:
+            input_data = self.dag.config.load_documents()
+
+        # flatten if BatchList
+        if isinstance(input_data, BatchList):
+            raw_items = input_data.flatten_all()
+            logger.debug(f"Flattened BatchList to {len(raw_items)} items")
+        elif isinstance(input_data, list):
+            raw_items = input_data
+        else:
+            raw_items = [input_data]
+
+        # unwrap items from containers (e.g., CodeList -> Code)
+        if self.items_field:
+            items = unwrap_chatter_items(raw_items, self.items_field)
+        else:
+            items = raw_items
+
+        if not items:
+            return [], []
+
+        logger.debug(
+            f"Cluster '{self.name}': {len(raw_items)} raw items -> {len(items)} items after unwrap"
+        )
+
+        # extract texts for embedding
+        texts = [self._extract_text(item) for item in items]
+
+        return items, texts
+
+    def _make_single_cluster(self, all_items: List[Any], all_texts: List[str]) -> List[TrackedItem]:
+        """Create a single cluster containing all items (used for skip scenarios).
+
+        Args:
+            all_items: List of items to include in the cluster
+            all_texts: List of text representations of items
+
+        Returns:
+            List containing a single TrackedItem representing the cluster
+        """
+        # stringify the cluster items for content
+        content_parts = []
+        for item in all_items:
+            if hasattr(item, "model_dump"):
+                content_parts.append(str(item))
+            elif isinstance(item, TrackedItem):
+                content_parts.append(item.content)
+            else:
+                content_parts.append(str(item))
+
+        cluster_content = "\n\n---\n\n".join(content_parts)
+
+        single_cluster = TrackedItem(
+            content=cluster_content,
+            id=f"{self.name}__cluster_0",
+            sources=[
+                (
+                    item.id
+                    if isinstance(item, TrackedItem)
+                    else (item.slug if hasattr(item, "slug") else str(i))
+                )
+                for i, item in enumerate(all_items)
+            ],
+            metadata={
+                "cluster_id": "cluster_0",
+                "cluster_index": 0,
+                "cluster_size": len(all_items),
+                "items": all_items,
+                "skipped_clustering": True,
+            },
+        )
+        return [single_cluster]
+
+    async def skip(self) -> List[TrackedItem]:
+        """When skipped, return all inputs as a single cluster.
+
+        This provides passthrough behavior: downstream nodes still receive
+        a cluster TrackedItem, but no actual clustering is performed.
+
+        Returns:
+            List containing a single TrackedItem with all inputs as one cluster.
+        """
+        logger.info(f"Cluster '{self.name}': skipped, returning single cluster passthrough")
+
+        # gather inputs using the same logic as run()
+        items, texts = self._gather_inputs()
+
+        if not items:
+            logger.warning(f"Cluster '{self.name}': No items to cluster (skipped)")
+            self.output = []
+            return self.output
+
+        self.output = self._make_single_cluster(items, texts)
         return self.output
 
     def _extract_text(self, item: Any) -> str:

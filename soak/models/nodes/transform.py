@@ -12,7 +12,7 @@ from tqdm import tqdm
 from soak.error_handlers import managed_llm_call
 from soak.models.base import (extract_prompt, get_action_lookup,
                               safe_json_dump, semaphore)
-from soak.models.dag import render_strict_template
+from soak.models.dag import render_template_preserve_undefined
 from soak.models.utils import post_process_chatter_result
 
 from .base import CompletionDAGNode, ItemsNode
@@ -110,7 +110,10 @@ class Transform(ItemsNode, CompletionDAGNode):
         merged_context["_node"] = self
         merged_context["_dag"] = self.dag
 
-        rt = render_strict_template(self.template, {**self.context, **merged_context})
+        # Pre-render context variables but preserve undefined ones for struckdown.
+        # This allows {{min_themes}} to render while keeping {{narrative}} (from [[narrative]])
+        # intact for struckdown to fill after checkpoint processing.
+        rt = render_template_preserve_undefined(self.template, merged_context)
 
         # Get LLM kwargs using helper method
         extra_kwargs = self.get_llm_kwargs()

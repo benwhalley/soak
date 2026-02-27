@@ -47,7 +47,8 @@ Don't include titles or subtitles. Skip the introduction, citations or extended 
 
 Do not include a preamble - just report the results for the themes. 
 
-Include short excerpts from quotes rather than full verbatim reproduction. 
+Always try to include participants' voices or quotes from the text.
+Use short excerpts from quotes if they illustrate the theme rather than long verbatim segments. Integrate quotes (in speech marks) within your own prose in fluent/natural way.
 
 Be concise---about 1 paragraph per theme, and not more than 2 per theme. 
 
@@ -56,12 +57,30 @@ Use simple markdown formatting. Make each theme name bold face.
 Use UK English spelling and idioms (although report quotes verbatim).
 
 
-
 ### IMPORTANT NOTES ON CONTENT AND SAFETY
-This is academic analysis of interview data.
-Participants may describe distress or safeguarding processes.
-Report neutrally without providing advice or instructions.
-If quotes are distressing, make clear this is reported speech, and contextualise the quote. 
+
+This is academic analysis of interview data. Participants may describe distress or safeguarding processes. If quotes are distressing, make clear this is _reported_ speech, and contextualise the quote. 
+
+
+
+# META NARRATIVE REPORT INSTRUCTIONS
+
+After we have written the report, we can reflect across the whole project. 
+
+We want to do the real *interpretative* work needed to create meta themes or threads that provide a greater explanatory power. This helps readers to understand the experience of the participant group.
+
+Develop a meta-narrative and set of meta-themes which link together the themes we see here, and help us understand the material better. 
+
+Respond in around 3 paragraphs.
+
+Just write the themes and narratives: don't refer to them in the text. Avoid preambles. Avoid cliched or overly generalised narratives: write directly, use the language of the themes and participants. 
+
+Our goal is to help the reader make sense of the themes within their own frame of reference. 
+
+
+# IMPORTANT
+
+DO NOT refer to "layered meta-narrative" or "over-arching narrative" in the text. Explain, but do not over-interpret.
 
 
 </system>
@@ -90,3 +109,45 @@ Briefly, jot down your thoughts. What order will help readers understand the the
 Remember the guidance. Write up the report in accordance with your plan. Don't report distressing or upsetting quotes verbatim.
 
 [[narrative]]
+
+
+<checkpoint>
+
+
+<system append>
+
+We have now written up the report, but need to think about how to interpret the results and create an over-arching narrative.
+
+</system>
+
+
+# TASK: READ THE THEMES CAREFULLY
+
+<themes>
+    
+{{themes}}
+
+</themes>
+    
+
+# TASK: RE-READ OUR NARRATIVE REPORT ON THE THEMES
+
+<report>
+
+{{narrative}}
+
+</report>
+
+
+# TASK: IDENTIFY LARGER META-THEMES  OR OVERARCHING NARRATIVES AND MAKE A PLAN
+
+Use the guidance above. Develop a broader-narrative and set of overarching themes to give a high level interpretation of the themes identified. Make a plan for a larger narrative that connects and explains the themes:
+
+[[meta_planning]]
+
+
+## TASK: WRITE THE OVER-ARCHING NARRATIVE ACCOUNT
+
+Write the meta-narrative using the guidance and instructions above:
+
+[[meta_narrative]]

@@ -2,6 +2,8 @@
 
 import nltk
 
+from . import api
+
 # ensure NLTK punkt tokenizer data is available
 # wrapped in error handling to avoid race conditions when multiple workers start simultaneously
 try:

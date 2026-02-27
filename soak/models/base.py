@@ -204,7 +204,7 @@ def _has_code_inputs(context: Dict[str, Any]) -> bool:
 
 
 class CodeList(BaseModel):
-    """Container for a list of Code objects. Used for wrapping [[code*:x]] outputs."""
+    """Container for a list of Code objects. Internal wrapper, not an LLM return type."""
 
     codes: List[Code] = Field(..., min_length=0)
 
@@ -263,7 +263,7 @@ class Theme(ResponseModel):
 
 
 class Themes(BaseModel):
-    """Container for a list of Theme objects. Used for wrapping [[theme*:x]] outputs."""
+    """Container for a list of Theme objects. Internal wrapper, not an LLM return type."""
 
     themes: List[Theme] = Field(..., min_length=1)
 

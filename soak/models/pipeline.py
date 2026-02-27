@@ -165,6 +165,8 @@ class QualitativeAnalysisPipeline(DAG):
         self_similarity = None
         themes_json = "[]"
         self_similarity_json = "null"
+        verification_data = None
+        themes_with_codes = []
 
         if "simple" in template_name:
             import json
@@ -197,18 +199,74 @@ class QualitativeAnalysisPipeline(DAG):
                     except Exception as e:
                         logger.warning(f"Could not compute self-similarity: {e}")
 
+                # extract verification data from checkquotes node if present
+                checkquotes_node = self.nodes_dict.get("checkquotes")
+                if checkquotes_node and checkquotes_node.output:
+                    try:
+                        matches = []
+                        if hasattr(checkquotes_node, "sentence_matches"):
+                            matches = checkquotes_node.sentence_matches or []
+                        elif isinstance(checkquotes_node.output, dict):
+                            matches = checkquotes_node.output.get("sentence_matches", [])
+
+                        if matches:
+                            # count flagged quotes
+                            flagged_count = sum(
+                                1 for m in matches
+                                if m.get("llm_is_contained") is False
+                            )
+                            verification_data = {
+                                "matches": matches,
+                                "flagged": flagged_count,
+                                "total": len(matches),
+                            }
+                    except Exception as e:
+                        logger.debug(f"Could not extract verification data: {e}")
+
+                # build themes with their related codes for expandable display
+                if analysis_result.themes:
+                    codes_by_slug = {}
+                    if analysis_result.codes:
+                        for code in analysis_result.codes:
+                            slug = code.slug if hasattr(code, "slug") else code.get("slug")
+                            if slug:
+                                codes_by_slug[slug] = code
+
+                    for theme in analysis_result.themes:
+                        theme_dict = theme.model_dump() if hasattr(theme, "model_dump") else dict(theme)
+                        code_slugs = theme_dict.get("code_slugs", [])
+                        related_codes = []
+                        total_quotes = 0
+
+                        for slug in code_slugs:
+                            code = codes_by_slug.get(slug)
+                            if code:
+                                code_dict = code.model_dump() if hasattr(code, "model_dump") else dict(code)
+                                quotes = code_dict.get("all_quotes", code_dict.get("quotes", []))
+                                if isinstance(quotes, list):
+                                    total_quotes += len(quotes)
+                                related_codes.append(code_dict)
+
+                        themes_with_codes.append({
+                            **theme_dict,
+                            "related_codes": related_codes,
+                            "total_quotes": total_quotes,
+                        })
+
             except Exception as e:
                 logger.debug(f"Could not prepare template data: {e}")
 
         return template.render(
             pipeline=self,
-            result=self.result(),
+            result=self.result().model_dump(),
             detail=dd,
             execution_order=execution_order,
             soak_version=soak_version,
             self_similarity=self_similarity,
             themes_json=themes_json,
             self_similarity_json=self_similarity_json,
+            verification_data=verification_data,
+            themes_with_codes=themes_with_codes,
         )
 
     def result(self):
@@ -219,17 +277,36 @@ class QualitativeAnalysisPipeline(DAG):
 
             For live ChatterResult: uses .outputs property
             For deserialized dict: navigates results[key]['output']
+            For Reduce nodes: direct list of items (codes, themes)
             """
             try:
-                from soak.models.base import CodeList, Themes
+                from soak.models.base import Code, CodeList, Theme, Themes
 
                 node = self.nodes_dict.get(name)
                 if not node or not node.output:
                     return None
 
-                # Handle list output (ChatterResult or deserialized dict)
+                # Handle list output (ChatterResult or deserialized dict or direct items)
                 if isinstance(node.output, list) and len(node.output) > 0:
-                    chatter = node.output[0]
+                    first_item = node.output[0]
+
+                    # Check if this is a direct list of Code/Theme items (from Reduce nodes)
+                    # rather than a ChatterResult wrapper
+                    if isinstance(first_item, Code):
+                        return node.output
+                    if isinstance(first_item, Theme):
+                        return node.output
+                    if isinstance(first_item, dict):
+                        # Check if it's a Code or Theme dict (has 'slug' or 'code_slugs')
+                        if "slug" in first_item and "quotes" in first_item:
+                            # This is a list of Code dicts from Reduce node
+                            return node.output
+                        if "code_slugs" in first_item:
+                            # This is a list of Theme dicts from Reduce node
+                            return node.output
+
+                    # Otherwise treat as ChatterResult or dict wrapper
+                    chatter = first_item
                     segment_output = None
 
                     # Live ChatterResult: use .outputs property

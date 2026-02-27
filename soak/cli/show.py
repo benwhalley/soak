@@ -2,11 +2,10 @@
 
 import logging
 import sys
-from pathlib import Path
 
 import typer
 
-from ._common import PIPELINE_DIR, TEMPLATES_DIR
+from ..api import ShowError, get_pipeline, get_template, list_pipelines, list_templates
 
 logger = logging.getLogger(__name__)
 
@@ -41,55 +40,35 @@ def show(
         name = item_type
         item_type = "pipeline"
 
-        # check current directory first, then built-in
-        cwd_candidate = Path.cwd() / name
-        cwd_candidate_soak = Path.cwd() / f"{name}.soak"
-
-        if cwd_candidate.is_file():
-            print(cwd_candidate.read_text(), file=sys.stdout)
+        # try to get the pipeline content
+        try:
+            content = get_pipeline(name)
+            print(content, file=sys.stdout)
             return
-        if cwd_candidate_soak.is_file():
-            print(cwd_candidate_soak.read_text(), file=sys.stdout)
-            return
-
-        # fall through to built-in pipeline search below
-
-    if item_type == "pipeline":
-        items_dir = PIPELINE_DIR
-        extensions = [".soak"]
-    else:  # template
-        items_dir = TEMPLATES_DIR
-        extensions = [".html"]
+        except ShowError:
+            logger.error(f"Pipeline '{name}' not found")
+            raise typer.Exit(1)
 
     # List all if no name provided
     if name is None:
+        if item_type == "pipeline":
+            items = list_pipelines()
+        else:
+            items = list_templates()
+
         logger.info(f"Available {item_type}s:")
-        for ext in extensions:
-            for item_path in sorted(items_dir.glob(f"**/*{ext}")):
-                # show relative path from items_dir for subfolders
-                rel_path = item_path.relative_to(items_dir)
-                display_name = str(rel_path.with_suffix(""))
-                logger.info(f"  {display_name}")
+        for item in items:
+            logger.info(f"  {item}")
         logger.info(f"\nUsage: soak show {item_type} <name>")
         return
 
-    # Find the item - check direct path first, then search subfolders
-    candidates = [items_dir / name]
-    for ext in extensions:
-        candidates.append(items_dir / f"{name}{ext}")
-        # also search in subfolders by name (e.g., "zs" finds "thematic_analysis/zs.soak")
-        candidates.extend(items_dir.glob(f"**/{name}{ext}"))
-
-    item_path = None
-    for cand in candidates:
-        if isinstance(cand, Path) and cand.is_file():
-            item_path = cand
-            break
-
-    if item_path is None:
-        logger.error(f"{item_type} '{name}' not found in {items_dir}")
-        logger.debug(f"Tried: {[str(c) for c in candidates]}")
+    # Get specific item content
+    try:
+        if item_type == "pipeline":
+            content = get_pipeline(name)
+        else:
+            content = get_template(name)
+        print(content, file=sys.stdout)
+    except ShowError as e:
+        logger.error(str(e))
         raise typer.Exit(1)
-
-    # Print contents to stdout
-    print(item_path.read_text(), file=sys.stdout)

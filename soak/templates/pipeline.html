@@ -202,17 +202,35 @@
         <div class="section-header">
             <h3>Report Summary</h3>
         </div>
-        {% for node_name in pipeline.config.report_texts %}
+        {% for report_key in pipeline.config.report_texts %}
+        {% set node_name = report_key.split('.')[0] %}
+        {% set slot_name = report_key.split('.')[1] if '.' in report_key else none %}
         {% if node_name in pipeline.nodes_dict and pipeline.nodes_dict[node_name].output %}
+        {% set report_info = pipeline.config.report_texts[report_key] if pipeline.config.report_texts is mapping else {} %}
+        {% set display_label = report_info.label if report_info is mapping and report_info.label else (slot_name or node_name)|title|replace('_', ' ') %}
+        {% set display_description = report_info.description if report_info is mapping and report_info.description else none %}
         <div class="row">
             <div class="col-12">
                 <div class="card mb-3">
                     <div class="card-header">
-                        <h5 class="mb-0">{{ node_name|title|replace('_', ' ') }}</h5>
+                        <h5 class="mb-0">{{ display_label }}</h5>
+                        {% if display_description %}
+                        <p class="text-muted mb-0" style="font-size: 0.85rem;">{{ display_description }}</p>
+                        {% endif %}
                     </div>
                     <div class="card-body">
                         {% markdown %}
-{{pipeline.nodes_dict[node_name].result().response_obj|safe}}
+{% if slot_name %}
+{% set node = pipeline.nodes_dict[node_name] %}
+{% set first_output = node.output[0] if node.output else none %}
+{% if first_output and first_output.outputs is defined and slot_name in first_output.outputs %}
+{{ first_output.outputs[slot_name]|safe }}
+{% else %}
+{{ node.result().response_obj|safe }}
+{% endif %}
+{% else %}
+{{ pipeline.nodes_dict[node_name].result().response_obj|safe }}
+{% endif %}
                         {% endmarkdown %}
                     </div>
                 </div>

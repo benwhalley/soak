@@ -32,7 +32,14 @@ default_context:
 scrub: false
 randomise_document_order: true
 config:
-    report_texts: [narrative, meta_narrative]
+    report_texts: 
+      narrative.meta_narrative:
+        label: Summary
+        description: Overarching narrative account of the analysis.
+      narrative.narrative:
+        label: Thematic Narrative
+        description: Narrative report
+
 default_config:
   models:
     default: gpt-4.1-mini
@@ -123,14 +130,3 @@ nodes:
     model: best
     inputs:
       - themes
-    
-  - name: meta_narrative
-    type: Transform
-    template: meta_narrative.sd
-    model: best
-    inputs:
-      - themes
-      - narrative
-    
-
-    

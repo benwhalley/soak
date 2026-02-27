@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING
 
 import typer
 
+from ..helpers import derive_input_source
+
 if TYPE_CHECKING:
     from ..models import QualitativeAnalysisPipeline
 
@@ -23,6 +25,9 @@ warnings.filterwarnings(
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 logger = logging.getLogger(__name__)
+
+# re-export for backwards compatibility
+_derive_input_source = derive_input_source
 
 # module-level flag for pdb on exception
 _pdb_on_exception = False
@@ -41,38 +46,6 @@ def set_pdb_on_exception(value: bool) -> None:
 def get_pdb_on_exception() -> bool:
     """Get the global pdb on exception flag."""
     return _pdb_on_exception
-
-
-def _derive_input_source(docfiles: list) -> str:
-    """Derive a summary string from document paths.
-
-    Attempts to find common directory and file extension pattern.
-    E.g., [("data/a.txt", {}), ("data/b.txt", {})] -> "data/*.txt"
-    """
-    if not docfiles:
-        return ""
-
-    # extract paths from tuples
-    paths = [Path(p[0]) if isinstance(p, tuple) else Path(p) for p in docfiles]
-
-    # find common parent directory
-    parents = [p.parent for p in paths]
-    if parents and all(p == parents[0] for p in parents):
-        common_dir = str(parents[0])
-    else:
-        # try to find longest common prefix
-        parent_strs = [str(p) for p in parents]
-        common_prefix = os.path.commonpath(parent_strs) if parent_strs else ""
-        common_dir = common_prefix if common_prefix else "."
-
-    # find common extension
-    extensions = {p.suffix for p in paths}
-    if len(extensions) == 1 and extensions != {""}:
-        ext_pattern = f"*{list(extensions)[0]}"
-    else:
-        ext_pattern = "*"
-
-    return f"{common_dir}/{ext_pattern}"
 
 
 def get_soak_version() -> str:

@@ -843,9 +843,9 @@ class VerifyQuotes(CompletionDAGNode):
     expand_window_neighbors: int = 1  # Search ±N windows around BM25 best match
 
     # LLM existence check thresholds (quotes below these trigger LLM verification)
-    check_exists_bm25: float = 20.0  # BM25 score threshold
+    check_exists_bm25: float = 15.0  # BM25 score threshold
     check_exists_bm25_ratio: float = 2.0  # BM25 ratio threshold (top1/top2)
-    check_exists_min_similarity: float = 0.5  # Calibrated similarity threshold
+    check_exists_min_similarity: float = 0.4  # Calibrated similarity threshold
 
     # LLM judge templates
     template: Optional[str] = None  # Custom LLM-as-judge prompt template

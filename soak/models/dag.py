@@ -11,7 +11,7 @@ from typing import (TYPE_CHECKING, Annotated, Any, Callable, Dict, List, Optiona
                     Tuple, Union)
 
 import anyio
-from jinja2 import Environment, StrictUndefined, meta
+from jinja2 import Environment, StrictUndefined, Undefined, meta
 from pydantic import BaseModel, Field, model_validator
 from struckdown import LLM, ChatterResult, LLMCredentials
 
@@ -95,10 +95,12 @@ class DAGConfig(BaseModel):
         default=None, exclude=True
     )  # callback(node) - called when node completes (success or failure)
 
-    # report configuration
-    report_texts: List[str] = Field(
+    # report configuration - supports both formats:
+    # - List: ["narrative.slot1", "narrative.slot2"]
+    # - Dict: {"narrative.slot1": {"label": "...", "description": "..."}}
+    report_texts: Union[List[str], Dict[str, Any]] = Field(
         default_factory=lambda: ["narrative"]
-    )  # Transform nodes to show as text in HTML reports
+    )  # node.slot references for HTML report texts
 
     def get_model(self, alias: Optional[str] = None):
         """Create LLM instance with configured model.
@@ -394,6 +396,42 @@ def render_strict_template(template_str: str, context: dict) -> str:
     return template.render(**context)
 
 
+class PreserveUndefined(Undefined):
+    """Undefined that preserves {{varname}} syntax for struckdown to handle later.
+
+    Used for pre-rendering templates that have both:
+    - Context variables (min_themes, themes) -> should be rendered
+    - Self-references (narrative from [[narrative]]) -> should be preserved
+    """
+
+    def __str__(self) -> str:
+        # Return the original {{varname}} syntax
+        return "{{" + self._undefined_name + "}}"
+
+    def __iter__(self):
+        # Allow iteration over undefined (returns empty)
+        return iter([])
+
+    def __bool__(self) -> bool:
+        return False
+
+
+def render_template_preserve_undefined(template_str: str, context: dict) -> str:
+    """Render Jinja2 template, preserving undefined variables for struckdown.
+
+    Renders defined context variables but keeps undefined ones as {{varname}}
+    so struckdown can fill them later (e.g., outputs from earlier checkpoints).
+    """
+    from struckdown import struckdown_finalize
+
+    env = Environment(
+        undefined=PreserveUndefined,
+        finalize=struckdown_finalize,
+    )
+    template = env.from_string(template_str)
+    return template.render(**context)
+
+
 @dataclass(frozen=True)
 class Edge:
     """DAG edge representing dependency between nodes."""
@@ -639,7 +677,14 @@ class DAG(BaseModel):
                 async with anyio.create_task_group() as tg:
                     for name in batch:
                         if name in skip_nodes:
-                            logger.debug(f"Skipping node: {name}")
+                            # call node.skip() for passthrough behavior
+                            node = self.nodes_dict[name]
+                            result = await node.skip()
+                            if result is not None:
+                                node.output = result
+                                logger.debug(f"Skipped node '{name}' with passthrough output")
+                            else:
+                                logger.debug(f"Skipping node: {name}")
                             continue
                         tg.start_soon(run_node, self.nodes_dict[name])
 

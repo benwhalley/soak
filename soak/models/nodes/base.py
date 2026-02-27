@@ -22,7 +22,8 @@ from tqdm import tqdm
 
 from soak.error_handlers import log_error_to_stderr, should_continue_pipeline
 from soak.models.base import TrackedItem, extract_content, get_action_lookup
-from soak.models.dag import DAG, OutputUnion, render_strict_template
+from soak.models.context import get_context_defaults
+from soak.models.dag import DAG, OutputUnion, render_strict_template, render_template_preserve_undefined
 
 logger = logging.getLogger(__name__)
 
@@ -70,9 +71,22 @@ class DAGNode(BaseModel):
     async def run(self, items: List[Any] = None) -> List[Any]:
         logger.debug(f"\n\nRunning `{self.name}` ({self.__class__.__name__})\n\n")
 
+    async def skip(self) -> Optional[List[Any]]:
+        """Called when node is in skip_nodes list.
+
+        Default behavior: return None (no output, downstream sees nothing).
+        Nodes can override for passthrough behavior.
+
+        Returns:
+            None by default. Override to return processed output for passthrough.
+        """
+        logger.debug(f"Skipping node '{self.name}' (default: no output)")
+        return None
+
     @property
     def context(self) -> Dict[str, Any]:
-        ctx = self.dag.default_context.copy()
+        # Extract just the default values from context variables (not the full dicts)
+        ctx = get_context_defaults(self.dag.default_context)
 
         # merge in extra_context from config (includes persona, research_question, etc.)
         ctx.update(self.dag.config.extra_context)
@@ -582,8 +596,10 @@ async def default_map_task(template, context, model, credentials, **kwargs):
     to the calling node (Map) which handles them appropriately via managed_llm_call.
     The connection error counter is reset by managed_llm_call wrapper.
     """
-
-    rt = render_strict_template(template, context)
+    # Pre-render context variables but preserve undefined ones for struckdown.
+    # This allows {{min_themes}} to render while keeping {{narrative}} (from [[narrative]])
+    # intact for struckdown to fill after checkpoint processing.
+    rt = render_template_preserve_undefined(template, context)
 
     # call chatter as async function within the main event loop
     # errors will propagate to the calling node for handling

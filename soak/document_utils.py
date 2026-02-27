@@ -1,4 +1,11 @@
-"""Text extraction utilities for PDF, Word, text documents, and spreadsheets."""
+"""Text extraction utilities for PDF, Word, text documents, and spreadsheets.
+
+Document extraction strategy:
+- pandoc (via pypandoc) for: .docx, .rtf, .txt, .md, .markdown
+- pdfplumber for: .pdf (text extraction only, no OCR)
+
+All document formats are converted to GitHub-Flavoured Markdown (GFM).
+"""
 
 import glob
 import logging
@@ -11,10 +18,68 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Dict, List, Union
 
-import magic
 import pandas as pd
+import pdfplumber
+import pypandoc
 
 logger = logging.getLogger(__name__)
+
+
+# supported document extensions for text extraction
+DOCUMENT_EXTENSIONS = {".docx", ".rtf", ".txt", ".md", ".markdown", ".pdf"}
+
+
+def normalise_whitespace(text: str) -> str:
+    """Normalise whitespace in extracted text.
+
+    - Convert Windows/old Mac line endings to Unix
+    - Collapse multiple spaces/tabs to single space
+    - Collapse 3+ newlines to double newline
+    - Strip leading/trailing whitespace
+    """
+    text = re.sub(r"\r\n?", "\n", text)
+    text = re.sub(r"[ \t]+", " ", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
+
+
+def _convert_with_pandoc(path: Path) -> str:
+    """Convert document to GFM using pandoc.
+
+    For .docx: preserves headings, lists, emphasis, links, tables, footnotes.
+    For .rtf: preserves structural elements where possible.
+    For .txt/.md/.markdown: normalises to markdown (treats plain text as markdown).
+    """
+    suffix = path.suffix.lower()
+
+    # pandoc doesn't have a "txt" format; treat plain text as markdown
+    if suffix in {".txt", ".md", ".markdown"}:
+        input_format = "markdown"
+    else:
+        input_format = None  # let pandoc auto-detect (works for docx, rtf)
+
+    return pypandoc.convert_file(
+        str(path),
+        to="gfm",
+        format=input_format,
+        extra_args=["--wrap=none", "--strip-comments"],
+    )
+
+
+def _extract_pdf_text(path: Path) -> str:
+    """Extract text from PDF using pdfplumber.
+
+    - Extracts embedded text only (no OCR)
+    - Does not attempt layout or column reconstruction
+    - Preserves paragraph breaks where detectable
+    """
+    with pdfplumber.open(path) as pdf:
+        pages = []
+        for page in pdf.pages:
+            text = page.extract_text()
+            if text:
+                pages.append(text)
+        return "\n\n".join(pages)
 
 
 def resolve_path_with_package_data(path_pattern: str) -> list[str]:
@@ -195,9 +260,9 @@ def unpack_zip_to_temp_paths_if_needed(
 
 
 def is_spreadsheet(path: Union[str, Path]) -> bool:
-    """Check if file is spreadsheet (CSV or XLSX) by extension."""
+    """Check if file is spreadsheet (CSV, XLS, or XLSX) by extension."""
     suffix = Path(path).suffix.lower()
-    return suffix in [".csv", ".xlsx"]
+    return suffix in [".csv", ".xlsx", ".xls"]
 
 
 def extract_spreadsheet_rows(path: str) -> List[Dict[str, Any]]:
@@ -219,6 +284,8 @@ def extract_spreadsheet_rows(path: str) -> List[Dict[str, Any]]:
             df = pd.read_csv(path)
         elif suffix == ".xlsx":
             df = pd.read_excel(path, engine="openpyxl")
+        elif suffix == ".xls":
+            df = pd.read_excel(path)
         else:
             raise ValueError(f"Unsupported spreadsheet format: {suffix}")
 
@@ -236,127 +303,75 @@ def extract_spreadsheet_rows(path: str) -> List[Dict[str, Any]]:
 
 
 def extract_text(path: str) -> Union[str, List[Dict[str, Any]]]:
-    """Extract text from various document formats.
+    """Extract text from document, converting to GitHub-Flavoured Markdown.
 
     Supports:
-    - PDF files (.pdf)
-    - Word documents (.docx)
-    - Plain text files (.txt, .md, etc.)
-    - CSV files (.csv) -- returns list of row dictionaries
-    - Excel files (.xlsx) -- returns list of row dictionaries
+    - Documents (.docx, .rtf, .txt, .md, .markdown, .pdf)
+    - Spreadsheets (.csv, .xlsx, .xls) -- returns list of row dictionaries
 
     Args:
         path: Path to the document file
 
     Returns:
-        Extracted text content (str) or list of row dictionaries for spreadsheets
+        Extracted markdown text (str) or list of row dictionaries for spreadsheets
     """
     path_obj = Path(path)
 
-    # Handle spreadsheets differently - return structured data
+    # spreadsheets return structured data
     if is_spreadsheet(path_obj):
         return extract_spreadsheet_rows(path)
 
-    # Regular text extraction for non-spreadsheet files
+    # documents return markdown text
     mtime = path_obj.stat().st_mtime
     return strip_null_bytes(_extract_text_cached(str(path), mtime))
 
 
-def _extract_docx_text(path: str) -> str:
-    """Extract text from DOCX including headers and footers."""
-    import docx
-
-    try:
-        doc = docx.Document(path)
-        parts = []
-
-        # Extract body text
-        parts.extend(p.text for p in doc.paragraphs if p.text.strip())
-
-        # Extract headers and footers from all sections
-        for section in doc.sections:
-            header = section.header
-            footer = section.footer
-
-            parts.extend(p.text for p in header.paragraphs if p.text.strip())
-            parts.extend(p.text for p in footer.paragraphs if p.text.strip())
-
-        return "\n".join(parts)
-
-    except Exception as e:
-        logger.error(f"DOCX read failed: {path}: {e}")
-        return ""
-
-
 def _extract_text_cached(path: str, mtime: float) -> str:
-    """Extract text from PDF/DOCX/TXT with error handling. Cached by mtime."""
-    import pdfplumber
-    from pdfplumber.utils.exceptions import PdfminerException
+    """Extract text from document as GFM. Cached by mtime.
 
-    suffix = Path(path).suffix.lower()
+    Uses:
+    - pandoc for: .docx, .rtf, .txt, .md, .markdown
+    - pdfplumber for: .pdf
+    """
+    path_obj = Path(path)
+    suffix = path_obj.suffix.lower()
 
-    try:
-        if suffix == ".pdf":
-            with pdfplumber.open(path) as pdf:
-                pages_text = []
-                for page in pdf.pages:
-                    page_text = page.extract_text()
-                    if page_text:
-                        pages_text.append(page_text)
-                return "\n".join(pages_text)
+    if suffix not in DOCUMENT_EXTENSIONS:
+        raise ValueError(f"Unsupported document format: {suffix}")
 
-        elif suffix == ".docx":
-            return _extract_docx_text(path)
+    if suffix == ".pdf":
+        text = _extract_pdf_text(path_obj)
+    else:
+        text = _convert_with_pandoc(path_obj)
 
-        else:
-            # Default to plain text reading
-            with open(path, "r", encoding="utf-8") as f:
-                return f.read()
-
-    except PdfminerException:
-        logger.error(f"PDF read failed: {path}")
-        return ""
-
-    except Exception as e:
-        logger.error(f"Read failed: {path}: {e}")
-        return ""
-
-
-def is_plain_text_file(path: Path) -> bool:
-    """Check if file is plain text using MIME type detection."""
-    try:
-        mime = magic.from_file(str(path), mime=True)
-        return mime.startswith("text/")
-    except Exception:
-        return False
+    return normalise_whitespace(text)
 
 
 def get_supported_extensions() -> list[str]:
-    """Return list of supported file extensions."""
-    return [".txt", ".md", ".pdf", ".docx", ".csv", ".xlsx"]
+    """Return list of supported file extensions for documents and spreadsheets."""
+    return list(DOCUMENT_EXTENSIONS) + [".csv", ".xlsx", ".xls"]
 
 
 def is_supported_file(path: Path) -> bool:
     """Check if file is supported for text extraction."""
     suffix = path.suffix.lower()
-    return suffix in get_supported_extensions() or is_plain_text_file(path)
+    return suffix in DOCUMENT_EXTENSIONS or suffix in {".csv", ".xlsx", ".xls"}
 
 
 def detect_file_type(path: Path) -> str:
-    """Detect document type for logging (PDF, Word Document, etc.)."""
+    """Detect document type for logging."""
     suffix = path.suffix.lower()
 
-    if suffix == ".pdf":
-        return "PDF"
-    elif suffix == ".docx":
-        return "Word Document"
-    elif suffix == ".csv":
-        return "CSV Spreadsheet"
-    elif suffix == ".xlsx":
-        return "Excel Spreadsheet"
-    elif suffix in [".txt", ".md"]:
-        return "Text File"
-    elif is_plain_text_file(path):
-        return "Plain Text"
-    else:
-        return "Unknown"
+    type_map = {
+        ".pdf": "PDF",
+        ".docx": "Word Document",
+        ".rtf": "RTF Document",
+        ".txt": "Text File",
+        ".md": "Markdown",
+        ".markdown": "Markdown",
+        ".csv": "CSV Spreadsheet",
+        ".xlsx": "Excel Spreadsheet",
+        ".xls": "Excel Spreadsheet",
+    }
+
+    return type_map.get(suffix, "Unknown")

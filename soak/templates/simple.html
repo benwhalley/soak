@@ -25,7 +25,7 @@
         .soak-header { position: fixed; left: 0; right: 0; }
 
         body {
-            max-width: 900px;
+            max-width: 1000px;
             margin: 0 auto;
             padding: 60px 20px 40px 20px;
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
@@ -33,13 +33,93 @@
             color: #333;
         }
 
-        /* Simple template uses styled h1 */
         h1 {
             color: #2c3e50;
             border-bottom: 2px solid #3498db;
             padding-bottom: 0.5rem;
+            font-size: 1.75rem;
         }
-        h2 { color: #2c3e50; }
+        h2 { color: #2c3e50; font-size: 1.4rem; margin-top: 1.5rem; }
+
+        /* Summary panel grid */
+        .summary-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+        @media (max-width: 768px) {
+            .summary-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+        .summary-card {
+            background: #fff;
+            border: 1px solid #e1e8ed;
+            border-radius: 6px;
+            padding: 1rem;
+        }
+        .summary-card h4 {
+            font-size: 0.8rem;
+            color: #7f8c8d;
+            margin: 0 0 0.5rem 0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .summary-card .lead {
+            font-size: 1rem;
+            line-height: 1.5;
+            margin: 0;
+        }
+
+        /* Collapsible context content */
+        .context-content {
+            position: relative;
+            max-height: 150px;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+        .context-content.expanded {
+            max-height: none;
+            overflow: visible;
+        }
+        .context-content::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 40px;
+            background: linear-gradient(to bottom, transparent 0%, rgba(255,255,255,0.9) 60%, white 100%);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        .context-content.has-overflow::after {
+            opacity: 1;
+        }
+        .context-content.expanded::after {
+            opacity: 0;
+        }
+        .context-toggle {
+            display: none;
+            background: none;
+            border: none;
+            color: #3498db;
+            font-size: 0.8rem;
+            cursor: pointer;
+            padding: 0.25rem 0;
+            margin-top: 0.25rem;
+        }
+        .context-toggle:hover {
+            text-decoration: underline;
+        }
+        .context-content.has-overflow + .context-toggle {
+            display: inline-block;
+        }
+        .context-content.expanded + .context-toggle {
+            display: inline-block;
+        }
 
         .narrative-section {
             background-color: #f8f9fa;
@@ -49,6 +129,40 @@
             margin-bottom: 1.5rem;
             font-size: 0.95rem;
             line-height: 1.7;
+        }
+        .narrative-section p { margin-bottom: 1rem; }
+        .narrative-section p:last-child { margin-bottom: 0; }
+
+        /* Expandable theme cards */
+        .theme-card {
+            background: #fff;
+            border: 1px solid #e1e8ed;
+            border-radius: 6px;
+            margin-bottom: 0.75rem;
+            overflow: hidden;
+        }
+        .theme-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            padding: 1rem;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+        .theme-card-header:hover {
+            background: #f8f9fa;
+        }
+        .theme-card-name {
+            font-weight: 600;
+            color: #2c3e50;
+            font-size: 1rem;
+        }
+        .theme-card-body {
+            padding: 0 1rem 1rem 1rem;
+            border-top: 1px solid #e1e8ed;
+        }
+        .theme-card-codes {
+            margin-top: 0.75rem;
         }
 
         .code-card {
@@ -108,38 +222,6 @@
             font-size: 0.85rem;
         }
 
-        .theme-card {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border-radius: 6px;
-            padding: 1rem 1.25rem;
-            margin-bottom: 1rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-
-        .theme-name { font-size: 1.1rem; font-weight: 600; margin-bottom: 0.5rem; }
-        .theme-description { margin-bottom: 0.75rem; font-size: 0.9rem; opacity: 0.95; }
-        .theme-codes { margin-top: 0.75rem; }
-        .theme-codes-label {
-            font-weight: 600;
-            font-size: 0.75rem;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 0.5rem;
-            opacity: 0.9;
-        }
-
-        .code-badge {
-            display: inline-block;
-            background-color: rgba(255, 255, 255, 0.2);
-            padding: 3px 10px;
-            border-radius: 15px;
-            margin-right: 6px;
-            margin-bottom: 6px;
-            font-size: 0.8rem;
-            border: 1px solid rgba(255, 255, 255, 0.3);
-        }
-
         .meta-info {
             color: #7f8c8d;
             font-size: 0.8rem;
@@ -157,12 +239,44 @@
         details.meta-info summary { cursor: pointer; font-weight: 600; color: #555; }
         details.meta-info summary:hover { color: #2980b9; }
 
-        a.code-badge {
-            color: inherit;
+        /* Badge styles */
+        .badge-gray {
+            background-color: #e9ecef;
+            color: #495057;
+            padding: 0.25em 0.6em;
+            border-radius: 3px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        .badge-warning {
+            background-color: #ffc107;
+            color: #212529;
+        }
+        .badge-success {
+            background-color: #28a745;
+            color: #fff;
+        }
+        .badge-danger {
+            background-color: #dc3545;
+            color: #fff;
+        }
+
+        /* Code tag in themes */
+        .code-tag {
+            display: inline-block;
+            background-color: #e8f4f8;
+            color: #2980b9;
+            padding: 2px 8px;
+            border-radius: 3px;
+            font-size: 0.8rem;
+            margin-right: 6px;
+            margin-bottom: 4px;
+        }
+        a.code-tag {
             text-decoration: none;
         }
-        a.code-badge:hover {
-            text-decoration: underline;
+        a.code-tag:hover {
+            background-color: #d0e8f0;
         }
 
         /* Overlap tab controls */
@@ -176,74 +290,326 @@
         .self-similarity-wrapper {
             overflow-x: auto;
         }
+
+        /* Verification table */
+        .verification-table {
+            font-size: 0.85rem;
+        }
+        .verification-table th {
+            font-weight: 600;
+            background: #f8f9fa;
+        }
+        .verification-row {
+            cursor: pointer;
+        }
+        .verification-row:hover {
+            background: #f8f9fa;
+        }
+        .verification-row.expanded {
+            background: #e8f4f8;
+            border-left: 3px solid #3498db;
+        }
+        .verification-details {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-radius: 0 0 4px 4px;
+        }
+        .verification-context {
+            background: #fff;
+            padding: 0.75rem;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.8rem;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-break: break-word;
+            border-left: 3px solid #3498db;
+        }
+        .text-success { color: #28a745; }
+        .text-warning { color: #ffc107; }
+        .text-danger { color: #dc3545; }
+        .text-muted { color: #6c757d; }
+
+        /* Chevron rotation */
+        .rotate-180 {
+            transform: rotate(180deg);
+        }
+        .chevron {
+            transition: transform 0.2s;
+        }
+
+        /* Nested code quotes in themes */
+        .nested-quote {
+            font-size: 0.85rem;
+            font-style: italic;
+            color: #666;
+            border-left: 2px solid #dee2e6;
+            padding-left: 0.75rem;
+            margin: 0.25rem 0;
+        }
     </style>
 </head>
 
-<body x-data>
+<body x-data="{ expandedTheme: null, expandedCodes: {}, expandedVerify: null }">
 {% set header_subtitle = 'analysis results' %}
 {% include '_header.html' %}
 
     <div class="container">
         <h1>{{ pipeline.name }}</h1>
 
-        {% if pipeline.default_context %}
-        <div class="meta-info">
-            {% for k,v  in pipeline.default_context.items() %}
-            <strong>{{k}}:</strong> {{ v }}<br>
-            {% endfor %}
+        <!-- Summary Panel -->
+        <div class="summary-grid">
+            <!-- TLDR/Context -->
+            <div class="summary-card" x-data="{ contextExpanded: false }">
+                <h4>Analysis Direction</h4>
+                <div class="context-content" :class="{ 'expanded': contextExpanded }" x-ref="contextContent">
+                {% if pipeline.default_context %}
+                {% set ns_ctx = namespace(has_custom=false) %}
+                {% for k, v in pipeline.default_context.items() %}
+                {% if v is mapping and v.default is defined %}
+                {% set actual_value = v.default %}
+                {% set is_default = true %}
+                {% else %}
+                {% set actual_value = v %}
+                {% set is_default = false %}
+                {% endif %}
+                {% if actual_value %}
+                <p class="lead"><strong>{{ k }}:</strong> {{ actual_value }}{% if is_default %}*{% else %}{% set ns_ctx.has_custom = true %}{% endif %}</p>
+                {% endif %}
+                {% endfor %}
+                <p class="text-muted" style="font-size: 0.75rem; margin-top: 0.5rem;">* default value</p>
+                {% else %}
+                <p class="text-muted">Using pipeline defaults.</p>
+                {% endif %}
+                </div>
+                <button class="context-toggle" @click="contextExpanded = !contextExpanded" x-text="contextExpanded ? 'less −' : 'more +'"></button>
+            </div>
+
+            <!-- Counts -->
+            <div class="summary-card">
+                <h4>Results</h4>
+                <p class="lead"><strong>{{ result.themes|length if result.themes else 0 }}</strong> themes</p>
+                <p class="lead"><strong>{{ result.codes|length if result.codes else 0 }}</strong> codes</p>
+            </div>
+
+            <!-- Model Info -->
+            <div class="summary-card">
+                <h4>Model</h4>
+                {% if pipeline.config.model_name %}
+                <p class="lead"><code>{{ pipeline.config.model_name }}</code></p>
+                {% endif %}
+                <p class="lead text-muted" style="font-size: 0.8rem;">{{ pipeline.config.document_paths|length }} documents</p>
+            </div>
         </div>
 
         <details class="meta-info">
             <summary>Source files: {{ pipeline.config.input_source or "files" }} ({{ pipeline.config.document_paths|length }})</summary>
             <ul style="margin-top: 10px; margin-bottom: 0;">
             {% for i in pipeline.config.document_paths %}
-                <li>{{i.0}}</li>
+                <li>{{ i.0 }}</li>
             {% endfor %}
             </ul>
         </details>
-        {% endif %}
-
-        {% for node_name in pipeline.config.report_texts %}
-        {% if node_name in pipeline.nodes_dict and pipeline.nodes_dict[node_name].output %}
-        <h2>{{ node_name|title|replace('_', ' ') }}</h2>
-        <div class="narrative-section">
-        {% markdown %}
-{{pipeline.nodes_dict[node_name].result().response_obj|safe}}
-        {% endmarkdown %}
-        </div>
-        {% endif %}
-        {% endfor %}
-
-        <div class="section-divider"></div>
 
         <!-- Tab Navigation -->
         <div class="soak-tabs">
+            <button class="soak-tab" :class="{ 'active': $store.tabs.activeTab === 'narrative' }" @click="$store.tabs.activeTab = 'narrative'">Narrative</button>
             <button class="soak-tab" :class="{ 'active': $store.tabs.activeTab === 'themes' }" @click="$store.tabs.activeTab = 'themes'">Themes</button>
             {% if self_similarity and self_similarity.n_themes > 1 %}
             <button class="soak-tab" :class="{ 'active': $store.tabs.activeTab === 'overlap' }" @click="$store.tabs.activeTab = 'overlap'">Overlap</button>
             {% endif %}
             <button class="soak-tab" :class="{ 'active': $store.tabs.activeTab === 'codes' }" @click="$store.tabs.activeTab = 'codes'">Codes</button>
+            {% if verification_data %}
+            <button class="soak-tab" :class="{ 'active': $store.tabs.activeTab === 'verify' }" @click="$store.tabs.activeTab = 'verify'">
+                Verification
+                {% if verification_data.flagged > 0 %}
+                <span class="badge badge-warning" style="margin-left: 4px;">{{ verification_data.flagged }}</span>
+                {% endif %}
+            </button>
+            {% endif %}
+            <button class="soak-tab" :class="{ 'active': $store.tabs.activeTab === 'settings' }" @click="$store.tabs.activeTab = 'settings'">Settings</button>
+        </div>
+
+        <!-- Narrative Tab -->
+        <div class="soak-tab-panel" :class="{ 'active': $store.tabs.activeTab === 'narrative' }">
+            {% set ns = namespace(has_narrative=false) %}
+            {% for report_key in pipeline.config.report_texts %}
+            {# report_key can be 'node_name.slot_name' or just 'node_name' #}
+            {% set node_name = report_key.split('.')[0] %}
+            {% set slot_name = report_key.split('.')[1] if '.' in report_key else none %}
+            {% if node_name in pipeline.nodes_dict and pipeline.nodes_dict[node_name].output %}
+            {% set node = pipeline.nodes_dict[node_name] %}
+            {% set node_result = node.result() %}
+            {# Handle both dict (from JSON) and ChatterResult object (live) #}
+            {% if node_result is mapping %}
+            {% set chatter = node_result.get('chatter_result', {}) %}
+            {% set results = chatter.get('results', {}) if chatter is mapping else {} %}
+            {% else %}
+            {# Live ChatterResult - get results directly from outputs #}
+            {% set results = {} %}
+            {% endif %}
+            {# For live runs, check node.output directly #}
+            {% set ns2 = namespace(narrative_text=none) %}
+            {% if node.output and node.output is iterable and node.output[0] is defined %}
+            {% set first_output = node.output[0] %}
+            {# Live ChatterResult object #}
+            {% if first_output.outputs is defined %}
+            {% if slot_name and slot_name in first_output.outputs %}
+            {% set slot_val = first_output.outputs[slot_name] %}
+            {% if slot_val is string %}
+            {% set ns2.narrative_text = slot_val %}
+            {% endif %}
+            {% else %}
+            {% for iter_slot_name, slot_val in first_output.outputs.items() %}
+            {% if slot_val is string %}
+            {% set ns2.narrative_text = slot_val %}
+            {% endif %}
+            {% endfor %}
+            {% endif %}
+            {# Deserialized dict with results #}
+            {% elif first_output is mapping and first_output.results is defined %}
+            {% if slot_name and slot_name in first_output.results %}
+            {% set slot_data = first_output.results[slot_name] %}
+            {% if slot_data is mapping and slot_data.output is defined and slot_data.output is string %}
+            {% set ns2.narrative_text = slot_data.output %}
+            {% endif %}
+            {% else %}
+            {% for iter_slot_name, slot_data in first_output.results.items() %}
+            {% if slot_data is mapping and slot_data.output is defined and slot_data.output is string %}
+            {% set ns2.narrative_text = slot_data.output %}
+            {% endif %}
+            {% endfor %}
+            {% endif %}
+            {% endif %}
+            {% endif %}
+            {# Fallback: try the results dict from node.result() #}
+            {% if not ns2.narrative_text and results %}
+            {% if slot_name and slot_name in results %}
+            {% set slot_data = results[slot_name] %}
+            {% if slot_data is mapping and slot_data.get('output') is string %}
+            {% set ns2.narrative_text = slot_data.get('output') %}
+            {% endif %}
+            {% else %}
+            {% for iter_slot_name, slot_data in results.items() %}
+            {% if slot_data is mapping and slot_data.get('output') is string %}
+            {% set ns2.narrative_text = slot_data.get('output') %}
+            {% endif %}
+            {% endfor %}
+            {% endif %}
+            {% endif %}
+            {% if ns2.narrative_text %}
+            {% set ns.has_narrative = true %}
+            {% set report_info = pipeline.config.report_texts[report_key] if pipeline.config.report_texts is mapping else {} %}
+            {% set display_label = report_info.label if report_info is mapping and report_info.label else (slot_name or node_name)|title|replace('_', ' ') %}
+            {% set display_description = report_info.description if report_info is mapping and report_info.description else none %}
+            <h3 style="font-size: 1.1rem; margin-top: 1.5rem;">{{ display_label }}</h3>
+            {% if display_description %}
+            <p class="text-muted" style="font-size: 0.85rem; margin-bottom: 0.5rem;">{{ display_description }}</p>
+            {% endif %}
+            <div class="narrative-section">
+            {% markdown %}
+{{ ns2.narrative_text|safe }}
+            {% endmarkdown %}
+            </div>
+            {% endif %}
+            {% endif %}
+            {% endfor %}
+            {% if not ns.has_narrative %}
+            <p class="text-muted">No narrative sections were generated by this pipeline.</p>
+            {% endif %}
         </div>
 
         <!-- Themes Tab -->
         <div class="soak-tab-panel" :class="{ 'active': $store.tabs.activeTab === 'themes' }">
             <h2>Themes</h2>
-            {% set node_result = pipeline.nodes_dict['themes'].result().response_obj %}
+            <p class="text-muted" style="font-size: 0.9rem; margin-bottom: 1rem;">Click a theme to expand and see related codes and quotes.</p>
 
-            {% for theme in node_result.themes %}
+            {% if themes_with_codes %}
+            {% for theme in themes_with_codes %}
+            {% set theme_idx = loop.index0 %}
             <div class="theme-card">
-                <div class="theme-name">{{ theme.name }}</div>
-                <div class="theme-description">{{ theme.description }}</div>
-                {% if theme.code_slugs %}
-                <div class="theme-codes">
-                    <div class="theme-codes-label">Related Codes:</div>
-                    {% for slug in theme.code_slugs %}
-                        <a href="#code-{{ slug }}" class="code-badge" @click="$store.tabs.activeTab = 'codes'">{{ slug }}</a>
-                    {% endfor %}
+                <div class="theme-card-header" @click="expandedTheme = expandedTheme === {{ theme_idx }} ? null : {{ theme_idx }}">
+                    <div>
+                        <div class="theme-card-name">{{ theme.name|capitalize }}</div>
+                        <div class="text-muted" style="font-size: 0.85rem;">{{ theme.description[:100] }}{% if theme.description|length > 100 %}...{% endif %}</div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 0.5rem;">
+                        <span class="badge badge-gray">{{ theme.related_codes|length }} codes</span>
+                        {% if theme.total_quotes %}
+                        <span class="badge badge-gray">{{ theme.total_quotes }} quotes</span>
+                        {% endif %}
+                        <svg class="chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                             :class="{ 'rotate-180': expandedTheme === {{ theme_idx }} }">
+                            <polyline points="6,9 12,15 18,9"/>
+                        </svg>
+                    </div>
                 </div>
-                {% endif %}
+                <div class="theme-card-body" x-show="expandedTheme === {{ theme_idx }}" x-collapse>
+                    <p>{{ theme.description }}</p>
+                    {% if theme.related_codes %}
+                    <div class="theme-card-codes">
+                        <div class="text-muted" style="font-size: 0.8rem; margin-bottom: 0.5rem;">Related codes:</div>
+                        {% for code in theme.related_codes %}
+                        <div style="margin-bottom: 0.5rem;">
+                            <div style="display: flex; align-items: center; gap: 0.5rem; cursor: pointer; padding: 0.25rem 0;"
+                                 @click.stop="expandedCodes['{{ theme_idx }}-{{ loop.index0 }}'] = !expandedCodes['{{ theme_idx }}-{{ loop.index0 }}']">
+                                <a href="#code-{{ code.slug }}" class="code-tag" @click.stop="$store.tabs.activeTab = 'codes'">{{ code.name }}</a>
+                                {% set quotes = code.all_quotes or code.quotes or code.resolved_quotes or [] %}
+                                {% if quotes %}
+                                <span class="text-muted" style="font-size: 0.75rem;">({{ quotes|length }} quotes)</span>
+                                <svg class="chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                                     :class="{ 'rotate-180': expandedCodes['{{ theme_idx }}-{{ loop.index0 }}'] }">
+                                    <polyline points="6,9 12,15 18,9"/>
+                                </svg>
+                                {% endif %}
+                            </div>
+                            {% if quotes %}
+                            <div x-show="expandedCodes['{{ theme_idx }}-{{ loop.index0 }}']" x-collapse style="padding-left: 1rem;">
+                                {% for quote in quotes[:3] %}
+                                <div class="nested-quote">"{{ quote.text|truncatewords(30) if quote.text else quote }}"</div>
+                                {% endfor %}
+                                {% if quotes|length > 3 %}
+                                <div class="text-muted" style="font-size: 0.75rem; padding-left: 0.75rem;">...and {{ quotes|length - 3 }} more</div>
+                                {% endif %}
+                            </div>
+                            {% endif %}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
             </div>
             {% endfor %}
+            {% else %}
+            {% set themes_node = pipeline.nodes_dict.get('themes') %}
+            {% if themes_node and themes_node.output %}
+            {% set node_result = themes_node.result() %}
+            {% set response_obj = node_result.response_obj if node_result else none %}
+            {% set theme_list = response_obj.themes if response_obj and response_obj.themes is defined else [] %}
+            {% for theme in theme_list %}
+            <div class="theme-card">
+                <div class="theme-card-header">
+                    <div>
+                        <div class="theme-card-name">{{ theme.name|capitalize }}</div>
+                        <div class="text-muted" style="font-size: 0.85rem;">{{ theme.description }}</div>
+                    </div>
+                    {% if theme.code_slugs %}
+                    <div>
+                        {% for slug in theme.code_slugs %}
+                        <a href="#code-{{ slug }}" class="code-tag" @click="$store.tabs.activeTab = 'codes'">{{ slug }}</a>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+            {% if not theme_list %}
+            <p class="text-muted">No themes were generated.</p>
+            {% endif %}
+            {% else %}
+            <p class="text-muted">Themes node has no output.</p>
+            {% endif %}
+            {% endif %}
         </div>
 
         {% if self_similarity and self_similarity.n_themes > 1 %}
@@ -268,7 +634,7 @@
                     <thead>
                         <tr>
                             <th></th>
-                            {% for label in self_similarity.short_labels %}
+                            {% for label in self_similarity.short_labels[:-1] %}
                             <th title="{{ self_similarity.themes[loop.index0] }}">{{ label }}</th>
                             {% endfor %}
                         </tr>
@@ -277,7 +643,8 @@
                         {% for row_idx in range(self_similarity.n_themes) %}
                         <tr>
                             <th class="row-header" title="{{ self_similarity.themes[row_idx] }}">{{ self_similarity.short_labels[row_idx] }}: {{ self_similarity.themes[row_idx][:30] }}{% if self_similarity.themes[row_idx]|length > 30 %}...{% endif %}</th>
-                            {% for col_idx in range(self_similarity.n_themes) %}
+                            {% for col_idx in range(self_similarity.n_themes - 1) %}
+                            {% if col_idx < row_idx %}
                             <td
                                 class="self-similarity-cell"
                                 :class="$store.selfSimilarity.getCellClass({{ row_idx }}, {{ col_idx }})"
@@ -286,6 +653,9 @@
                             >
                                 <span x-text="$store.selfSimilarity.getCellValue({{ row_idx }}, {{ col_idx }}).toFixed(2)"></span>
                             </td>
+                            {% else %}
+                            <td class="self-similarity-cell" style="background: transparent; cursor: default;"></td>
+                            {% endif %}
                             {% endfor %}
                         </tr>
                         {% endfor %}
@@ -306,38 +676,136 @@
 
         <!-- Codes Tab -->
         <div class="soak-tab-panel" :class="{ 'active': $store.tabs.activeTab === 'codes' }">
-            {% set node_result = pipeline.nodes_dict['codes'].result().response_obj %}
-
             <h2>Codes</h2>
-            {% for code in node_result.codes %}
-            <div class="code-card" id="code-{{ code.slug }}">
+            {% if result.codes %}
+            {% for code in result.codes %}
+            {% set code_obj = code if code.slug is defined else code %}
+            <div class="code-card" id="code-{{ code_obj.slug or code_obj.get('slug', '') }}">
                 <div class="code-name">
-                    {{ code.name }}
-                    <span class="code-slug">{{ code.slug }}</span>
+                    {{ code_obj.name or code_obj.get('name', '') }}
+                    <span class="code-slug">{{ code_obj.slug or code_obj.get('slug', '') }}</span>
                 </div>
-                <div class="code-description">{{ code.description }}</div>
-                {% if code.resolved_quotes %}
+                <div class="code-description">{{ code_obj.description or code_obj.get('description', '') }}</div>
+                {% set quotes = code_obj.resolved_quotes or code_obj.get('resolved_quotes') or code_obj.quotes or code_obj.get('quotes') or [] %}
+                {% if quotes %}
                 <div class="quotes-section">
-                    <div class="quotes-label">Supporting Quotes ({{ code.quotes|length }})</div>
-                    {% for quote in code.all_quotes %}
+                    <div class="quotes-label">Supporting Quotes ({{ quotes|length }})</div>
+                    {% for quote in quotes %}
                     <div class="quote">
-                        {{ quote }}
+                        {% if quote.text is defined %}{{ quote.text }}{% elif quote.get is defined %}{{ quote.get('text', quote) }}{% else %}{{ quote }}{% endif %}
                     </div>
                     {% endfor %}
                 </div>
                 {% else %}
-                    <div>
-                        There was a problem recalling the quotes selected for this Code.
-                    </div>
+                <div class="text-muted" style="font-size: 0.9rem;">No quotes available for this code.</div>
                 {% endif %}
             </div>
             {% endfor %}
+            {% else %}
+            <p class="text-muted">No codes available.</p>
+            {% endif %}
         </div>
 
-        <div class="section-divider"></div>
+        {% if verification_data %}
+        <!-- Verification Tab -->
+        <div class="soak-tab-panel" :class="{ 'active': $store.tabs.activeTab === 'verify' }">
+            <h2>Quote Verification</h2>
+            <p class="text-muted" style="font-size: 0.9rem; margin-bottom: 1rem;">
+                Shows how quotes were matched against source documents using BM25 lexical search and embedding similarity.
+                {% if verification_data.flagged > 0 %}
+                <span class="badge badge-warning">{{ verification_data.flagged }} quotes flagged</span> for review.
+                {% endif %}
+            </p>
 
-        <!-- Configuration Section -->
-        <section id="config" class="mb-4">
+            <table class="table verification-table">
+                <thead>
+                    <tr>
+                        <th style="width: 40%;">Quote</th>
+                        <th>Code</th>
+                        <th class="text-center">BM25</th>
+                        <th class="text-center">Similarity</th>
+                        <th class="text-center">LLM</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for match in verification_data.matches %}
+                    <tr class="verification-row" :class="{ 'expanded': expandedVerify === {{ loop.index0 }} }" @click="expandedVerify = expandedVerify === {{ loop.index0 }} ? null : {{ loop.index0 }}">
+                        <td>
+                            <div style="font-style: italic; font-size: 0.85rem;">"{{ match.quote[:80] }}{% if match.quote|length > 80 %}...{% endif %}"</div>
+                        </td>
+                        <td>
+                            {% if match.code_name %}
+                            <span class="code-tag">{{ match.code_name }}</span>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <span class="{% if match.bm25_score < 20 %}text-danger{% elif match.bm25_score < 40 %}text-warning{% else %}text-success{% endif %}">
+                                {{ "%.1f"|format(match.bm25_score) }}
+                            </span>
+                        </td>
+                        <td class="text-center">
+                            {% if match.calibrated_similarity is not none %}
+                            <span class="{% if match.calibrated_similarity < 0.4 %}text-danger{% elif match.calibrated_similarity < 0.7 %}text-warning{% else %}text-success{% endif %}">
+                                {{ "%.2f"|format(match.calibrated_similarity) }}
+                            </span>
+                            {% else %}
+                            <span>{{ "%.2f"|format(match.cosine_similarity) }}</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            {% if match.llm_is_contained is true %}
+                            <span class="badge badge-success">OK</span>
+                            {% elif match.llm_is_contained is false %}
+                            <span class="badge badge-danger">Not Found</span>
+                            {% else %}
+                            <span class="text-muted">-</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    <tr x-show="expandedVerify === {{ loop.index0 }}" x-collapse>
+                        <td colspan="5" style="padding: 0;">
+                            <div class="verification-details">
+                                <div style="margin-bottom: 0.75rem;">
+                                    <strong>Full quote:</strong>
+                                    <div style="font-style: italic;">"{{ match.quote }}"</div>
+                                </div>
+                                {% if match.span_text %}
+                                <div style="margin-bottom: 0.75rem;">
+                                    <strong>Found in context:</strong>
+                                    <div class="verification-context">...{{ match.context_before }}{{ match.span_text }}{{ match.context_after }}...</div>
+                                </div>
+                                {% endif %}
+                                <div style="display: flex; gap: 1.5rem; font-size: 0.85rem;">
+                                    <div><strong>BM25:</strong> {{ "%.1f"|format(match.bm25_score) }}</div>
+                                    <div><strong>Ratio:</strong> {{ "%.1f"|format(match.bm25_ratio) }}</div>
+                                    {% if match.calibrated_similarity is not none %}
+                                    <div><strong>Calibrated:</strong> {{ "%.3f"|format(match.calibrated_similarity) }}</div>
+                                    {% endif %}
+                                    <div><strong>Cosine:</strong> {{ "%.3f"|format(match.cosine_similarity) }}</div>
+                                </div>
+                                {% if match.llm_explanation %}
+                                <div style="margin-top: 0.75rem;">
+                                    <strong>LLM explanation:</strong> {{ match.llm_explanation }}
+                                </div>
+                                {% endif %}
+                                {% if match.source_doc %}
+                                <div style="margin-top: 0.5rem; font-size: 0.8rem;" class="text-muted">
+                                    Source: {{ match.source_doc }}
+                                </div>
+                                {% endif %}
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+
+        <!-- Settings Tab -->
+        <div class="soak-tab-panel" :class="{ 'active': $store.tabs.activeTab === 'settings' }">
             <h2>Run Configuration</h2>
             <div class="card">
                 <div class="card-body">
@@ -376,7 +844,7 @@
                     </dl>
                 </div>
             </div>
-        </section>
+        </div>
 
         <footer class="screen-footer">
             <p class="mb-0">Generated by <strong>soak</strong> v{{ soak_version | default('unknown') }}</p>
@@ -408,6 +876,15 @@
             console.warn('Could not parse embedded SOAK_DATA:', e);
             window.SOAK_DATA = { themes: [], selfSimilarity: null };
         }
+
+        // detect overflow on context content
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.context-content').forEach(function(el) {
+                if (el.scrollHeight > 150) {
+                    el.classList.add('has-overflow');
+                }
+            });
+        });
     </script>
 </body>
 </html>

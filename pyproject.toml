@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "soaking"
-version = "0.6.4"
+version = "0.6.6"
 description = "soak: graph-based pipelines and tools for LLM-assisted qualitative text analysis"
 authors = [
   { name = "Ben Whalley", email = "ben.whalley@plymouth.ac.uk" }
@@ -23,8 +23,7 @@ dependencies = [
     "pydantic>=2.11.7",
     "python-box>=7.3.2",
     "python-decouple>=3.8",
-    "python-docx>=1.2.0",
-    "python-magic>=0.4.27",
+    "pypandoc>=1.14",
     "scikit-learn>=1.7.1",
     "scipy>=1.14",
     "seaborn>=0.13.2",
@@ -33,7 +32,7 @@ dependencies = [
     "umap-learn",
     "asyncpg>=0.30.0",
     "jinja-markdown>=1.210911",
-    "struckdown>=0.4.6",
+    "struckdown>=0.4.7",
     "nltk>=3.9.2",
     "rank-bm25>=0.2.2",
     "openpyxl>=3.1.0",
