@@ -58,11 +58,16 @@ def _convert_with_pandoc(path: Path) -> str:
     else:
         input_format = None  # let pandoc auto-detect (works for docx, rtf)
 
+    extra_args = ["--wrap=none", "--strip-comments"]
+    pandoc_data_home = os.environ.get("PANDOC_DATA_HOME")
+    if pandoc_data_home:
+        extra_args.append(f"--data-dir={pandoc_data_home}")
+
     return pypandoc.convert_file(
         str(path),
         to="gfm",
         format=input_format,
-        extra_args=["--wrap=none", "--strip-comments"],
+        extra_args=extra_args,
     )
 
 
