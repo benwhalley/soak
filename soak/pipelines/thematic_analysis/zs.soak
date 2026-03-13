@@ -3,31 +3,37 @@ version: 0.1.0
 description: A qualitative thematic analysis of transcript data, based on reflexive thematic analysis. Codes are generated independently for each document, and then clustered and combined before being used to generate themes.
 default_context:
   persona:
+    type: secondary
     default: Experienced qualitative researcher
     description: Analyst persona
     help_text: The perspective and expertise from which the analysis is conducted.
   research_question:
+    type: primary
     default: To understand the experience of participants
     description: Research question
     help_text: The main question guiding the thematic analysis
   theme_size_guidance:
+    type: config
     default: "Produce 7-10 themes. Strongly prefer fewer/larger themes with greater explanatory depth and power. Combine overlapping themes, creating a richer, more nuanced analysis."
     description: Guidance on the number of themes to produce.
     help_text: ""
     input_type: textarea
+  specific_research_question:
+    type: primary
+    default: ""
+    description: Specific research focus
+    help_text: (Optional) specific aspect or sub-question to focus on. This text is not included in the prompt that generates codes, so can be varied post-coding.
+    input_type: textarea
   max_themes:
+    type: config
     default: 12
     description: Maximum number of themes to generate
     help_text: Maximum number of themes to generate (hard cap)
   min_themes:
+    type: config
     default: 3
     description: Minimum number of themes to generate
     help_text: Minimum number of themes to generate (hard cap)
-  specific_research_question:
-    default: ""
-    description: Specific research focus
-    help_text: (Optional) specific aspect or sub-question to focus on. This text can direct code and theme-formation.
-    input_type: textarea
   
 scrub: false
 randomise_document_order: true
