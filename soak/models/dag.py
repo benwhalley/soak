@@ -37,10 +37,10 @@ class DAGConfig(BaseModel):
     document_paths: List[Union[str, tuple[str, Dict[str, Any]]]] = []
     documents: List[Union[str, "TrackedItem"]] = []
     input_source: Optional[str] = None  # summary of input (e.g., "data/*.txt")
-    model_name: str = "gpt-4.1-mini"
+    model_name: str = "gpt-5.1-mini"
     models: Dict[str, str] = Field(
         default_factory=dict,
-        description="Model alias mappings (e.g., {'default': 'gpt-4.1-mini', 'best': 'gpt-4.1'})",
+        description="Model alias mappings (e.g., {'default': 'gpt-5.1-mini', 'best': 'gpt-5.1'})",
     )
     chunk_size: int = 20000  # characters, so ~5k tokens or ~4k English words
     extra_context: Dict[str, Any] = {}

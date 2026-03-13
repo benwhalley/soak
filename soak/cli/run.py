@@ -25,7 +25,8 @@ def run(
     pipeline: str = typer.Argument(..., help="Pipeline name to run (e.g., 'zs')"),
     input: list[Path] = typer.Argument(
         None,
-        help="Input file paths (file patterns or zip files, supports globs like '*.txt')",
+        help="Input file paths (supports globs). For spreadsheets with --document-template, "
+        "each row becomes a document.",
     ),
     context: list[str] = typer.Option(
         None,
@@ -109,6 +110,19 @@ def run(
         "--stop-at",
         help="Stop execution before the specified node runs",
     ),
+    document_template: Path = typer.Option(
+        None,
+        "--document-template",
+        "-T",
+        help="Jinja2 template file for generating documents from spreadsheet rows. "
+        "Use {{ column_name }} syntax to insert values.",
+    ),
+    document_names_from: str = typer.Option(
+        None,
+        "--document-names-from",
+        help="Column name to use for document names when using --document-template. "
+        "If not specified, documents are named 'Row 1', 'Row 2', etc.",
+    ),
 ):
     """Run a pipeline on input files."""
     from ..api import CredentialsError, RunError, run as api_run
@@ -127,6 +141,87 @@ def run(
                 file=sys.stderr,
             )
             raise typer.Exit(1)
+
+    # handle document template mode (mail merge)
+    temp_doc_dir = None
+    if document_template:
+        from ..tabular import (
+            generate_documents,
+            parse_tabular_file,
+            validate_template,
+        )
+        import tempfile
+
+        # read template
+        if not document_template.exists():
+            logger.error(f"Template file not found: {document_template}")
+            raise typer.Exit(1)
+
+        template_content = document_template.read_text(encoding="utf-8")
+
+        # find spreadsheet inputs
+        spreadsheet_inputs = [p for p in input if p.suffix.lower() in (".csv", ".xlsx")]
+        if not spreadsheet_inputs:
+            logger.error("--document-template requires a CSV or XLSX input file")
+            raise typer.Exit(1)
+
+        if len(spreadsheet_inputs) > 1:
+            logger.warning(
+                f"Multiple spreadsheets found, using first: {spreadsheet_inputs[0]}"
+            )
+
+        spreadsheet_path = spreadsheet_inputs[0]
+        logger.info(f"Generating documents from {spreadsheet_path} using template")
+
+        # parse spreadsheet
+        try:
+            parse_result = parse_tabular_file(spreadsheet_path)
+        except ValueError as e:
+            logger.error(f"Failed to parse spreadsheet: {e}")
+            raise typer.Exit(1)
+
+        logger.info(
+            f"Found {parse_result.total_rows} rows, {len(parse_result.columns)} columns"
+        )
+
+        # validate template
+        errors = validate_template(template_content, parse_result.columns)
+        validation_errors = [e for e in errors if not e.startswith("Warning:")]
+        if validation_errors:
+            for err in validation_errors:
+                logger.error(f"Template error: {err}")
+            raise typer.Exit(1)
+
+        # generate documents
+        documents = generate_documents(
+            template_content,
+            parse_result,
+            source_file=spreadsheet_path.name,
+            name_column=document_names_from,
+            skip_empty=False,
+        )
+
+        if not documents:
+            logger.error("No documents generated from spreadsheet")
+            raise typer.Exit(1)
+
+        logger.info(f"Generated {len(documents)} documents from spreadsheet rows")
+
+        # write to temp directory
+        temp_doc_dir = tempfile.mkdtemp(prefix="soak_tabular_")
+        generated_paths = []
+        for doc in documents:
+            # sanitise filename
+            safe_name = "".join(
+                c if c.isalnum() or c in " -_" else "_" for c in doc.name
+            )
+            doc_path = Path(temp_doc_dir) / f"{safe_name}.txt"
+            doc_path.write_text(doc.content, encoding="utf-8")
+            generated_paths.append(doc_path)
+
+        # replace input with generated files
+        input = generated_paths
+        logger.info(f"Documents written to temp directory: {temp_doc_dir}")
 
     # validate mutually exclusive options
     if sample is not None and head is not None:
@@ -308,3 +403,10 @@ def run(
             f.write(html_outputs[tmpl])
 
     logger.info(f"Execution dump saved to: {dump_path}")
+
+    # clean up temp directory from document template mode
+    if temp_doc_dir:
+        import shutil
+
+        shutil.rmtree(temp_doc_dir, ignore_errors=True)
+        logger.debug(f"Cleaned up temp directory: {temp_doc_dir}")

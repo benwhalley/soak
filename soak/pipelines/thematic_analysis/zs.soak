@@ -44,13 +44,13 @@ config:
         description: Overarching narrative account of the analysis.
       narrative.narrative:
         label: Thematic Narrative
-        description: Narrative report
+        description: "Text-representation of all themes identified in the analysis."
 
 default_config:
   models:
-    default: gpt-4.1-mini
-    best: gpt-4.1-mini
-    cheap: gpt-4.1-mini
+    default: gpt-5.1-mini
+    best: gpt-5.1-mini
+    cheap: gpt-5.1-mini
   embeddings: text-embedding-3-large
   seed: 1
 
