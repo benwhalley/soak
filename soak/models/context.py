@@ -4,9 +4,18 @@ Supports rich context variable definitions with descriptions and help text
 for UI generation, while maintaining backward compatibility with simple values.
 """
 
-from typing import Any, Dict, List, Optional, Union
+from enum import Enum
+from typing import Any, Dict, List, Literal, Optional, Union
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+class ContextVariableType(str, Enum):
+    """Type of context variable, controlling UI display location."""
+
+    PRIMARY = "primary"  # shown prominently in results header
+    SECONDARY = "secondary"  # shown in Data & Settings, same priority as cost/models
+    CONFIGURATION = "configuration"  # shown in Data & Settings, smaller/less prominent
 
 
 class ContextVariable(BaseModel):
@@ -24,6 +33,12 @@ class ContextVariable(BaseModel):
               default: Experienced qualitative researcher
               description: Analyst persona
               help_text: The perspective from which the analysis is conducted
+              type: primary
+
+        Type values control UI display location:
+            - primary: shown prominently in results header next to TLDR
+            - secondary: shown in Data & Settings tab, same priority as cost/models
+            - configuration: shown in Data & Settings tab, smaller/less prominent
     """
 
     default: Any = ""
@@ -31,9 +46,27 @@ class ContextVariable(BaseModel):
     help_text: str = ""
     required: bool = False
     input_type: str = "text"  # text, textarea, select, number
+    type: Optional[str] = None  # primary, secondary, configuration
 
     # For select input_type
     options: List[str] = Field(default_factory=list)
+
+    @field_validator("type")
+    @classmethod
+    def validate_type(cls, v: Optional[str]) -> Optional[str]:
+        """Validate type is one of the allowed values.
+
+        Accepts 'config' as alias for 'configuration'.
+        """
+        if v is None:
+            return None
+        # Normalize 'config' to 'configuration'
+        if v == "config":
+            return "configuration"
+        allowed = {"primary", "secondary", "configuration"}
+        if v not in allowed:
+            raise ValueError(f"type must be one of {allowed}, got '{v}'")
+        return v
 
     @classmethod
     def from_value(cls, value: Any) -> "ContextVariable":
@@ -55,6 +88,7 @@ class ContextVariable(BaseModel):
                 required=value.get("required", False),
                 input_type=value.get("input_type", "text"),
                 options=value.get("options", []),
+                type=value.get("type"),
             )
         elif isinstance(value, cls):
             return value
