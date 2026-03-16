@@ -1,17 +1,13 @@
 """Tests for soak.helpers module."""
 
-import pytest
 from pathlib import Path
-import numpy as np
 
-from soak.helpers import (
-    derive_input_source,
-    print_comparison_stats,
-    format_exception_concise,
-    resolve_pipeline,
-    hash_run_config,
-    sanitize_for_filename,
-)
+import numpy as np
+import pytest
+
+from soak.helpers import (derive_input_source, format_exception_concise,
+                          hash_run_config, print_comparison_stats,
+                          resolve_pipeline, sanitize_for_filename)
 
 
 class TestDeriveInputSource:

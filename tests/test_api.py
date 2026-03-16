@@ -1,18 +1,13 @@
 """Tests for soak.api module."""
 
-import pytest
-from pathlib import Path
 import tempfile
+from pathlib import Path
+
+import pytest
 
 from soak import api
-from soak.api import (
-    ShowError,
-    list_pipelines,
-    list_templates,
-    get_pipeline,
-    get_template,
-    CalibrateError,
-)
+from soak.api import (CalibrateError, ShowError, get_pipeline, get_template,
+                      list_pipelines, list_templates)
 
 
 class TestListPipelines:

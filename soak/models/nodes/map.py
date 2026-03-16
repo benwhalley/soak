@@ -161,7 +161,9 @@ class Map(ItemsNode, CompletionDAGNode):
                                     try:
                                         # Count completed items (non-None results)
                                         done = sum(1 for r in results if r is not None)
-                                        logger.debug(f"Map {self.name}: progress {done}/{len(results)}")
+                                        logger.debug(
+                                            f"Map {self.name}: progress {done}/{len(results)}"
+                                        )
                                         self.dag.config.progress_callback(
                                             self.name,
                                             done,
@@ -193,7 +195,6 @@ class Map(ItemsNode, CompletionDAGNode):
                             result.fresh_cost,
                             result.prompt_tokens + result.completion_tokens,
                         )
-
 
         return results
 
@@ -321,5 +322,7 @@ class Map(ItemsNode, CompletionDAGNode):
         else:
             self.output = [input_data] if input_data else []
 
-        logger.info(f"Map '{self.name}': skipped, passing through {len(self.output)} items")
+        logger.info(
+            f"Map '{self.name}': skipped, passing through {len(self.output)} items"
+        )
         return self.output

@@ -31,17 +31,27 @@ def generate_self_similarity_xlsx(
     try:
         from ..analysis.self_similarity import compute_self_similarity_matrix
 
-        self_sim = compute_self_similarity_matrix(themes, embedding_model=embedding_model)
+        self_sim = compute_self_similarity_matrix(
+            themes, embedding_model=embedding_model
+        )
     except Exception as e:
         logger.warning(f"Could not compute self-similarity for XLSX: {e}")
         return False
 
     # colour scale matching web app results.html getCellStyle()
     # < 0.5: red, 0.5-0.7: yellow/gold, >= 0.7: green
-    fill_green = PatternFill(start_color="FF50C85A", end_color="FF50C85A", fill_type="solid")  # rgb(80,200,90)
-    fill_yellow = PatternFill(start_color="FFF0C85A", end_color="FFF0C85A", fill_type="solid")  # rgb(240,200,90)
-    fill_red = PatternFill(start_color="FFC85050", end_color="FFC85050", fill_type="solid")  # rgb(200,80,80)
-    fill_diagonal = PatternFill(start_color="FFE5E5E5", end_color="FFE5E5E5", fill_type="solid")
+    fill_green = PatternFill(
+        start_color="FF50C85A", end_color="FF50C85A", fill_type="solid"
+    )  # rgb(80,200,90)
+    fill_yellow = PatternFill(
+        start_color="FFF0C85A", end_color="FFF0C85A", fill_type="solid"
+    )  # rgb(240,200,90)
+    fill_red = PatternFill(
+        start_color="FFC85050", end_color="FFC85050", fill_type="solid"
+    )  # rgb(200,80,80)
+    fill_diagonal = PatternFill(
+        start_color="FFE5E5E5", end_color="FFE5E5E5", fill_type="solid"
+    )
 
     font_white = Font(color="FFFFFFFF")
     font_dark = Font(color="FF333333")
@@ -71,7 +81,9 @@ def generate_self_similarity_xlsx(
 
     # data rows - upper triangle only
     for i, theme_name in enumerate(self_sim["themes"]):
-        ws_cal.cell(row=i + 2, column=1, value=f"{self_sim['short_labels'][i]}: {theme_name}")
+        ws_cal.cell(
+            row=i + 2, column=1, value=f"{self_sim['short_labels'][i]}: {theme_name}"
+        )
         ws_cal.cell(row=i + 2, column=1).font = Font(bold=True)
 
         for j in range(self_sim["n_themes"]):
@@ -105,7 +117,9 @@ def generate_self_similarity_xlsx(
         cell.alignment = Alignment(horizontal="center")
 
     for i, theme_name in enumerate(self_sim["themes"]):
-        ws_raw.cell(row=i + 2, column=1, value=f"{self_sim['short_labels'][i]}: {theme_name}")
+        ws_raw.cell(
+            row=i + 2, column=1, value=f"{self_sim['short_labels'][i]}: {theme_name}"
+        )
         ws_raw.cell(row=i + 2, column=1).font = Font(bold=True)
 
         for j in range(self_sim["n_themes"]):
@@ -234,7 +248,9 @@ def generate_codes_xlsx(
         # join quotes
         quote_texts = []
         for quote in quotes:
-            text = quote.get("text", str(quote)) if isinstance(quote, dict) else str(quote)
+            text = (
+                quote.get("text", str(quote)) if isinstance(quote, dict) else str(quote)
+            )
             quote_texts.append(text)
         ws.cell(row=row, column=5, value="\n\n".join(quote_texts))
 
@@ -280,7 +296,11 @@ def _get_quotes_for_theme(theme: Dict, codes: List[Dict]) -> List[str]:
         code_name = code.get("name", "").lower().replace(" ", "-")
         if code_slug in code_ids or code_name in code_ids:
             for quote in code.get("quotes", [])[:2]:
-                text = quote.get("text", str(quote)) if isinstance(quote, dict) else str(quote)
+                text = (
+                    quote.get("text", str(quote))
+                    if isinstance(quote, dict)
+                    else str(quote)
+                )
                 quotes.append(text)
                 if len(quotes) >= 3:
                     return quotes

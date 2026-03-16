@@ -100,18 +100,24 @@ def fit_calibration_scam(
 
     # add anchor points to force curve through (0,0) and (1,1)
     if n_anchors > 0:
-        anchor_X = np.concatenate([
-            np.full(n_anchors, 0.0),  # floor anchors at raw=0
-            np.full(n_anchors, 1.0),  # ceiling anchors at raw=1
-        ])
-        anchor_y = np.concatenate([
-            np.zeros(n_anchors),  # target=0 at floor
-            np.ones(n_anchors),   # target=1 at ceiling
-        ])
+        anchor_X = np.concatenate(
+            [
+                np.full(n_anchors, 0.0),  # floor anchors at raw=0
+                np.full(n_anchors, 1.0),  # ceiling anchors at raw=1
+            ]
+        )
+        anchor_y = np.concatenate(
+            [
+                np.zeros(n_anchors),  # target=0 at floor
+                np.ones(n_anchors),  # target=1 at ceiling
+            ]
+        )
         X = np.concatenate([X, anchor_X])
         y = np.concatenate([y, anchor_y])
         # extend categories with placeholder (won't be used for validation)
-        categories_arr = np.concatenate([categories_arr, np.full(2 * n_anchors, "_anchor")])
+        categories_arr = np.concatenate(
+            [categories_arr, np.full(2 * n_anchors, "_anchor")]
+        )
         if groups is not None:
             # use a unique group for anchors to avoid affecting random effects
             groups = np.concatenate([groups, np.full(2 * n_anchors, "_anchor_group")])
@@ -786,7 +792,9 @@ def load_calibration(
     def normalize_model_name(name: str) -> str:
         return name.split("/")[-1] if "/" in name else name
 
-    if embedding_model and normalize_model_name(metadata["embedding_model"]) != normalize_model_name(embedding_model):
+    if embedding_model and normalize_model_name(
+        metadata["embedding_model"]
+    ) != normalize_model_name(embedding_model):
         warnings.warn(
             f"Calibration trained on {metadata['embedding_model']} "
             f"but using {embedding_model}. Results may be inaccurate."

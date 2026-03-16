@@ -33,7 +33,8 @@ def show(
     """
 
     # deferred import to avoid circular dependency
-    from ..api import ShowError, get_pipeline, get_template, list_pipelines, list_templates
+    from ..api import (ShowError, get_pipeline, get_template, list_pipelines,
+                       list_templates)
 
     # if item_type is not a known type, treat it as a pipeline name
     if item_type not in ["pipeline", "template"]:

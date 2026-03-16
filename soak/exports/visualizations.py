@@ -42,7 +42,9 @@ def create_sankey_figure(
     def truncate(s: str, max_len: int = 25) -> str:
         return s[: max_len - 3] + "..." if len(s) > max_len else s
 
-    node_labels = [truncate(label) for label in labels_a] + [truncate(label) for label in labels_b]
+    node_labels = [truncate(label) for label in labels_a] + [
+        truncate(label) for label in labels_b
+    ]
 
     sources = []
     targets = []
@@ -78,7 +80,8 @@ def create_sankey_figure(
                     thickness=20,
                     line=dict(color="black", width=0.5),
                     label=node_labels,
-                    color=["rgba(66, 133, 244, 0.8)"] * n_a + ["rgba(52, 168, 83, 0.8)"] * n_b,
+                    color=["rgba(66, 133, 244, 0.8)"] * n_a
+                    + ["rgba(52, 168, 83, 0.8)"] * n_b,
                 ),
                 link=dict(
                     source=sources,

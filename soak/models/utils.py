@@ -567,7 +567,10 @@ def collect_input_codes(context: Dict[str, Any]) -> List[Code]:
                         for sub_item in output_val:
                             if isinstance(sub_item, Code):
                                 codes.append(sub_item)
-                            elif hasattr(sub_item, "resolved_code_refs") and sub_item.resolved_code_refs:
+                            elif (
+                                hasattr(sub_item, "resolved_code_refs")
+                                and sub_item.resolved_code_refs
+                            ):
                                 # Theme with resolved codes - extract the codes
                                 for code_dict in sub_item.resolved_code_refs:
                                     codes.append(Code(**code_dict))

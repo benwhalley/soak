@@ -84,7 +84,9 @@ def markdown_to_typst(text: str) -> str:
     ITALIC_END = "\x00/I\x00"
 
     # convert markdown bold **text** to placeholder
-    text = re.sub(r"\*\*(.+?)\*\*", lambda m: f"{BOLD_START}{m.group(1)}{BOLD_END}", text)
+    text = re.sub(
+        r"\*\*(.+?)\*\*", lambda m: f"{BOLD_START}{m.group(1)}{BOLD_END}", text
+    )
 
     # convert markdown bold __text__ to placeholder
     text = re.sub(r"__(.+?)__", lambda m: f"{BOLD_START}{m.group(1)}{BOLD_END}", text)
@@ -117,7 +119,9 @@ def markdown_to_typst(text: str) -> str:
 
     # markdown links [text](url) -> #link("url")[text]
     text = re.sub(
-        r"\[([^\]]+)\]\(([^)]+)\)", lambda m: f'#link("{m.group(2)}")[{m.group(1)}]', text
+        r"\[([^\]]+)\]\(([^)]+)\)",
+        lambda m: f'#link("{m.group(2)}")[{m.group(1)}]',
+        text,
     )
 
     return text
@@ -315,7 +319,8 @@ class RunPdfExporter:
         self_similarity = None
         if len(themes) > 1:
             try:
-                from ..analysis.self_similarity import compute_self_similarity_matrix
+                from ..analysis.self_similarity import \
+                    compute_self_similarity_matrix
 
                 self_similarity = compute_self_similarity_matrix(themes)
             except ImportError:
@@ -362,7 +367,11 @@ class RunPdfExporter:
             "",
             f"Qualitative analysis was conducted using Soak v{version} ({SOAK_GITHUB_URL}),",
             f"an LLM-assisted thematic analysis tool. The analysis used the {self.pipeline_name} pipeline",
-            f"with {self.model_name} as the language model." if self.model_name else ".",
+            (
+                f"with {self.model_name} as the language model."
+                if self.model_name
+                else "."
+            ),
             "",
             f"{self.doc_count} documents ({self.word_count:,} words) were analysed. The analysis",
             f"identified {len(themes)} themes and {len(codes)} codes, with {total_quotes} supporting",

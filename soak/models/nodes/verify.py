@@ -764,11 +764,14 @@ async def verify_quotes_bm25_first(
     calibration_method = None
     if embedding_model:
         try:
-            from soak.calibration import get_bundled_calibration, load_calibration
+            from soak.calibration import (get_bundled_calibration,
+                                          load_calibration)
 
             cal_path = get_bundled_calibration(embedding_model)
             if cal_path:
-                calibration_model, metadata = load_calibration(cal_path, embedding_model)
+                calibration_model, metadata = load_calibration(
+                    cal_path, embedding_model
+                )
                 calibration_method = metadata.get("method", "scam")
                 logger.info(
                     f"Loaded calibration for {embedding_model} (method={calibration_method})"
@@ -794,9 +797,13 @@ async def verify_quotes_bm25_first(
                 from soak.calibration import calibrate
 
                 # Convert cosine to angular similarity (what calibration expects)
-                angular_sim = 1 - np.degrees(np.arccos(np.clip(cosine_sim, -1.0, 1.0))) / 180.0
+                angular_sim = (
+                    1 - np.degrees(np.arccos(np.clip(cosine_sim, -1.0, 1.0))) / 180.0
+                )
                 calibrated = calibrate(
-                    np.array([angular_sim]), calibration_model, method=calibration_method
+                    np.array([angular_sim]),
+                    calibration_model,
+                    method=calibration_method,
                 )
                 result["calibrated_similarity"] = float(calibrated[0])
             except Exception as e:
@@ -1242,7 +1249,10 @@ class VerifyQuotes(CompletionDAGNode):
         logger.info(f"Created {len(windows)} search windows")
         # Create BM25 progress callback for web UI
         bm25_progress_callback = None
-        if hasattr(self.dag.config, "progress_callback") and self.dag.config.progress_callback:
+        if (
+            hasattr(self.dag.config, "progress_callback")
+            and self.dag.config.progress_callback
+        ):
             base_callback = self.dag.config.progress_callback
 
             def bm25_progress_callback(done: int, total: int, cost: float):
@@ -1293,7 +1303,9 @@ class VerifyQuotes(CompletionDAGNode):
         # Stage 1.5: LLM-based existence verification for poor matches
         # Skip if skip_llm_verification is set
         if self.skip_llm_verification:
-            logger.info("Skipping LLM existence verification (skip_llm_verification=True)")
+            logger.info(
+                "Skipping LLM existence verification (skip_llm_verification=True)"
+            )
             poor_matches = df.iloc[0:0]  # empty dataframe
         else:
             # Use calibrated similarity if available, otherwise fall back to cosine
@@ -1304,10 +1316,15 @@ class VerifyQuotes(CompletionDAGNode):
             )
 
             # Build similarity mask using calibrated similarity if available
-            has_calibrated = "calibrated_similarity" in df.columns and df["calibrated_similarity"].notna().any()
+            has_calibrated = (
+                "calibrated_similarity" in df.columns
+                and df["calibrated_similarity"].notna().any()
+            )
             if has_calibrated:
                 sim_column = df["calibrated_similarity"].fillna(df["cosine_similarity"])
-                logger.info("Using calibrated similarity for LLM verification threshold")
+                logger.info(
+                    "Using calibrated similarity for LLM verification threshold"
+                )
             else:
                 sim_column = df["cosine_similarity"]
                 logger.info("Using raw cosine similarity (no calibration available)")
@@ -1417,13 +1434,19 @@ class VerifyQuotes(CompletionDAGNode):
         quote_hash_to_context = {
             item["quote"].hash(): item for item in quotes_with_context
         }
-        df["code_name"] = df["quote_hash"].apply(
-            lambda h: quote_hash_to_context.get(h, {}).get("code", {})
-        ).apply(lambda c: getattr(c, "name", None) if c else None)
+        df["code_name"] = (
+            df["quote_hash"]
+            .apply(lambda h: quote_hash_to_context.get(h, {}).get("code", {}))
+            .apply(lambda c: getattr(c, "name", None) if c else None)
+        )
 
         # Stage 2: Fairness verification for themes (optional)
         # Skip if skip_llm_verification is set
-        if self.check_fairness and self.verification_type == "theme" and not self.skip_llm_verification:
+        if (
+            self.check_fairness
+            and self.verification_type == "theme"
+            and not self.skip_llm_verification
+        ):
             logger.info(
                 f"Running fairness verification on {len(quotes_with_context)} theme-quote usages"
             )
@@ -1556,7 +1579,9 @@ class VerifyQuotes(CompletionDAGNode):
             logger.info(f"Fairness verification complete for {len(df)} quotes")
         else:
             if self.skip_llm_verification and self.check_fairness:
-                logger.info("Skipping fairness verification (skip_llm_verification=True)")
+                logger.info(
+                    "Skipping fairness verification (skip_llm_verification=True)"
+                )
             else:
                 logger.info(
                     f"Skipping fairness verification (check_fairness={self.check_fairness}, verification_type={self.verification_type})"

@@ -23,7 +23,8 @@ from tqdm import tqdm
 from soak.error_handlers import log_error_to_stderr, should_continue_pipeline
 from soak.models.base import TrackedItem, extract_content, get_action_lookup
 from soak.models.context import get_context_defaults
-from soak.models.dag import DAG, OutputUnion, render_strict_template, render_template_preserve_undefined
+from soak.models.dag import (DAG, OutputUnion, render_strict_template,
+                             render_template_preserve_undefined)
 
 logger = logging.getLogger(__name__)
 
@@ -230,7 +231,9 @@ class CompletionDAGNode(DAGNode):
     _prompt_tokens: int = PrivateAttr(default=0)
     _completion_tokens: int = PrivateAttr(default=0)
     _llm_results: List[ChatterResult] = PrivateAttr(default_factory=list)
-    _input_count: int = PrivateAttr(default=0)  # tracks expected input count for progress
+    _input_count: int = PrivateAttr(
+        default=0
+    )  # tracks expected input count for progress
 
     def _accumulate_costs(self, result: ChatterResult) -> None:
         """Extract and accumulate costs from a ChatterResult"""

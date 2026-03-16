@@ -27,10 +27,13 @@ logger = logging.getLogger(__name__)
 
 # plain text extensions - read directly without pandoc
 TEXT_EXTENSIONS = {
-    ".txt", ".md", ".markdown",  # plain text / markdown
-    ".vtt", ".srt",              # subtitles (video transcripts)
-    ".log",                      # log files
-    ".rst",                      # reStructuredText
+    ".txt",
+    ".md",
+    ".markdown",  # plain text / markdown
+    ".vtt",
+    ".srt",  # subtitles (video transcripts)
+    ".log",  # log files
+    ".rst",  # reStructuredText
 }
 
 # binary document extensions - need pandoc or special handling

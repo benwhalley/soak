@@ -363,9 +363,9 @@ async def test_cluster_if_skipped_bypass_to():
 
     # grouped should have triggered bypass (input < skip_below=100)
     # consolidated should be in skip_nodes
-    assert "consolidated" in pipeline.config.skip_nodes, (
-        "consolidated node should be skipped when bypass is triggered"
-    )
+    assert (
+        "consolidated" in pipeline.config.skip_nodes
+    ), "consolidated node should be skipped when bypass is triggered"
 
     # final_output should have received input and produced output
     assert final_output.output is not None, "final_output should have output"

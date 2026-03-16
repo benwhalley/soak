@@ -650,7 +650,9 @@ class Cluster(DAGNode):
 
         return path_nodes
 
-    def _make_single_cluster(self, all_items: List[Any], all_texts: List[str]) -> List[TrackedItem]:
+    def _make_single_cluster(
+        self, all_items: List[Any], all_texts: List[str]
+    ) -> List[TrackedItem]:
         """Create a single cluster containing all items (used for skip scenarios).
 
         Args:
@@ -702,7 +704,9 @@ class Cluster(DAGNode):
         Returns:
             List containing a single TrackedItem with all inputs as one cluster.
         """
-        logger.info(f"Cluster '{self.name}': skipped, returning single cluster passthrough")
+        logger.info(
+            f"Cluster '{self.name}': skipped, returning single cluster passthrough"
+        )
 
         # gather inputs using the same logic as run()
         items, texts = self._gather_inputs()

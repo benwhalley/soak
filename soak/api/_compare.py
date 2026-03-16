@@ -143,7 +143,9 @@ def compare(
             # extract QualitativeAnalysis from RunResult
             loaded = analysis.analysis
             if not loaded.name or loaded.name == loaded.sha256()[:8]:
-                loaded.name = analysis.pipeline.name or f"analysis_{len(loaded_analyses)}"
+                loaded.name = (
+                    analysis.pipeline.name or f"analysis_{len(loaded_analyses)}"
+                )
             loaded_analyses.append(loaded)
         else:
             # assume QualitativeAnalysis

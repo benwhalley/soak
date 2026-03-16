@@ -5,7 +5,6 @@ from typer.testing import CliRunner
 
 from soak.cli import app
 
-
 runner = CliRunner()
 
 
@@ -36,7 +35,11 @@ class TestShowCommand:
         result = runner.invoke(app, ["show", "pipeline", pipelines[0]])
         assert result.exit_code == 0
         # pipeline content should be YAML-like
-        assert "name:" in result.output or "nodes:" in result.output or len(result.output) > 0
+        assert (
+            "name:" in result.output
+            or "nodes:" in result.output
+            or len(result.output) > 0
+        )
 
     def test_show_template_content(self):
         """show template <name> outputs template content."""
@@ -152,7 +155,11 @@ class TestCalibrateValidation:
         """calibrate without input shows error."""
         result = runner.invoke(app, ["calibrate"])
         # should fail or show help
-        assert result.exit_code != 0 or "Must provide" in result.output or "Usage" in result.output
+        assert (
+            result.exit_code != 0
+            or "Must provide" in result.output
+            or "Usage" in result.output
+        )
 
     def test_calibrate_invalid_method(self):
         """calibrate with invalid method shows error."""
@@ -176,9 +183,15 @@ class TestRunValidation:
         if not pipelines:
             pytest.skip("No built-in pipelines available")
 
-        result = runner.invoke(app, ["run", pipelines[0], "nonexistent_file_xyz123.txt"])
+        result = runner.invoke(
+            app, ["run", pipelines[0], "nonexistent_file_xyz123.txt"]
+        )
         # should fail because file doesn't exist
-        assert result.exit_code != 0 or "not found" in result.output.lower() or "No files" in result.output
+        assert (
+            result.exit_code != 0
+            or "not found" in result.output.lower()
+            or "No files" in result.output
+        )
 
 
 class TestCompareValidation:

@@ -105,11 +105,14 @@ def _calibrate_similarities(
         return []
 
     try:
-        from ..calibration import calibrate, get_bundled_calibration, load_calibration
+        from ..calibration import (calibrate, get_bundled_calibration,
+                                   load_calibration)
 
         cal_path = get_bundled_calibration(embedding_model)
         if cal_path is None:
-            logger.debug(f"No bundled calibration for {embedding_model}, using clamped cosine")
+            logger.debug(
+                f"No bundled calibration for {embedding_model}, using clamped cosine"
+            )
             return [max(0, min(1, s)) for s in cosine_sims]
 
         model, metadata = load_calibration(cal_path, embedding_model)

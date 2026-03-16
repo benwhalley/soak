@@ -7,8 +7,8 @@ import random
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import (TYPE_CHECKING, Annotated, Any, Callable, Dict, List, Optional, Set,
-                    Tuple, Union)
+from typing import (TYPE_CHECKING, Annotated, Any, Callable, Dict, List,
+                    Optional, Set, Tuple, Union)
 
 import anyio
 from jinja2 import Environment, StrictUndefined, Undefined, meta
@@ -20,7 +20,8 @@ from soak.document_utils import (extract_text, get_scrubber, is_spreadsheet,
 from soak.export_utils import export_to_csv
 from soak.models.base import (SOAK_MAX_RUNTIME, TrackedItem,
                               get_default_llm_credentials)
-from soak.models.context import ContextVariable, get_context_defaults, normalize_context
+from soak.models.context import (ContextVariable, get_context_defaults,
+                                 normalize_context)
 from soak.models.cost_tracker import GlobalCostTracker
 from soak.models.progress import ProgressManager
 
@@ -353,9 +354,7 @@ async def run_node(node):
         # Call node completion callback if set (for web UI incremental saving)
         if node.dag.config.node_complete_callback:
             logger.debug(f"Calling node_complete_callback for {node.name}")
-            await anyio.to_thread.run_sync(
-                node.dag.config.node_complete_callback, node
-            )
+            await anyio.to_thread.run_sync(node.dag.config.node_complete_callback, node)
             logger.debug(f"node_complete_callback finished for {node.name}")
 
         logger.debug(f"run_node returning for {node.name}")
@@ -490,7 +489,9 @@ class DAG(BaseModel):
     version: Optional[str] = None  # pipeline version (e.g., "0.1.0")
     description: Optional[str] = None  # pipeline description
     default_context: Dict[str, Any] = {}
-    default_config: Dict[str, Any] = {}  # Allow any value including nested dicts (e.g., models: {default: gpt-4})
+    default_config: Dict[str, Any] = (
+        {}
+    )  # Allow any value including nested dicts (e.g., models: {default: gpt-4})
     template_dirs: List[str] = []  # additional template search directories
     scrub: Optional[bool] = None  # if False, suppress PII warning
 
@@ -672,7 +673,9 @@ class DAG(BaseModel):
         execution_order = self.get_execution_order()
         logger.info(f"Execution order: {len(execution_order)} batches")
         for batch_idx, batch in enumerate(execution_order):
-            logger.info(f"Starting batch {batch_idx + 1}/{len(execution_order)}: {batch}")
+            logger.info(
+                f"Starting batch {batch_idx + 1}/{len(execution_order)}: {batch}"
+            )
 
             # Check if we should stop before this batch
             if stop_at_node and stop_at_node in batch:
@@ -692,7 +695,9 @@ class DAG(BaseModel):
                             result = await node.skip()
                             if result is not None:
                                 node.output = result
-                                logger.info(f"Skipped node '{name}' with passthrough output")
+                                logger.info(
+                                    f"Skipped node '{name}' with passthrough output"
+                                )
                             else:
                                 logger.info(f"Skipping node: {name}")
                             # Call node completion callback for skipped nodes too

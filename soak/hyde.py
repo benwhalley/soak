@@ -165,7 +165,9 @@ def compute_hyde_similarity_matrix(
         # Aggregate by document (max similarity per document)
         for chunk_idx, doc_idx in enumerate(chunk_doc_indices):
             current_max = result_matrix[theme_idx, doc_idx]
-            result_matrix[theme_idx, doc_idx] = max(current_max, max_quote_sims[chunk_idx])
+            result_matrix[theme_idx, doc_idx] = max(
+                current_max, max_quote_sims[chunk_idx]
+            )
 
     return result_matrix
 

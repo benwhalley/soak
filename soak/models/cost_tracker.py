@@ -55,7 +55,9 @@ class GlobalCostTracker:
         for callback in self._callbacks:
             callback()
 
-    def add_embedding_cost(self, fresh_cost: float, fresh_tokens: int, fresh_count: int) -> None:
+    def add_embedding_cost(
+        self, fresh_cost: float, fresh_tokens: int, fresh_count: int
+    ) -> None:
         """Add embedding API costs to the running totals.
 
         This is called by the embedding cost callback after each embedding batch.

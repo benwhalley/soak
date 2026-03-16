@@ -34,7 +34,16 @@ _pdb_on_exception = False
 
 PIPELINE_DIR = Path(__file__).parent.parent / "pipelines"
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
-COMMANDS = {"run", "export", "compare", "show", "coverage", "test", "calibrate", "format"}
+COMMANDS = {
+    "run",
+    "export",
+    "compare",
+    "show",
+    "coverage",
+    "test",
+    "calibrate",
+    "format",
+}
 
 
 def set_pdb_on_exception(value: bool) -> None:

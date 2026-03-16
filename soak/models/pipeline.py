@@ -190,7 +190,8 @@ class QualitativeAnalysisPipeline(DAG):
                 # compute self-similarity if we have multiple themes
                 if len(themes_data) > 1:
                     try:
-                        from ..analysis.self_similarity import compute_self_similarity_matrix
+                        from ..analysis.self_similarity import \
+                            compute_self_similarity_matrix
 
                         self_similarity = compute_self_similarity_matrix(themes_data)
                         self_similarity_json = json.dumps(self_similarity, default=str)
@@ -207,13 +208,14 @@ class QualitativeAnalysisPipeline(DAG):
                         if hasattr(checkquotes_node, "sentence_matches"):
                             matches = checkquotes_node.sentence_matches or []
                         elif isinstance(checkquotes_node.output, dict):
-                            matches = checkquotes_node.output.get("sentence_matches", [])
+                            matches = checkquotes_node.output.get(
+                                "sentence_matches", []
+                            )
 
                         if matches:
                             # count flagged quotes
                             flagged_count = sum(
-                                1 for m in matches
-                                if m.get("llm_is_contained") is False
+                                1 for m in matches if m.get("llm_is_contained") is False
                             )
                             verification_data = {
                                 "matches": matches,
@@ -228,12 +230,18 @@ class QualitativeAnalysisPipeline(DAG):
                     codes_by_slug = {}
                     if analysis_result.codes:
                         for code in analysis_result.codes:
-                            slug = code.slug if hasattr(code, "slug") else code.get("slug")
+                            slug = (
+                                code.slug if hasattr(code, "slug") else code.get("slug")
+                            )
                             if slug:
                                 codes_by_slug[slug] = code
 
                     for theme in analysis_result.themes:
-                        theme_dict = theme.model_dump() if hasattr(theme, "model_dump") else dict(theme)
+                        theme_dict = (
+                            theme.model_dump()
+                            if hasattr(theme, "model_dump")
+                            else dict(theme)
+                        )
                         code_slugs = theme_dict.get("code_slugs", [])
                         related_codes = []
                         total_quotes = 0
@@ -241,17 +249,25 @@ class QualitativeAnalysisPipeline(DAG):
                         for slug in code_slugs:
                             code = codes_by_slug.get(slug)
                             if code:
-                                code_dict = code.model_dump() if hasattr(code, "model_dump") else dict(code)
-                                quotes = code_dict.get("all_quotes", code_dict.get("quotes", []))
+                                code_dict = (
+                                    code.model_dump()
+                                    if hasattr(code, "model_dump")
+                                    else dict(code)
+                                )
+                                quotes = code_dict.get(
+                                    "all_quotes", code_dict.get("quotes", [])
+                                )
                                 if isinstance(quotes, list):
                                     total_quotes += len(quotes)
                                 related_codes.append(code_dict)
 
-                        themes_with_codes.append({
-                            **theme_dict,
-                            "related_codes": related_codes,
-                            "total_quotes": total_quotes,
-                        })
+                        themes_with_codes.append(
+                            {
+                                **theme_dict,
+                                "related_codes": related_codes,
+                                "total_quotes": total_quotes,
+                            }
+                        )
 
             except Exception as e:
                 logger.debug(f"Could not prepare template data: {e}")

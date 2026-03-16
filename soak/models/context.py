@@ -102,9 +102,7 @@ class ContextVariable(BaseModel):
         return self.default
 
 
-def normalize_context(
-    context: Dict[str, Any]
-) -> Dict[str, ContextVariable]:
+def normalize_context(context: Dict[str, Any]) -> Dict[str, ContextVariable]:
     """Normalize context dict to ContextVariable instances.
 
     Converts a mix of simple values and rich definitions to a uniform
@@ -116,10 +114,7 @@ def normalize_context(
     Returns:
         Dict mapping variable names to ContextVariable instances
     """
-    return {
-        name: ContextVariable.from_value(value)
-        for name, value in context.items()
-    }
+    return {name: ContextVariable.from_value(value) for name, value in context.items()}
 
 
 def get_context_defaults(context: Dict[str, Any]) -> Dict[str, Any]:

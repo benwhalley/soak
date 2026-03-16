@@ -14,7 +14,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
-from jinja2 import Environment, StrictUndefined, TemplateSyntaxError, UndefinedError
+from jinja2 import (Environment, StrictUndefined, TemplateSyntaxError,
+                    UndefinedError)
 
 logger = logging.getLogger(__name__)
 
@@ -306,15 +307,21 @@ def validate_template(template_str: str, columns: list[str]) -> list[str]:
     for var in used_vars:
         if var not in column_set:
             similar = [
-                c for c in columns if c.lower() == var.lower() or var.lower() in c.lower()
+                c
+                for c in columns
+                if c.lower() == var.lower() or var.lower() in c.lower()
             ]
             if similar:
-                messages.append(f"Unknown column '{var}'. Did you mean: {', '.join(similar)}?")
+                messages.append(
+                    f"Unknown column '{var}'. Did you mean: {', '.join(similar)}?"
+                )
             else:
                 messages.append(f"Unknown column '{var}'")
 
     if not used_vars:
-        messages.append("Warning: Template doesn't use any columns. All documents will be identical.")
+        messages.append(
+            "Warning: Template doesn't use any columns. All documents will be identical."
+        )
 
     return messages
 
@@ -355,7 +362,9 @@ def generate_documents(
     for i, row in enumerate(parse_result.rows, start=1):
         warnings = []
 
-        empty_used = [col for col in used_columns if col in row and not row[col].strip()]
+        empty_used = [
+            col for col in used_columns if col in row and not row[col].strip()
+        ]
         if empty_used:
             if skip_empty and all(
                 not row.get(col, "").strip() for col in used_columns if col in row
