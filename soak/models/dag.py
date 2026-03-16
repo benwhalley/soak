@@ -352,10 +352,13 @@ async def run_node(node):
 
         # Call node completion callback if set (for web UI incremental saving)
         if node.dag.config.node_complete_callback:
+            logger.debug(f"Calling node_complete_callback for {node.name}")
             await anyio.to_thread.run_sync(
                 node.dag.config.node_complete_callback, node
             )
+            logger.debug(f"node_complete_callback finished for {node.name}")
 
+        logger.debug(f"run_node returning for {node.name}")
         return result
     except Exception as e:
         logger.error(f"Node {node.name} failed: {e}")
@@ -666,7 +669,11 @@ class DAG(BaseModel):
             skip_nodes: Set of node names to skip
             stop_at_node: Stop execution before this node runs (None to run all)
         """
-        for batch in self.get_execution_order():
+        execution_order = self.get_execution_order()
+        logger.info(f"Execution order: {len(execution_order)} batches")
+        for batch_idx, batch in enumerate(execution_order):
+            logger.info(f"Starting batch {batch_idx + 1}/{len(execution_order)}: {batch}")
+
             # Check if we should stop before this batch
             if stop_at_node and stop_at_node in batch:
                 logger.info(f"Stopping execution at node: {stop_at_node}")
@@ -674,19 +681,29 @@ class DAG(BaseModel):
 
             # Execute batch concurrently
             with anyio.fail_after(SOAK_MAX_RUNTIME):
+                logger.debug(f"Creating task group for batch {batch_idx + 1}")
                 async with anyio.create_task_group() as tg:
                     for name in batch:
-                        if name in skip_nodes:
+                        # Check both initial skip_nodes AND dynamically added ones
+                        if name in skip_nodes or name in self.config.skip_nodes:
                             # call node.skip() for passthrough behavior
                             node = self.nodes_dict[name]
+                            node._skipped = True  # Mark as skipped for callbacks
                             result = await node.skip()
                             if result is not None:
                                 node.output = result
-                                logger.debug(f"Skipped node '{name}' with passthrough output")
+                                logger.info(f"Skipped node '{name}' with passthrough output")
                             else:
-                                logger.debug(f"Skipping node: {name}")
+                                logger.info(f"Skipping node: {name}")
+                            # Call node completion callback for skipped nodes too
+                            if self.config.node_complete_callback:
+                                await anyio.to_thread.run_sync(
+                                    self.config.node_complete_callback, node
+                                )
                             continue
+                        logger.debug(f"Starting task for node: {name}")
                         tg.start_soon(run_node, self.nodes_dict[name])
+                logger.info(f"Batch {batch_idx + 1} completed: {batch}")
 
     async def run(self):
         """Execute DAG by running nodes in dependency-ordered batches.

@@ -322,8 +322,8 @@ class Cluster(DAGNode):
     Attributes:
         method: Clustering method configuration (defaults to HDBSCAN)
         items_field: How to extract items from container types:
-            - "codes" (default): Extract from CodeList.codes
-            - None: Use items as-is (for TrackedItems/strings)
+            - None (default): Use items as-is
+            - "codes": Extract from CodeList.codes (use after Map producing CodeLists)
             - "results.codes.output.codes": Dotted path for nested extraction
             For ChatterResult inputs, extraction happens from segment.output
         text_field: How to extract text for embedding from each item:
@@ -332,16 +332,16 @@ class Cluster(DAGNode):
             - "{{name}}: {{description}}": Jinja2 template for custom text
 
     Example YAML:
-        # Clustering Code objects from a Map that produces CodeList (default)
+        # Clustering Code objects or TrackedItems directly (default)
+        - name: grouped_codes
+          type: Cluster
+          inputs: [codes]
+
+        # Extract codes from CodeList containers (after Map producing CodeLists)
         - name: grouped_codes
           type: Cluster
           inputs: [coded_chunks]
-
-        # For TrackedItems/strings, set items_field to null
-        - name: grouped_chunks
-          type: Cluster
-          inputs: [chunks]
-          items_field: null
+          items_field: codes
 
         # With custom method config
         - name: grouped
@@ -355,12 +355,18 @@ class Cluster(DAGNode):
 
     type: Literal["Cluster"] = "Cluster"
     method: ClusterMethod = Field(default_factory=HDBSCANMethod)
-    items_field: Optional[str] = "codes"
+    items_field: Optional[str] = None
     text_field: str = "content"
     skip_below: int = Field(
         default=20,
         description="If input item count is below this threshold, "
         "skip clustering and return all items as a single cluster.",
+    )
+    if_skipped_bypass_to: Optional[str] = Field(
+        default=None,
+        description="When skip_below triggers, skip intermediate nodes up to this target. "
+        "The target node will receive the original input directly, bypassing any "
+        "intermediate processing nodes.",
     )
 
     async def run(self) -> BatchList:
@@ -385,12 +391,31 @@ class Cluster(DAGNode):
 
         # check skip_below threshold
         if self.skip_below is not None and len(items) < self.skip_below:
-            logger.warning(
-                f"Cluster '{self.name}': {len(items)} items below skip_below={self.skip_below}, "
-                "skipping clustering and returning single cluster"
-            )
-            self.output = self._make_single_cluster(items, texts)
-            return self.output
+            # Mark this node as skipped since we're not actually clustering
+            self._skipped = True
+            if self.if_skipped_bypass_to:
+                # bypass mode: skip intermediate nodes and pass items directly to target
+                target = self.if_skipped_bypass_to
+                intermediate = self._find_path_to(target)
+                for node_name in intermediate:
+                    if node_name not in self.dag.config.skip_nodes:
+                        self.dag.config.skip_nodes.append(node_name)
+                        logger.info(f"Bypass: skipping '{node_name}'")
+
+                # passthrough raw items (not wrapped in cluster) for target node
+                self.output = items
+                logger.info(
+                    f"Cluster '{self.name}': {len(items)} items < skip_below={self.skip_below}, "
+                    f"bypassing to '{target}'"
+                )
+                return self.output
+            else:
+                logger.warning(
+                    f"Cluster '{self.name}': {len(items)} items below skip_below={self.skip_below}, "
+                    "skipping clustering and returning single cluster"
+                )
+                self.output = self._make_single_cluster(items, texts)
+                return self.output
 
         # deduplicate texts for embedding efficiency
         unique_texts = list(set(texts))
@@ -583,6 +608,47 @@ class Cluster(DAGNode):
         texts = [self._extract_text(item) for item in items]
 
         return items, texts
+
+    def _find_path_to(self, target: str) -> List[str]:
+        """Find intermediate node names between self and target (exclusive of both).
+
+        Uses BFS to find all nodes in the dependency path from this node to the target.
+
+        Args:
+            target: Name of the target node to bypass to
+
+        Returns:
+            List of intermediate node names to skip
+
+        Raises:
+            ValueError: If target node doesn't exist in the DAG
+        """
+        if target not in self.dag.nodes_dict:
+            raise ValueError(
+                f"Bypass target '{target}' not found in DAG. "
+                f"Available nodes: {list(self.dag.nodes_dict.keys())}"
+            )
+
+        visited = set()
+        queue = [self.name]
+        path_nodes = []
+
+        while queue:
+            current = queue.pop(0)
+            if current == target:
+                break
+            if current in visited:
+                continue
+            visited.add(current)
+
+            # find nodes that depend on current (i.e., have current in their inputs)
+            for node in self.dag.nodes:
+                if current in (node.inputs or []) and node.name not in visited:
+                    if node.name != target:
+                        path_nodes.append(node.name)
+                    queue.append(node.name)
+
+        return path_nodes
 
     def _make_single_cluster(self, all_items: List[Any], all_texts: List[str]) -> List[TrackedItem]:
         """Create a single cluster containing all items (used for skip scenarios).

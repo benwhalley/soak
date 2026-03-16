@@ -479,6 +479,8 @@ Group items by semantic similarity using density-based clustering.
 | `items_field` | str | `"codes"` | Field to extract items from (null for TrackedItems) |
 | `text_field` | str | `"content"` | How to extract text for embedding |
 | `method` | ClusterMethod | HDBSCAN defaults | Clustering method configuration |
+| `skip_below` | int | `20` | Skip clustering if input count is below this threshold |
+| `if_skipped_bypass_to` | str | `null` | When skip_below triggers, bypass intermediate nodes to this target |
 
 **HDBSCAN Method Parameters:**
 
@@ -691,6 +693,47 @@ nodes:
       min_cluster_size_proportion: 0.2
       max_cluster_size: null
 ```
+
+**Conditional Bypass for Small Datasets:**
+
+When processing small datasets, clustering and consolidation may be unnecessary overhead. Use `if_skipped_bypass_to` to bypass intermediate nodes when input is below the `skip_below` threshold:
+
+```yaml
+nodes:
+  - name: codes_from_chunks
+    type: Map
+    inputs: [chunks]
+
+  - name: grouped_codes
+    type: Cluster
+    inputs: [codes_from_chunks]
+    items_field: codes
+    skip_below: 20
+    if_skipped_bypass_to: final_codes  # bypass consolidation
+
+  - name: consolidated_codes
+    type: Map
+    inputs: [grouped_codes]
+
+  - name: final_codes
+    type: Reduce
+    inputs: [consolidated_codes]
+    items_field: codes
+```
+
+**Behaviour:**
+
+When input has fewer than 20 codes:
+- `grouped_codes` passes its input through unchanged (no clustering)
+- `consolidated_codes` is automatically skipped
+- `codes_from_chunks` output flows directly to `final_codes`
+- No LLM calls for clustering or consolidation
+
+When input has 20 or more codes:
+- Normal clustering and consolidation flow executes
+- All intermediate nodes run as configured
+
+This is useful for pipelines that handle both small pilot studies and large datasets with the same configuration.
 
 ### Batch
 

@@ -388,6 +388,7 @@ async def verify_quotes_bm25_first(
     show_progress: bool = True,
     progress_manager: Optional["ProgressManager"] = None,
     embedding_model: Optional[str] = None,
+    progress_callback: Optional[Any] = None,
 ) -> List[Dict[str, Any]]:
     """Verify quotes using BM25-first matching with ellipsis support.
 
@@ -481,6 +482,9 @@ async def verify_quotes_bm25_first(
     for i, quote_obj in enumerate(extracted_quotes):
         if pbar_bm25:
             pbar_bm25.update(1)
+        # Report progress to web UI callback every 50 quotes
+        if progress_callback and i % 50 == 0:
+            progress_callback(i, len(extracted_quotes), 0.0)
         quote = quote_obj.text
         has_ellipsis = bool(ELLIPSIS_RE.search(quote))
 
@@ -850,6 +854,9 @@ class VerifyQuotes(CompletionDAGNode):
     # LLM judge templates
     template: Optional[str] = None  # Custom LLM-as-judge prompt template
     fairness_template: Optional[str] = None  # Custom fairness verification template
+
+    # Skip LLM verification (BM25 + embeddings still run)
+    skip_llm_verification: bool = False
 
     # Results
     stats: Optional[Dict[str, Any]] = None
@@ -1233,6 +1240,15 @@ class VerifyQuotes(CompletionDAGNode):
             extracted_sentences=quote_texts,
         )
         logger.info(f"Created {len(windows)} search windows")
+        # Create BM25 progress callback for web UI
+        bm25_progress_callback = None
+        if hasattr(self.dag.config, "progress_callback") and self.dag.config.progress_callback:
+            base_callback = self.dag.config.progress_callback
+
+            def bm25_progress_callback(done: int, total: int, cost: float):
+                # Use node name for progress tracking
+                base_callback(self.name, done, total, cost)
+
         matches = await verify_quotes_bm25_first(
             quotes_to_verify,
             windows,
@@ -1250,6 +1266,7 @@ class VerifyQuotes(CompletionDAGNode):
             show_progress=self.dag.config.show_progress,
             progress_manager=self.dag.progress_manager,
             embedding_model=self.dag.config.embedding_model,
+            progress_callback=bm25_progress_callback,
         )
 
         if not matches:
@@ -1274,33 +1291,38 @@ class VerifyQuotes(CompletionDAGNode):
         df = pd.DataFrame(matches)
 
         # Stage 1.5: LLM-based existence verification for poor matches
-        # Use calibrated similarity if available, otherwise fall back to cosine
-        logger.info("Identifying poor matches for LLM verification...")
-        logger.info(
-            f"Thresholds: bm25={self.check_exists_bm25}, ratio={self.check_exists_bm25_ratio}, "
-            f"min_similarity={self.check_exists_min_similarity}"
-        )
-
-        # Build similarity mask using calibrated similarity if available
-        has_calibrated = "calibrated_similarity" in df.columns and df["calibrated_similarity"].notna().any()
-        if has_calibrated:
-            sim_column = df["calibrated_similarity"].fillna(df["cosine_similarity"])
-            logger.info("Using calibrated similarity for LLM verification threshold")
+        # Skip if skip_llm_verification is set
+        if self.skip_llm_verification:
+            logger.info("Skipping LLM existence verification (skip_llm_verification=True)")
+            poor_matches = df.iloc[0:0]  # empty dataframe
         else:
-            sim_column = df["cosine_similarity"]
-            logger.info("Using raw cosine similarity (no calibration available)")
+            # Use calibrated similarity if available, otherwise fall back to cosine
+            logger.info("Identifying poor matches for LLM verification...")
+            logger.info(
+                f"Thresholds: bm25={self.check_exists_bm25}, ratio={self.check_exists_bm25_ratio}, "
+                f"min_similarity={self.check_exists_min_similarity}"
+            )
 
-        poor_match_mask = (
-            (df["bm25_score"] < self.check_exists_bm25)
-            & (df["bm25_ratio"] < self.check_exists_bm25_ratio)
-        ) | (
-            (df["bm25_score"] < self.check_exists_bm25)
-            & (sim_column < self.check_exists_min_similarity)
-        )
-        poor_matches = df[poor_match_mask]
-        logger.info(
-            f"Found {len(poor_matches)}/{len(df)} poor matches needing LLM verification"
-        )
+            # Build similarity mask using calibrated similarity if available
+            has_calibrated = "calibrated_similarity" in df.columns and df["calibrated_similarity"].notna().any()
+            if has_calibrated:
+                sim_column = df["calibrated_similarity"].fillna(df["cosine_similarity"])
+                logger.info("Using calibrated similarity for LLM verification threshold")
+            else:
+                sim_column = df["cosine_similarity"]
+                logger.info("Using raw cosine similarity (no calibration available)")
+
+            poor_match_mask = (
+                (df["bm25_score"] < self.check_exists_bm25)
+                & (df["bm25_ratio"] < self.check_exists_bm25_ratio)
+            ) | (
+                (df["bm25_score"] < self.check_exists_bm25)
+                & (sim_column < self.check_exists_min_similarity)
+            )
+            poor_matches = df[poor_match_mask]
+            logger.info(
+                f"Found {len(poor_matches)}/{len(df)} poor matches needing LLM verification"
+            )
 
         if len(poor_matches) > 0:
             logger.info(
@@ -1400,7 +1422,8 @@ class VerifyQuotes(CompletionDAGNode):
         ).apply(lambda c: getattr(c, "name", None) if c else None)
 
         # Stage 2: Fairness verification for themes (optional)
-        if self.check_fairness and self.verification_type == "theme":
+        # Skip if skip_llm_verification is set
+        if self.check_fairness and self.verification_type == "theme" and not self.skip_llm_verification:
             logger.info(
                 f"Running fairness verification on {len(quotes_with_context)} theme-quote usages"
             )
@@ -1532,9 +1555,12 @@ class VerifyQuotes(CompletionDAGNode):
             pbar_fairness.close()
             logger.info(f"Fairness verification complete for {len(df)} quotes")
         else:
-            logger.info(
-                f"Skipping fairness verification (check_fairness={self.check_fairness}, verification_type={self.verification_type})"
-            )
+            if self.skip_llm_verification and self.check_fairness:
+                logger.info("Skipping fairness verification (skip_llm_verification=True)")
+            else:
+                logger.info(
+                    f"Skipping fairness verification (check_fairness={self.check_fairness}, verification_type={self.verification_type})"
+                )
 
         self.sentence_matches = df.to_dict(orient="records")
 

@@ -48,9 +48,9 @@ config:
 
 default_config:
   models:
-    default: gpt-5.1-mini
-    best: gpt-5.1-mini
-    cheap: gpt-5.1-mini
+    default: gpt-5-mini
+    best: gpt-5-mini
+    cheap: gpt-5-mini
   embeddings: text-embedding-3-large
   seed: 1
 
@@ -78,12 +78,14 @@ nodes:
   - name: groupedcodes
     type: Cluster
     inputs: [codes_from_chunks]
-    items_field: codes      # extract Code objects from CodeList.codes
+    items_field: codes  # extract from ChatterResult containers
+    skip_below: 300
+    if_skipped_bypass_to: codes  # bypass consolidation of cluster
     method:
       name: hdbscan
       min_cluster_size: 2
       max_cluster_size: 50
-      
+
   - name: consolidated_codes
     type: Map
     inputs: [groupedcodes]
@@ -94,17 +96,16 @@ nodes:
     type: Reduce
     items_field: codes
     inputs: [consolidated_codes]
-  
+
   - name: checkquotes
     type: VerifyQuotes
     model: cheap
     inputs: [codes]
     check_fairness: false
-    
+
   - name: big_code_groups
     type: Cluster
     inputs: [codes]
-    items_field: codes
     method:
       name: hdbscan
       min_cluster_size: 50
@@ -116,12 +117,6 @@ nodes:
     inputs:
       - big_code_groups
 
-  - name: flat_themes
-    type: Reduce
-    items_field: themes
-    inputs:
-      - theme_groups
-    
   - name: themes
     type: Transform
     template: final_themes.sd

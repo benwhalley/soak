@@ -25,8 +25,19 @@ import pypandoc
 logger = logging.getLogger(__name__)
 
 
-# supported document extensions for text extraction
-DOCUMENT_EXTENSIONS = {".docx", ".rtf", ".txt", ".md", ".markdown", ".pdf"}
+# plain text extensions - read directly without pandoc
+TEXT_EXTENSIONS = {
+    ".txt", ".md", ".markdown",  # plain text / markdown
+    ".vtt", ".srt",              # subtitles (video transcripts)
+    ".log",                      # log files
+    ".rst",                      # reStructuredText
+}
+
+# binary document extensions - need pandoc or special handling
+BINARY_DOCUMENT_EXTENSIONS = {".docx", ".rtf", ".pdf"}
+
+# all supported document extensions for text extraction
+DOCUMENT_EXTENSIONS = TEXT_EXTENSIONS | BINARY_DOCUMENT_EXTENSIONS
 
 
 def normalise_whitespace(text: str) -> str:
@@ -43,21 +54,30 @@ def normalise_whitespace(text: str) -> str:
     return text.strip()
 
 
+def _read_text_file(path: Path) -> str:
+    """Read plain text file directly, trying common encodings."""
+    for encoding in ["utf-8", "utf-8-sig", "latin-1", "cp1252"]:
+        try:
+            return path.read_text(encoding=encoding)
+        except UnicodeDecodeError:
+            continue
+    # last resort: read with errors ignored
+    return path.read_text(encoding="utf-8", errors="ignore")
+
+
 def _convert_with_pandoc(path: Path) -> str:
     """Convert document to GFM using pandoc.
 
-    For .docx: preserves headings, lists, emphasis, links, tables, footnotes.
-    For .rtf: preserves structural elements where possible.
-    For .txt/.md/.markdown: normalises to markdown (treats plain text as markdown).
+    For .docx/.rtf: uses pandoc to preserve structure.
+    For text files (.txt, .md, .vtt, .srt, etc.): reads directly.
     """
     suffix = path.suffix.lower()
 
-    # pandoc doesn't have a "txt" format; treat plain text as markdown
-    if suffix in {".txt", ".md", ".markdown"}:
-        input_format = "markdown"
-    else:
-        input_format = None  # let pandoc auto-detect (works for docx, rtf)
+    # plain text files: read directly, skip pandoc overhead
+    if suffix in TEXT_EXTENSIONS:
+        return _read_text_file(path)
 
+    # .docx, .rtf: use pandoc for actual format conversion
     extra_args = ["--wrap=none", "--strip-comments"]
     pandoc_data_home = os.environ.get("PANDOC_DATA_HOME")
     if pandoc_data_home:
@@ -66,7 +86,7 @@ def _convert_with_pandoc(path: Path) -> str:
     return pypandoc.convert_file(
         str(path),
         to="gfm",
-        format=input_format,
+        format=None,  # let pandoc auto-detect
         extra_args=extra_args,
     )
 

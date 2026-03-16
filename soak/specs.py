@@ -5,9 +5,9 @@ from typing import Union
 
 import yaml
 
-from soak.models import DAGNode, QualitativeAnalysisPipeline
+from soak.models import DAGConfig, DAGNode, QualitativeAnalysisPipeline
 # Import all node types to rebuild their schemas with BatchList
-from soak.models.nodes import (Batch, Classifier, Filter, GroupBy, Map, Reduce,
+from soak.models.nodes import (Batch, Classifier, Cluster, Filter, GroupBy, Map, Reduce,
                                Scrub, Split, Transform, Ungroup, VerifyQuotes)
 # Ensure BatchList is imported before model_rebuild to resolve forward references
 from soak.models.nodes.batch import BatchList  # noqa: F401
@@ -16,9 +16,11 @@ logger = logging.getLogger(__name__)
 
 # Rebuild all node types to resolve "BatchList" forward reference in OutputUnion
 for node_class in [
+    DAGConfig,
     DAGNode,
     Batch,
     Classifier,
+    Cluster,
     Filter,
     GroupBy,
     Map,

@@ -23,6 +23,7 @@ dependencies = [
     "pydantic>=2.11.7",
     "python-box>=7.3.2",
     "python-decouple>=3.8",
+    "pypandoc>=1.14",
     "pypandoc-binary>=1.14",
     "scikit-learn>=1.7.1",
     "scipy>=1.14",

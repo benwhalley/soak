@@ -156,6 +156,22 @@ class Map(ItemsNode, CompletionDAGNode):
                                         getattr(progress_bar, "slots_per_item", 1)
                                     )
 
+                                # Call progress callback for real-time web UI updates
+                                if self.dag.config.progress_callback:
+                                    try:
+                                        # Count completed items (non-None results)
+                                        done = sum(1 for r in results if r is not None)
+                                        logger.debug(f"Map {self.name}: progress {done}/{len(results)}")
+                                        self.dag.config.progress_callback(
+                                            self.name,
+                                            done,
+                                            len(results),
+                                            self._total_cost,
+                                            self._fresh_cost,  # for cache savings display
+                                        )
+                                    except Exception as e:
+                                        logger.warning(f"Progress callback error: {e}")
+
                     tg.start_soon(run_and_store)
         finally:
             # Only close progress bar if we created it locally
@@ -178,17 +194,6 @@ class Map(ItemsNode, CompletionDAGNode):
                             result.prompt_tokens + result.completion_tokens,
                         )
 
-                    # call progress callback for web UI if available
-                    if self.dag.config.progress_callback:
-                        try:
-                            self.dag.config.progress_callback(
-                                self.name,
-                                len(self._llm_results),
-                                self._input_count,
-                                self._total_cost,
-                            )
-                        except Exception:
-                            pass  # don't let callback errors affect execution
 
         return results
 
@@ -291,3 +296,30 @@ class Map(ItemsNode, CompletionDAGNode):
                 else:
                     # LLM mode: export ChatterResult
                     export_chatter_result(result, folder, file_prefix)
+
+    async def skip(self) -> Optional[List[Any]]:
+        """When skipped (e.g., due to bypass), pass input through unchanged.
+
+        Returns:
+            The input items unchanged, flattening any BatchList structures.
+        """
+        from .batch import BatchList
+
+        if self.inputs:
+            input_name = self.inputs[0]
+            if input_name == "documents":
+                input_data = self.dag.config.load_documents()
+            else:
+                input_data = self.context[input_name]
+        else:
+            input_data = self.dag.config.load_documents()
+
+        if isinstance(input_data, BatchList):
+            self.output = input_data.flatten_all()
+        elif isinstance(input_data, list):
+            self.output = input_data
+        else:
+            self.output = [input_data] if input_data else []
+
+        logger.info(f"Map '{self.name}': skipped, passing through {len(self.output)} items")
+        return self.output

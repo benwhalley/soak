@@ -1,0 +1,58 @@
+name: test_cluster_bypass
+scrub: false
+
+nodes:
+  - name: chunks
+    type: Split
+    split_unit: sentences
+    chunk_size: 1
+
+  - name: initial_codes
+    type: Map
+    inputs:
+      - chunks
+
+  - name: grouped
+    type: Cluster
+    inputs:
+      - initial_codes
+    items_field: null
+    skip_below: 100
+    if_skipped_bypass_to: final_output
+
+  - name: consolidated
+    type: Map
+    inputs:
+      - grouped
+
+  - name: final_output
+    type: Reduce
+    inputs:
+      - consolidated
+
+---#chunks
+{{input}}
+
+---#initial_codes
+Summarize this text in one sentence:
+
+{{input}}
+
+[[summary]]
+
+---#grouped
+This template is not used when items_field is null
+
+---#consolidated
+Consolidate these items:
+
+{{input}}
+
+[[summary]]
+
+---#final_output
+Combine all items:
+
+{% for item in input %}
+- {{ item }}
+{% endfor %}

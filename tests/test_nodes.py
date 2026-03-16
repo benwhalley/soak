@@ -347,6 +347,34 @@ async def test_verify_quotes_node():
 
 
 @pytest.mark.anyio
+async def test_cluster_if_skipped_bypass_to():
+    """Test Cluster node bypasses intermediate nodes when skip_below triggers."""
+    pipeline = load_template_bundle(Path("tests/pipelines/test_cluster_bypass.soak"))
+    pipeline.config.document_paths = [str(TEST_DATA)]
+    pipeline.config.llm_credentials = LLMCredentials()
+
+    result, error = await pipeline.run()
+    assert error is None, f"Pipeline failed: {error}"
+
+    # get nodes
+    grouped = [n for n in pipeline.nodes if n.name == "grouped"][0]
+    consolidated = [n for n in pipeline.nodes if n.name == "consolidated"][0]
+    final_output = [n for n in pipeline.nodes if n.name == "final_output"][0]
+
+    # grouped should have triggered bypass (input < skip_below=100)
+    # consolidated should be in skip_nodes
+    assert "consolidated" in pipeline.config.skip_nodes, (
+        "consolidated node should be skipped when bypass is triggered"
+    )
+
+    # final_output should have received input and produced output
+    assert final_output.output is not None, "final_output should have output"
+
+    # grouped output should be the raw items (passthrough)
+    assert grouped.output is not None, "grouped should have passthrough output"
+
+
+@pytest.mark.anyio
 async def test_pipeline_serialization():
     """Test that pipelines can be serialized to JSON."""
     pipeline = load_template_bundle(Path("tests/pipelines/test_map.soak"))

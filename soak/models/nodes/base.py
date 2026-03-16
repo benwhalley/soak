@@ -226,6 +226,7 @@ class CompletionDAGNode(DAGNode):
 
     # cost tracking (private attributes, not serialized)
     _total_cost: float = PrivateAttr(default=0.0)
+    _fresh_cost: float = PrivateAttr(default=0.0)  # cost of non-cached calls only
     _prompt_tokens: int = PrivateAttr(default=0)
     _completion_tokens: int = PrivateAttr(default=0)
     _llm_results: List[ChatterResult] = PrivateAttr(default_factory=list)
@@ -234,6 +235,7 @@ class CompletionDAGNode(DAGNode):
     def _accumulate_costs(self, result: ChatterResult) -> None:
         """Extract and accumulate costs from a ChatterResult"""
         self._total_cost += result.total_cost
+        self._fresh_cost += result.fresh_cost  # only non-cached calls
         self._prompt_tokens += result.prompt_tokens
         self._completion_tokens += result.completion_tokens
 
