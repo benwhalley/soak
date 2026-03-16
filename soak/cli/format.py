@@ -6,11 +6,8 @@ from pathlib import Path
 
 import typer
 
-from ._common import (
-    generate_all_html_outputs,
-    load_pipeline_json,
-    resolve_template,
-)
+from ._common import (generate_all_html_outputs, load_pipeline_json,
+                      resolve_template)
 
 logger = logging.getLogger(__name__)
 

@@ -8,7 +8,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
-    from ..models import Code, QualitativeAnalysis, QualitativeAnalysisPipeline, Theme
+    from ..models import (Code, QualitativeAnalysis,
+                          QualitativeAnalysisPipeline, Theme)
 
 
 @dataclass

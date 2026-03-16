@@ -34,11 +34,8 @@ def render(
     Raises:
         RenderError: If rendering fails
     """
-    from ..cli._common import (
-        generate_html_output,
-        load_pipeline_json,
-        resolve_template,
-    )
+    from ..cli._common import (generate_html_output, load_pipeline_json,
+                               resolve_template)
 
     # normalize templates to list
     if isinstance(templates, str):
@@ -84,7 +81,6 @@ def load(path: Union[str, Path]) -> "RunResult":
         RenderError: If loading fails
     """
     from ..cli._common import load_pipeline_json
-
     from ._results import RunResult
 
     path = Path(path)

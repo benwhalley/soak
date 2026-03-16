@@ -93,11 +93,9 @@ def export_xlsx(
     Raises:
         ExportError: If export fails
     """
-    from ..exports.xlsx_export import (
-        generate_codes_xlsx,
-        generate_self_similarity_xlsx,
-        generate_themes_xlsx,
-    )
+    from ..exports.xlsx_export import (generate_codes_xlsx,
+                                       generate_self_similarity_xlsx,
+                                       generate_themes_xlsx)
 
     # load data if path
     if isinstance(analysis, (str, Path)):

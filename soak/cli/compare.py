@@ -17,13 +17,9 @@ import numpy as np
 import typer
 
 from ..helpers import print_comparison_stats
-from ._common import (
-    TEMPLATES_DIR,
-    check_and_prompt_credentials,
-    get_pdb_on_exception,
-    get_soak_version,
-    resolve_analysis_path,
-)
+from ._common import (TEMPLATES_DIR, check_and_prompt_credentials,
+                      get_pdb_on_exception, get_soak_version,
+                      resolve_analysis_path)
 
 # re-export for backwards compatibility
 _print_comparison_stats = print_comparison_stats
@@ -299,7 +295,8 @@ def compare(
     from ..api import compare_strings as api_compare_strings
     from ..comparators.similarity_comparator import clear_comparison_cache
     from ..helpers import format_exception_concise
-    from ..models import QualitativeAnalysis, QualitativeAnalysisPipeline, Theme
+    from ..models import (QualitativeAnalysis, QualitativeAnalysisPipeline,
+                          Theme)
 
     # clear cache if requested
     if clear_cache:

@@ -141,14 +141,9 @@ def calibrate(
     """
     import yaml
 
-    from ..calibration import (
-        DEFAULT_TARGETS,
-        compute_similarities,
-        fit_calibration_gam,
-        generate_paraphrases,
-        plot_calibration_curve,
-        save_calibration,
-    )
+    from ..calibration import (DEFAULT_TARGETS, compute_similarities,
+                               fit_calibration_gam, generate_paraphrases,
+                               plot_calibration_curve, save_calibration)
 
     cwd = cwd or Path.cwd()
 

@@ -45,25 +45,14 @@ You can set credentials explicitly:
 from ._calibrate import CalibrateError, CalibrationResult, calibrate
 from ._compare import CompareError, compare, compare_strings
 from ._coverage import CoverageError, coverage
-from ._credentials import (
-    Credentials,
-    CredentialsError,
-    clear_credentials,
-    credentials,
-    get_credentials,
-    set_credentials,
-)
+from ._credentials import (Credentials, CredentialsError, clear_credentials,
+                           credentials, get_credentials, set_credentials)
 from ._export import ExportError, export_pdf, export_xlsx
 from ._render import RenderError, load, render
 from ._results import CompareResult, CostSummary, CoverageResult, RunResult
 from ._run import RunError, run, run_async
-from ._show import (
-    ShowError,
-    get_pipeline,
-    get_template,
-    list_pipelines,
-    list_templates,
-)
+from ._show import (ShowError, get_pipeline, get_template, list_pipelines,
+                    list_templates)
 
 __all__ = [
     # run

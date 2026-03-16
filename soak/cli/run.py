@@ -9,14 +9,9 @@ from pathlib import Path
 
 import typer
 
-from ._common import (
-    PIPELINE_DIR,
-    check_and_prompt_credentials,
-    generate_all_html_outputs,
-    get_pdb_on_exception,
-    load_pipeline_json,
-    resolve_template,
-)
+from ._common import (PIPELINE_DIR, check_and_prompt_credentials,
+                      generate_all_html_outputs, get_pdb_on_exception,
+                      load_pipeline_json, resolve_template)
 
 logger = logging.getLogger(__name__)
 
@@ -125,7 +120,8 @@ def run(
     ),
 ):
     """Run a pipeline on input files."""
-    from ..api import CredentialsError, RunError, run as api_run
+    from ..api import CredentialsError, RunError
+    from ..api import run as api_run
     from ..helpers import format_exception_concise, resolve_pipeline
 
     # validate that input files are provided
@@ -145,12 +141,10 @@ def run(
     # handle document template mode (mail merge)
     temp_doc_dir = None
     if document_template:
-        from ..tabular import (
-            generate_documents,
-            parse_tabular_file,
-            validate_template,
-        )
         import tempfile
+
+        from ..tabular import (generate_documents, parse_tabular_file,
+                               validate_template)
 
         # read template
         if not document_template.exists():

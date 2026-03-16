@@ -62,16 +62,15 @@ def coverage(
     import pandas as pd
 
     from ..coverage import ThemeCoverageAnalyzer
-    from ..coverage.analyzer import (
-        compute_within_doc_variation,
-        generate_absolute_chunk_heatmap,
-        generate_chunk_heatmap,
-        generate_coverage_heatmap,
-        generate_group_heatmap,
-        generate_normalized_chunk_heatmap,
-        generate_theme_trajectories,
-    )
-    from ..document_utils import extract_text, unpack_zip_to_temp_paths_if_needed
+    from ..coverage.analyzer import (compute_within_doc_variation,
+                                     generate_absolute_chunk_heatmap,
+                                     generate_chunk_heatmap,
+                                     generate_coverage_heatmap,
+                                     generate_group_heatmap,
+                                     generate_normalized_chunk_heatmap,
+                                     generate_theme_trajectories)
+    from ..document_utils import (extract_text,
+                                  unpack_zip_to_temp_paths_if_needed)
     from ..models import QualitativeAnalysis, QualitativeAnalysisPipeline
     from ..models.base import TrackedItem
 
