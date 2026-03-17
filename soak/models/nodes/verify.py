@@ -480,6 +480,9 @@ async def verify_quotes_bm25_first(
         pbar_bm25 = None
 
     for i, quote_obj in enumerate(extracted_quotes):
+        # yield control to allow other DAG nodes to run concurrently
+        await anyio.sleep(0)
+
         if pbar_bm25:
             pbar_bm25.update(1)
         # Report progress to web UI callback every 50 quotes
@@ -656,32 +659,10 @@ async def verify_quotes_bm25_first(
             min_fuzzy_ratio,
         )
 
-        # Find source document
-        source_doc, source_doc_content = find_source_document(
+        # Find source document (only need name, not content)
+        source_doc, _ = find_source_document(
             global_start, doc_boundaries, doc_content_map
         )
-
-        # Extract context window around match (2000 chars centered on match)
-        # Find document start position to calculate relative position
-        doc_start = 0
-        for doc_name, start, end in doc_boundaries:
-            if doc_name == source_doc:
-                doc_start = start
-                break
-        # Position within the source document
-        local_start = global_start - doc_start
-        local_end = global_end - doc_start
-        # Create window centered on match
-        context_size = 2000
-        match_center = (local_start + local_end) // 2
-        ctx_start = max(0, match_center - context_size // 2)
-        ctx_end = min(len(source_doc_content), match_center + context_size // 2)
-        context_around_match = source_doc_content[ctx_start:ctx_end]
-        # Add ellipsis if truncated
-        if ctx_start > 0:
-            context_around_match = "..." + context_around_match
-        if ctx_end < len(source_doc_content):
-            context_around_match = context_around_match + "..."
 
         # Compute truncated texts for embedding (but don't embed yet)
         max_embed_chars = min(max(len(quote) * 2, 500), 4000)
@@ -693,15 +674,12 @@ async def verify_quotes_bm25_first(
                 "quote": quote,
                 "quote_hash": quote_obj.hash(),
                 "source_doc": source_doc,
-                "span_text": span_text,
-                "source_doc_content": source_doc_content,  # kept for LLM verification
-                "context_around_match": context_around_match,  # truncated for export
                 "bm25_score": float(bm25_score),
                 "bm25_ratio": float(ratio),
                 "global_start": int(global_start),
                 "global_end": int(global_end),
                 "match_ratio": float(match_ratio) if match_ratio is not None else None,
-                # texts for embedding (will be removed after embedding)
+                # internal fields for embedding (will be removed after embedding)
                 "_quote_truncated": quote_truncated,
                 "_span_truncated": span_truncated,
             }
@@ -1388,10 +1366,12 @@ class VerifyQuotes(CompletionDAGNode):
 
             async with anyio.create_task_group() as tg:
 
-                async def check_match(idx, quote_hash, quote, span_text):
+                async def check_match(idx, quote_hash, quote, source_doc):
                     try:
                         async with semaphore:
-                            result = await self.llm_as_judge(quote, span_text)
+                            # look up document content from doc_content_map
+                            source_doc_content = doc_content_map.get(source_doc, "")
+                            result = await self.llm_as_judge(quote, source_doc_content)
                             df.at[idx, "llm_explanation"] = result.get("explanation")
                             df.at[idx, "llm_is_contained"] = result.get("is_contained")
                             # Store ChatterResult for export and cache statistics
@@ -1421,7 +1401,7 @@ class VerifyQuotes(CompletionDAGNode):
                         idx,
                         row["quote_hash"],
                         row["quote"],
-                        row["source_doc_content"],
+                        row["source_doc"],
                     )
 
             pbar.close()
@@ -1504,16 +1484,15 @@ class VerifyQuotes(CompletionDAGNode):
                 async def check_fairness(idx, item, match_result):
                     try:
                         async with semaphore:
-                            # Use full source document for consistency with is_contained check
-                            source_doc_content = match_result.get(
-                                "source_doc_content", ""
-                            )
+                            # look up document content from doc_content_map
+                            source_doc = match_result.get("source_doc", "")
+                            source_doc_content = doc_content_map.get(source_doc, "")
 
                             # If no source document found, log warning and skip fairness check
                             if not source_doc_content:
                                 logger.warning(
                                     f"Cannot verify fairness for quote '{item['quote'].text[:60]}...' - "
-                                    f"source document not found. Skipping fairness check."
+                                    f"source document '{source_doc}' not found. Skipping fairness check."
                                 )
                                 return  # Skip this quote's fairness check
 
@@ -1706,16 +1685,10 @@ class VerifyQuotes(CompletionDAGNode):
         excel_path = folder / f"quote_verification{uid_suffix}.xlsx"
         df = pd.DataFrame(self.sentence_matches)
 
-        # Drop full document content (too large for Excel, kept internally for LLM verification)
-        if "source_doc_content" in df.columns:
-            df = df.drop(columns=["source_doc_content"])
-
         # Rename columns for clarity
         df = df.rename(
             columns={
                 "quote": "extracted_quote",
-                "span_text": "found_in_original",
-                "context_around_match": "source_context",
             }
         )
 
@@ -1770,8 +1743,6 @@ class VerifyQuotes(CompletionDAGNode):
             # Set column widths based on header names
             text_cols = [
                 "extracted_quote",
-                "found_in_original",
-                "source_context",
                 "llm_explanation",
                 "llm_fairness_explanation",
                 "theme_description",
