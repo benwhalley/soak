@@ -11,6 +11,11 @@ You are conducting a thematic analysis of transcript data.
 
 You are at the theme generation stage.
 
+### EPISTEMOLOGICAL STANCE
+
+{{epistemological_stance}}
+
+
 # TASK INSTRUCTIONS
 
 I will show you a set of Codes with their descriptions and relevant quotes.
@@ -67,6 +72,17 @@ Be selective linking to Codes--link only the most relevant.
 - Use fewer themes if there is too much overlap, or the codes are fairly homogenous.
 
 - Prefer larger themes with greater explanatory depth and power.
+
+
+{% if additional_theme_guidance %}
+### ANALYSIS-SPECIFIC GUIDANCE FOR THEME GENERATION
+
+{{additional_theme_guidance}}
+
+Always follow this specific guidance when generating themes.
+
+{% endif %}
+
 
 </system>
 

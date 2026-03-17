@@ -12,6 +12,11 @@ You are conducting a thematic analysis of transcript data.
 You are at the final theme generation stage.
 
 
+### EPISTEMOLOGICAL STANCE
+
+{{epistemological_stance}}
+
+
 # TASK INSTRUCTIONS
 
 Preliminary themes were generated from interview transcripts.
@@ -146,6 +151,20 @@ Themes do not need to account for every code equally. They need to be:
 - Internally coherent
 - Conceptually distinct
 - Analytically useful
+
+
+
+
+{% if additional_theme_guidance %}
+### ANALYSIS-SPECIFIC GUIDANCE FOR THEME GENERATION
+
+{{additional_theme_guidance}}
+
+Always follow this specific guidance when generating themes.
+
+{% endif %}
+
+
 
 </system>
 

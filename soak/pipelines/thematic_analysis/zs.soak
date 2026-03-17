@@ -2,27 +2,54 @@ name: Thematic analysis
 version: 0.1.0
 description: A qualitative thematic analysis of transcript data, based on reflexive thematic analysis. Codes are generated independently for each document, and then clustered and combined before being used to generate themes.
 default_context:
-  persona:
-    type: secondary
-    default: Experienced qualitative researcher
-    description: Analyst persona
-    help_text: The perspective and expertise from which the analysis is conducted.
   research_question:
     type: primary
     default: To understand the experience of participants
     description: Research question
     help_text: The main question guiding the thematic analysis
+  persona:
+    type: secondary
+    default: Experienced qualitative researcher, expert in reflexive thematic analysis.
+    description: Analyst persona
+    help_text: The perspective and expertise from which the analysis is conducted.
+  
+  epistemological_stance:
+    type: secondary
+    default: This analysis takes a pragmatic, reflexive approach to thematic analysis. We treat participants’ accounts as meaningful representations of their experiences, while recognising that these accounts are shaped by context, language, and the research process itself. Themes are therefore not treated as purely emergent from the data, but as constructed through an interaction between the data, the research question, and analytic judgement. The analysis prioritises usefulness and explanatory power in relation to the research question, rather than claiming to uncover objective or universal truths. We focus on patterns of meaning and shared processes across participants, while remaining attentive to nuance, contradiction, and variation in how experiences are expressed and interpreted.
+    description: Epistemological stance
+    help_text: This text is presented during all key steps (coding, theme generation, report writing). You can give extra instructions on how to write themes, or what to look out for when generating them.
+    
+  specific_research_question:
+    type: secondary
+    default: ""
+    description: Specific research focus
+    help_text: (Optional) specific aspect or sub-question to focus on. This text is not included in the prompt that generates codes, so can be varied post-coding.
+    input_type: textarea
+  specific_coding_guidance:
+    type: secondary
+    default: null
+    description: Specific coding guidance 
+    help_text: You can give extra instructions on what types of codes to extract, or how to interpret the source texts during the initial coding step.
+    input_type: textarea
+  additional_theme_guidance:
+    type: secondary
+    default: null
+    description: Additional theme guidance.
+    help_text: This text is presented during theme generation prompts. You can give extra instructions on how to write themes, or what to look out for when generating them.
+    input_type: textarea
+  
+    input_type: textarea
+  input_data_format:
+    type: config
+    default: The data consist of transcripts from interviews/focus groups, and/or answers to open-ended questions in surveys.
+    description: Describe your specific input data.
+    help_text: Describing the input data helps soak understand how to interpret it.
+    input_type: textarea
   theme_size_guidance:
     type: config
     default: "Produce 7-10 themes. Strongly prefer fewer/larger themes with greater explanatory depth and power. Combine overlapping themes, creating a richer, more nuanced analysis."
     description: Guidance on the number of themes to produce.
     help_text: ""
-    input_type: textarea
-  specific_research_question:
-    type: primary
-    default: ""
-    description: Specific research focus
-    help_text: (Optional) specific aspect or sub-question to focus on. This text is not included in the prompt that generates codes, so can be varied post-coding.
     input_type: textarea
   max_themes:
     type: config

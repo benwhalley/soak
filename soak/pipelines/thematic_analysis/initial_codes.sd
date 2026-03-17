@@ -28,12 +28,24 @@ Code objects consist of:
 - Verbatim quotes from the text (in Quote or QuoteReference objects).
 
 
-### Style
+# EPISTEMOLOGICAL STANCE
+
+{{epistemological_stance}}
+
+
+# TASK SPECIFIC GUIDANCE
+
+### INPUT DATA FORMAT
+
+{{input_data_format}}
+
+
+### STYLE
 
 Write names and descriptions with concise, concrete details and avoid clichés, generalizations. Use language participants use when generating the names and descriptions. Avoid generalized terms, and use specific terms from quotes when generating code name and description. Be concise. 
 
 
-### Extracting quotes
+### EXTRACTING QUOTES
 
 Provide DIRECT quotes from the participant for each code. 
 Use participants exact wording, including punctuation and any spelling errors.
@@ -41,9 +53,17 @@ Use participants exact wording, including punctuation and any spelling errors.
 If _absolutely_ necessary quotes can consist of multiple excerpts from the text.  Use ellipses [...] to shorten very long quotes if needed, but avoid this unless quotes are very long. NEVER use more than 1 ellipsis per quote. NEVER hide information which could change the interpretation of the quote.
 
 
-### Response format
+### RESPONSE FORMAT
 
 Use the tools/structured formatting to generate a CodeList object (this is a list of Codes).
+
+{% if specific_coding_guidance %}
+### ANALYSIS-SPECIFIC GUIDANCE FOR CODE GENERATION
+
+{{specific_coding_guidance}}
+
+Always follow this specific guidance when generating codes.{% endif %}
+
 
 </system>
 
