@@ -751,17 +751,19 @@ class DAG(BaseModel):
         except Exception as e:
             import traceback
 
-            err = f"DAG execution failed: {str(e)}\n{traceback.format_exc()}"
+            # unwrap ExceptionGroups from async TaskGroup to get the actual exception
+            actual_exception = e
+            while isinstance(actual_exception, BaseExceptionGroup) and actual_exception.exceptions:
+                actual_exception = actual_exception.exceptions[0]
+
+            error_str = str(actual_exception)
+            err = f"DAG execution failed: {error_str}\n{traceback.format_exc()}"
             logger.error(err)
 
             if self.config.pdb_on_exception:
-                # unwrap ExceptionGroups from async TaskGroup to get the actual exception
-                exc = e
-                while isinstance(exc, BaseExceptionGroup) and exc.exceptions:
-                    exc = exc.exceptions[0]
-                pdb.post_mortem(exc.__traceback__)
+                pdb.post_mortem(actual_exception.__traceback__)
 
-            return self, str(e)
+            return self, error_str
 
     def _prepare_incremental_export(self) -> None:
         """Prepare for incremental node export by creating folder structure and metadata.
