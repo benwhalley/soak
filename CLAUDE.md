@@ -20,6 +20,10 @@ uv pip install -e .
 ```
 
 
+## Files and folders
+
+Only look in the folders allowed for this project.  Avoid asking to search whole of ~/dev/
+
 
 ## Coding style
 
