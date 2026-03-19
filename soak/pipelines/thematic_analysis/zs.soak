@@ -37,8 +37,6 @@ default_context:
     description: Additional theme guidance.
     help_text: This text is presented during theme generation prompts. You can give extra instructions on how to write themes, or what to look out for when generating them.
     input_type: textarea
-  
-    input_type: textarea
   input_data_format:
     type: config
     default: The data consist of transcripts from interviews/focus groups, and/or answers to open-ended questions in surveys.
