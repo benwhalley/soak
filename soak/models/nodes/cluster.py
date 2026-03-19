@@ -427,6 +427,11 @@ class Cluster(DAGNode):
 
         # get embeddings with progress bar
         logger.info(f"Computing embeddings for {len(unique_texts)} texts...")
+
+        # Report to web UI that we're starting (marks node as "running")
+        if self.dag.config.progress_callback:
+            self.dag.config.progress_callback(self.name, 0, len(unique_texts), 0.0)
+
         if self.dag.config.show_progress:
             if self.dag.progress_manager:
                 pbar = self.dag.progress_manager.create_progress_bar(
@@ -460,6 +465,10 @@ class Cluster(DAGNode):
             )
         unique_embeddings = np.array(embeddings_list)
         logger.info("Embeddings computed.")
+
+        # Report embedding completion to web UI
+        if self.dag.config.progress_callback:
+            self.dag.config.progress_callback(self.name, len(unique_texts), len(unique_texts), 0.0)
 
         # map back to full set
         logger.debug(
