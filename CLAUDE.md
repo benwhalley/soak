@@ -65,6 +65,11 @@ logger.info("Tokenized 150 chunks")  # Too detailed, use logger.debug
 
 
 
+## Linting
+
+use `uv run black .` and `uv run isort .`
+
+
 
 ## Commands
 
