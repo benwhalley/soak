@@ -12,6 +12,23 @@ default_context:
     default: Experienced qualitative researcher, expert in reflexive thematic analysis.
     description: Analyst persona
     help_text: The perspective and expertise from which the analysis is conducted.
+  report_audience:
+    type: secondary
+    default: other researchers
+    description: Report audience
+    help_text: Who will be reading the report. This is the intended audience, not the researcher. 
+    
+  additional_instructions_main_report:
+    type: secondary
+    default: null
+    description: Additional instructions for the main report
+    help_text: This text is presented when writing the final report. You can direct the writing for a particular audience or purpose.
+  
+  additional_instructions_meta_report:
+    type: secondary
+    default: null
+    description: Additional instructions for the summary/overview report
+    help_text: This text is presented when writing the summary/overview report. You can direct the writing for a particular audience or purpose.  
   
   epistemological_stance:
     type: secondary
