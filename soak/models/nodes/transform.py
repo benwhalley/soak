@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 from soak.error_handlers import managed_llm_call
 from soak.models.base import (extract_prompt, get_action_lookup,
-                              safe_json_dump, semaphore)
+                              safe_json_dump, get_semaphore)
 from soak.models.dag import render_template_preserve_undefined
 from soak.models.utils import post_process_chatter_result
 
@@ -118,8 +118,12 @@ class Transform(ItemsNode, CompletionDAGNode):
         # Get LLM kwargs using helper method
         extra_kwargs = self.get_llm_kwargs()
 
+        # Signal progress: starting LLM call
+        if self.dag.config.progress_callback:
+            self.dag.config.progress_callback(self.name, 0, 1, 0.0)
+
         # Call chatter with semaphore to limit concurrency
-        async with semaphore:
+        async with get_semaphore():
             try:
                 logger.debug(f"Calling LLM with prompt: {rt}")
                 logger.debug(f"Context: {merged_context}")
@@ -139,6 +143,11 @@ class Transform(ItemsNode, CompletionDAGNode):
                 logger.error(f"Unexpected error in node '{self.name}': {e}")
                 # default to skip + continue for unknown errors
                 result = None
+
+        # Signal progress: LLM call complete
+        if self.dag.config.progress_callback:
+            cost = result.total_cost if result else 0.0
+            self.dag.config.progress_callback(self.name, 1, 1, cost)
 
         # accumulate costs and track for cache statistics
         if result is not None:

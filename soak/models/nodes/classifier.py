@@ -12,7 +12,7 @@ from struckdown import LLM, LLMError, chatter_async
 from struckdown.parsing import parse_syntax
 
 from soak.error_handlers import managed_llm_call
-from soak.models.base import TrackedItem, get_action_lookup, semaphore
+from soak.models.base import TrackedItem, get_action_lookup, get_semaphore
 from soak.models.utils import extract_output_dict
 
 from .base import CompletionDAGNode, ItemsNode
@@ -110,7 +110,7 @@ class Classifier(ItemsNode, CompletionDAGNode):
                             current_model=model_name,
                             progress_bar=pbar,
                         ):
-                            async with semaphore:
+                            async with get_semaphore():
                                 # Create model instance for this specific model
                                 model = LLM(model_name=current_model)
 

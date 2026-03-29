@@ -96,6 +96,11 @@ class DAGConfig(BaseModel):
         default=None, exclude=True
     )  # callback(node) - called when node completes (success or failure)
 
+    # rate limit callback (called on each rate limit retry)
+    rate_limit_callback: Optional[Callable[[str, str], None]] = Field(
+        default=None, exclude=True
+    )  # callback(node_name, model_name) - fired on 429 retries
+
     # report configuration - supports both formats:
     # - List: ["narrative.slot1", "narrative.slot2"]
     # - Dict: {"narrative.slot1": {"label": "...", "description": "..."}}

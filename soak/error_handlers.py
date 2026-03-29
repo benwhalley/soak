@@ -16,9 +16,10 @@ from litellm.exceptions import (APIConnectionError, APIResponseValidationError,
                                 ContentPolicyViolationError,
                                 ContextWindowExceededError,
                                 InternalServerError, NotFoundError,
-                                PermissionDeniedError, Timeout,
-                                UnsupportedParamsError)
+                                PermissionDeniedError, RateLimitError,
+                                Timeout, UnsupportedParamsError)
 from struckdown import LLMError
+from struckdown.errors import RateLimitError as SDRateLimitError
 from tenacity import (before_sleep_log, retry, retry_if_exception,
                       stop_after_attempt, wait_exponential)
 
@@ -28,6 +29,7 @@ logger = logging.getLogger(__name__)
 RETRYABLE_EXCEPTIONS = (
     APIConnectionError,
     InternalServerError,
+    RateLimitError,
     Timeout,
 )
 
@@ -36,9 +38,21 @@ def _is_retryable_exception(exc: Exception) -> bool:
     """Check if exception should trigger a retry (handles wrapped LLMError)."""
     if isinstance(exc, RETRYABLE_EXCEPTIONS):
         return True
+    if isinstance(exc, SDRateLimitError):
+        return True
     if isinstance(exc, LLMError):
         original = getattr(exc, "original_error", None)
         return isinstance(original, RETRYABLE_EXCEPTIONS)
+    return False
+
+
+def _is_rate_limit_error(exc: Exception) -> bool:
+    """Check if exception is a rate limit error (direct or wrapped)."""
+    if isinstance(exc, (RateLimitError, SDRateLimitError)):
+        return True
+    if isinstance(exc, LLMError):
+        original = getattr(exc, "original_error", None)
+        return isinstance(original, RateLimitError)
     return False
 
 
@@ -366,10 +380,11 @@ async def managed_llm_call(
     """Centralized wrapper for LLM calls with error handling, retry, and connection tracking.
 
     This function handles the standard pattern for all LLM calls:
-    - Retry with exponential backoff on transient errors (connection, timeout, 5xx)
+    - Retry with exponential backoff on transient errors (connection, timeout, 5xx, 429)
     - Reset connection error counter on success
     - Handle LLMError with appropriate behavior (skip/fail)
     - Let other exceptions propagate
+    - Fire rate_limit_callback on rate limit retries (if configured on DAGConfig)
 
     Retry behaviour: N attempts, exponential backoff (max 60s)
 
@@ -388,11 +403,21 @@ async def managed_llm_call(
         Exception: If error should fail the pipeline
     """
 
+    def _before_sleep_with_rate_limit_tracking(retry_state):
+        """Log retry and fire rate_limit_callback if the error is a rate limit."""
+        before_sleep_log(logger, logging.WARNING)(retry_state)
+        exc = retry_state.outcome.exception()
+        if _is_rate_limit_error(exc):
+            callback = getattr(config, "rate_limit_callback", None)
+            if callback:
+                model_name = getattr(exc, "model_name", "unknown")
+                callback(node_name, model_name)
+
     @retry(
         retry=retry_if_exception(_is_retryable_exception),
         stop=stop_after_attempt(3),
         wait=wait_exponential(multiplier=2, min=5, max=60),
-        before_sleep=before_sleep_log(logger, logging.WARNING),
+        before_sleep=_before_sleep_with_rate_limit_tracking,
         reraise=True,
     )
     async def _call_with_retry():

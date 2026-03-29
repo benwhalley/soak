@@ -32,7 +32,21 @@ memory = Memory(Path(".embeddings"), verbose=0)
 
 # Concurrency settings
 MAX_CONCURRENCY = env_config("SOAK_MAX_CONCURRENCY", default=20, cast=int)
-semaphore = anyio.Semaphore(MAX_CONCURRENCY)
+_semaphore = None
+
+
+def get_semaphore() -> anyio.Semaphore:
+    """Get the shared concurrency semaphore (lazy initialisation)."""
+    global _semaphore
+    if _semaphore is None:
+        _semaphore = anyio.Semaphore(MAX_CONCURRENCY)
+    return _semaphore
+
+
+def set_max_concurrency(n: int) -> None:
+    """Set the maximum concurrency for LLM calls. Replaces the semaphore."""
+    global _semaphore
+    _semaphore = anyio.Semaphore(n)
 
 
 # Exception classes for backward compatibility

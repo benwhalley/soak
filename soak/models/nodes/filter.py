@@ -13,7 +13,7 @@ from simpleeval import (AttributeDoesNotExist, EvalWithCompoundTypes,
 
 from soak.error_handlers import managed_llm_call
 from soak.models.base import (TrackedItem, extract_content, safe_json_dump,
-                              semaphore)
+                              get_semaphore)
 
 from .base import (CompletionDAGNode, ItemsNode, default_map_task,
                    render_strict_template)
@@ -213,7 +213,7 @@ class Filter(ItemsNode, CompletionDAGNode):
                 for idx, item in enumerate(boxed_items):
 
                     async def run_and_store(index=idx, item=item, progress_bar=pbar):
-                        async with semaphore:
+                        async with get_semaphore():
                             try:
                                 extra_kwargs = self.get_llm_kwargs()
                                 llm_results[index] = await managed_llm_call(

@@ -13,7 +13,7 @@ from struckdown.parsing import parse_syntax
 
 from soak.error_handlers import managed_llm_call
 from soak.models.base import (TrackedItem, extract_prompt, safe_json_dump,
-                              semaphore)
+                              get_semaphore)
 from soak.models.utils import post_process_chatter_result
 
 from .base import (CompletionDAGNode, ItemsNode, default_map_task,
@@ -116,7 +116,7 @@ class Map(ItemsNode, CompletionDAGNode):
                 for idx, item in enumerate(boxed_items):
 
                     async def run_and_store(index=idx, item=item, progress_bar=pbar):
-                        async with semaphore:
+                        async with get_semaphore():
                             try:
                                 if self.mode == "template":
                                     # Template-only mode: just render Jinja2, no LLM call

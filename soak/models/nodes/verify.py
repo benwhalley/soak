@@ -30,7 +30,7 @@ from soak.error_handlers import (ErrorBehavior, get_error_behavior,
 from soak.models.alignment import trim_span_to_quote
 from soak.models.base import (TrackedItem, get_action_lookup,
                               get_embedding_async, memory, safe_json_dump,
-                              semaphore)
+                              get_semaphore)
 from soak.models.text_utils import (ELLIPSIS_RE, create_document_boundaries,
                                     extract_context_window,
                                     find_source_document, is_match_truncated,
@@ -1368,7 +1368,7 @@ class VerifyQuotes(CompletionDAGNode):
 
                 async def check_match(idx, quote_hash, quote, source_doc):
                     try:
-                        async with semaphore:
+                        async with get_semaphore():
                             # look up document content from doc_content_map
                             source_doc_content = doc_content_map.get(source_doc, "")
                             result = await self.llm_as_judge(quote, source_doc_content)
@@ -1483,7 +1483,7 @@ class VerifyQuotes(CompletionDAGNode):
 
                 async def check_fairness(idx, item, match_result):
                     try:
-                        async with semaphore:
+                        async with get_semaphore():
                             # look up document content from doc_content_map
                             source_doc = match_result.get("source_doc", "")
                             source_doc_content = doc_content_map.get(source_doc, "")
