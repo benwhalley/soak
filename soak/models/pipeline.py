@@ -108,6 +108,13 @@ class QualitativeAnalysisPipeline(DAG):
 
         env.filters["safe_tojson"] = safe_tojson
 
+        def truncatewords(value, n=30):
+            """Truncate text to n words."""
+            words = str(value).split()
+            return " ".join(words[:n]) + ("..." if len(words) > n else "")
+
+        env.filters["truncatewords"] = truncatewords
+
         # Add custom function to render individual nodes
         def render_node(node):
             """Render a node using its type-specific template."""
@@ -291,7 +298,7 @@ class QualitativeAnalysisPipeline(DAG):
         def safe_get_output(name, key):
             """Extract output from node, handling both live and serialized formats.
 
-            For live ChatterResult: uses .outputs property
+            For live StruckdownResult: uses .outputs property
             For deserialized dict: navigates results[key]['output']
             For Reduce nodes: direct list of items (codes, themes)
             """
@@ -302,12 +309,12 @@ class QualitativeAnalysisPipeline(DAG):
                 if not node or not node.output:
                     return None
 
-                # Handle list output (ChatterResult or deserialized dict or direct items)
+                # Handle list output (StruckdownResult or deserialized dict or direct items)
                 if isinstance(node.output, list) and len(node.output) > 0:
                     first_item = node.output[0]
 
                     # Check if this is a direct list of Code/Theme items (from Reduce nodes)
-                    # rather than a ChatterResult wrapper
+                    # rather than a StruckdownResult wrapper
                     if isinstance(first_item, Code):
                         return node.output
                     if isinstance(first_item, Theme):
@@ -321,19 +328,19 @@ class QualitativeAnalysisPipeline(DAG):
                             # This is a list of Theme dicts from Reduce node
                             return node.output
 
-                    # Otherwise treat as ChatterResult or dict wrapper
-                    chatter = first_item
+                    # Otherwise treat as StruckdownResult or dict wrapper
+                    complete = first_item
                     segment_output = None
 
-                    # Live ChatterResult: use .outputs property
-                    if hasattr(chatter, "outputs"):
-                        outputs = chatter.outputs
+                    # Live StruckdownResult: use .outputs property
+                    if hasattr(complete, "outputs"):
+                        outputs = complete.outputs
                         if key in outputs:
                             segment_output = outputs[key]
 
                     # Deserialized dict: navigate results[key]['output']
-                    elif isinstance(chatter, dict) and "results" in chatter:
-                        results = chatter.get("results", {})
+                    elif isinstance(complete, dict) and "results" in complete:
+                        results = complete.get("results", {})
                         if key in results:
                             segment_output = results[key].get("output")
 

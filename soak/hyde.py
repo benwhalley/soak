@@ -36,7 +36,7 @@ async def _generate_quotes_for_theme(
         List of n_quotes synthetic participant quotes
     """
     from jinja2 import StrictUndefined, Template
-    from struckdown import LLM, chatter_async
+    from struckdown import LLM, complete_async
 
     prompt_template = HYDE_TEMPLATE_PATH.read_text()
     template = Template(prompt_template, undefined=StrictUndefined)
@@ -45,7 +45,7 @@ async def _generate_quotes_for_theme(
     llm = LLM(model_name=model_name)
 
     try:
-        result = await chatter_async(
+        result = await complete_async(
             multipart_prompt=prompt,
             model=llm,
             credentials=credentials,
@@ -255,7 +255,7 @@ async def _paraphrase_quote(
         List of n_paraphrases alternative phrasings
     """
     from jinja2 import StrictUndefined, Template
-    from struckdown import LLM, chatter_async
+    from struckdown import LLM, complete_async
 
     prompt_template = PARAPHRASE_TEMPLATE_PATH.read_text()
     template = Template(prompt_template, undefined=StrictUndefined)
@@ -264,7 +264,7 @@ async def _paraphrase_quote(
     llm = LLM(model_name=model_name)
 
     try:
-        result = await chatter_async(
+        result = await complete_async(
             multipart_prompt=prompt,
             model=llm,
             credentials=credentials,

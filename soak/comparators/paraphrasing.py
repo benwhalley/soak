@@ -34,7 +34,7 @@ async def _generate_paraphrases_for_theme(
         List of n_paraphrases alternative phrasings
     """
     from jinja2 import StrictUndefined, Template
-    from struckdown import LLM, chatter_async
+    from struckdown import LLM, complete_async
 
     # load prompt template from .sd file
     prompt_path = Path(__file__).parent.parent / "templates" / "paraphrase_theme.sd"
@@ -47,7 +47,7 @@ async def _generate_paraphrases_for_theme(
     llm = LLM(model_name=model_name)
 
     try:
-        result = await chatter_async(
+        result = await complete_async(
             multipart_prompt=prompt,
             model=llm,
             credentials=credentials,
@@ -147,7 +147,7 @@ async def generate_short_labels(
     Returns:
         List of short labels (3-4 words each), same length as theme_texts
     """
-    from struckdown import LLM, LLMCredentials, chatter_async
+    from struckdown import LLM, LLMCredentials, complete_async
 
     if model_name is None:
         model_name = "gpt-4.1-mini"
@@ -182,7 +182,7 @@ Generate a 3-4 word short label for this theme.
     for i, theme in enumerate(pbar):
         try:
             prompt = single_theme_prompt.format(theme=theme)
-            result = await chatter_async(
+            result = await complete_async(
                 multipart_prompt=prompt,
                 model=llm,
                 credentials=credentials,

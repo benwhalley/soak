@@ -81,10 +81,10 @@ class TemplateAnalyzer:
         except TemplateValidationError:
             return False, []
 
-    def validate_chatter_template_syntax(
+    def validate_complete_template_syntax(
         self, template_string: str
     ) -> Tuple[bool, str]:
-        """validate that chatter template syntax is correct.
+        """validate that complete template syntax is correct.
 
         Args:
             template_string: The template content to validate
@@ -135,8 +135,8 @@ class PipelineTemplateValidator:
             with open(full_path, "r") as f:
                 template_content = f.read()
 
-            # first validate chatter template syntax
-            syntax_valid, syntax_error = self.analyzer.validate_chatter_template_syntax(
+            # first validate complete template syntax
+            syntax_valid, syntax_error = self.analyzer.validate_complete_template_syntax(
                 template_content
             )
             if not syntax_valid:

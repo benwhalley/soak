@@ -6,14 +6,15 @@ from pathlib import Path
 from typing import Any, Dict, List, Literal, Union
 
 from pydantic import Field
-from struckdown import LLMError, chatter_async
+from struckdown import LLMError, complete_async
 from tqdm import tqdm
 
 from soak.error_handlers import managed_llm_call
 from soak.models.base import (extract_prompt, get_action_lookup,
-                              safe_json_dump, get_semaphore)
+                              get_max_concurrency, get_semaphore,
+                              safe_json_dump)
 from soak.models.dag import render_template_preserve_undefined
-from soak.models.utils import post_process_chatter_result
+from soak.models.utils import post_process_complete_result
 
 from .base import CompletionDAGNode, ItemsNode
 
@@ -92,7 +93,7 @@ class Transform(ItemsNode, CompletionDAGNode):
             progress_bar: Optional progress bar to update after processing
 
         Returns:
-            List with single ChatterResult
+            List with single StruckdownResult
         """
 
         # assert len(items) == 1, (
@@ -100,13 +101,8 @@ class Transform(ItemsNode, CompletionDAGNode):
         #     f"got {len(items)}. Use Batch with batch_size=1 or GroupBy before Transform."
         # )
 
-        # Get items with proper context
-
-        input_context = {node: self.dag.nodes_dict[node].output for node in self.inputs}
-        merged_context = {**self.context, **input_context}
-
-        # Add node/DAG reference for quote resolution via DAG traversal
-        # This allows collect_input_codes to find codes in ancestor nodes
+        # Build context: self.context already unwraps/proxies node outputs
+        merged_context = dict(self.context)
         merged_context["_node"] = self
         merged_context["_dag"] = self.dag
 
@@ -122,7 +118,12 @@ class Transform(ItemsNode, CompletionDAGNode):
         if self.dag.config.progress_callback:
             self.dag.config.progress_callback(self.name, 0, 1, 0.0)
 
-        # Call chatter with semaphore to limit concurrency
+        logger.info(
+            f"Transform '{self.name}': processing 1 item "
+            f"with concurrency={get_max_concurrency()}"
+        )
+
+        # Call complete with semaphore to limit concurrency
         async with get_semaphore():
             try:
                 logger.debug(f"Calling LLM with prompt: {rt}")
@@ -130,7 +131,7 @@ class Transform(ItemsNode, CompletionDAGNode):
                 result = await managed_llm_call(
                     node_name=self.name,
                     config=self.dag.config,
-                    llm_func=chatter_async,
+                    llm_func=complete_async,
                     item_index=None,
                     multipart_prompt=rt,
                     context=merged_context,
@@ -155,7 +156,7 @@ class Transform(ItemsNode, CompletionDAGNode):
             self._llm_results.append(result)
 
             # Post-process outputs to populate resolved_quotes/resolved_code_refs
-            post_process_chatter_result(result, merged_context)
+            post_process_complete_result(result, merged_context)
 
             # update progress bar with per-node cost if using CostProgressBar
             from soak.models.progress import CostProgressBar
@@ -204,7 +205,7 @@ class Transform(ItemsNode, CompletionDAGNode):
         return raw_response
 
     def result(self) -> Dict[str, Any]:
-        """Returns dict with metadata, prompt, response object, raw ChatterResult, and slot dataframes."""
+        """Returns dict with metadata, prompt, response object, raw StruckdownResult, and slot dataframes."""
         import pandas as pd
 
         from soak.models.base import Code, CodeList, Theme, Themes
@@ -212,28 +213,28 @@ class Transform(ItemsNode, CompletionDAGNode):
         # Get base metadata from parent
         result = super().result()
 
-        # Handle list output (Transform wraps ChatterResult in a list)
-        chatter = (
+        # Handle list output (Transform wraps StruckdownResult in a list)
+        complete = (
             self.output[0]
             if isinstance(self.output, list) and len(self.output) > 0
             else self.output
         )
 
         # Add Transform-specific data
-        result["prompt"] = extract_prompt(chatter)
+        result["prompt"] = extract_prompt(complete)
 
         # Get raw response and normalize lists of Code/Theme to wrapper objects
         # This handles the [[code*:codes]] syntax which returns plain lists
-        raw_response = chatter.response if hasattr(chatter, "response") else None
+        raw_response = complete.response if hasattr(complete, "response") else None
         response_obj = self._normalize_response_obj(raw_response)
         result["response_obj"] = response_obj
         result["response_text"] = str(raw_response) if raw_response else None
-        result["chatter_result"] = chatter
+        result["complete_result"] = complete
 
         # Extract slot dataframes for HTML display
         result["slot_dataframes"] = {}
-        if hasattr(chatter, "results") and chatter.results:
-            for slot_name, segment_result in chatter.results.items():
+        if hasattr(complete, "results") and complete.results:
+            for slot_name, segment_result in complete.results.items():
                 if hasattr(segment_result, "output"):
                     output = segment_result.output
 
@@ -446,7 +447,7 @@ class Transform(ItemsNode, CompletionDAGNode):
                 batch_folder = folder / f"batch_{batch_idx}"
                 batch_folder.mkdir(parents=True, exist_ok=True)
 
-                # Each batch contains a single ChatterResult (may be wrapped in list)
+                # Each batch contains a single StruckdownResult (may be wrapped in list)
                 result = (
                     batch[0] if isinstance(batch, list) and len(batch) > 0 else batch
                 )
@@ -456,7 +457,7 @@ class Transform(ItemsNode, CompletionDAGNode):
                 (batch_folder / "response.json").write_text(safe_json_dump(result))
 
         elif isinstance(self.output, list):
-            # Unbatched output: plain list with single ChatterResult
+            # Unbatched output: plain list with single StruckdownResult
             if len(self.output) > 0:
                 result = self.output[0]
                 export_slots_as_text_files(result, folder)
@@ -465,6 +466,6 @@ class Transform(ItemsNode, CompletionDAGNode):
                 logger.warning(f"Transform node '{self.name}' has empty output list")
 
         else:
-            # Single ChatterResult (edge case)
+            # Single StruckdownResult (edge case)
             export_slots_as_text_files(self.output, folder)
             (folder / "response.json").write_text(safe_json_dump(self.output))

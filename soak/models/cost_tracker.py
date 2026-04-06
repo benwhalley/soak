@@ -4,7 +4,7 @@ import threading
 from dataclasses import dataclass
 from typing import Optional
 
-from struckdown import ChatterResult
+from struckdown import StruckdownResult
 
 
 @dataclass
@@ -41,8 +41,8 @@ class GlobalCostTracker:
         self._cached_count: int = 0
         self._callbacks: list = []
 
-    def add_result(self, result: ChatterResult) -> None:
-        """Add a ChatterResult to the running totals."""
+    def add_result(self, result: StruckdownResult) -> None:
+        """Add a StruckdownResult to the running totals."""
         with self._lock:
             self._total_cost += result.total_cost
             self._fresh_cost += result.fresh_cost

@@ -5,9 +5,11 @@ from unittest.mock import MagicMock
 
 import anyio
 import pytest
-from litellm.exceptions import RateLimitError as LitellmRateLimitError
 from struckdown import LLMError
-from struckdown.errors import RateLimitError as SDRateLimitError
+from struckdown.errors import (
+    ConnectionError as SDConnectionError,
+    RateLimitError as SDRateLimitError,
+)
 
 from soak.error_handlers import (
     _is_rate_limit_error,
@@ -21,19 +23,18 @@ from soak.models.dag import DAGConfig
 class TestRetryableExceptions:
     """Test that rate limit errors are correctly identified as retryable."""
 
-    def test_litellm_rate_limit_is_retryable(self):
-        exc = LitellmRateLimitError("rate limited", "test-model", None, None)
-        assert _is_retryable_exception(exc) is True
-
     def test_struckdown_rate_limit_is_retryable(self):
-        original = LitellmRateLimitError("rate limited", "test-model", None, None)
-        exc = SDRateLimitError(original, "test prompt", "test-model")
+        exc = SDRateLimitError(Exception("rate limited"), "test prompt", "test-model")
         assert _is_retryable_exception(exc) is True
 
-    def test_wrapped_rate_limit_is_retryable(self):
-        """LLMError wrapping a litellm RateLimitError should be retryable."""
-        original = LitellmRateLimitError("rate limited", "test-model", None, None)
-        exc = LLMError(original, "test prompt", "test-model")
+    def test_connection_error_is_retryable(self):
+        exc = SDConnectionError(Exception("connection failed"), "test prompt", "test-model")
+        assert _is_retryable_exception(exc) is True
+
+    def test_llm_error_retryable_via_is_retryable(self):
+        """LLMError subclasses with is_retryable=True should be retryable."""
+        exc = SDRateLimitError(Exception("rate limited"), "test prompt", "test-model")
+        assert exc.is_retryable is True
         assert _is_retryable_exception(exc) is True
 
     def test_value_error_is_not_retryable(self):
@@ -44,23 +45,17 @@ class TestRetryableExceptions:
 class TestIsRateLimitError:
     """Test _is_rate_limit_error helper."""
 
-    def test_litellm_rate_limit(self):
-        exc = LitellmRateLimitError("rate limited", "test-model", None, None)
-        assert _is_rate_limit_error(exc) is True
-
     def test_struckdown_rate_limit(self):
-        original = LitellmRateLimitError("rate limited", "test-model", None, None)
-        exc = SDRateLimitError(original, "test prompt", "test-model")
+        exc = SDRateLimitError(Exception("rate limited"), "test prompt", "test-model")
         assert _is_rate_limit_error(exc) is True
 
-    def test_wrapped_rate_limit(self):
-        original = LitellmRateLimitError("rate limited", "test-model", None, None)
+    def test_llm_error_wrapping_rate_limit(self):
+        original = SDRateLimitError(Exception("rate limited"), "test prompt", "test-model")
         exc = LLMError(original, "test prompt", "test-model")
         assert _is_rate_limit_error(exc) is True
 
     def test_connection_error_is_not_rate_limit(self):
-        from litellm.exceptions import APIConnectionError
-        exc = APIConnectionError("connection failed", "test-model", None)
+        exc = SDConnectionError(Exception("connection failed"), "test prompt", "test-model")
         assert _is_rate_limit_error(exc) is False
 
 
@@ -113,7 +108,7 @@ async def test_rate_limit_callback_fires_on_retry():
         call_count["n"] += 1
         if call_count["n"] == 1:
             raise SDRateLimitError(
-                LitellmRateLimitError("rate limited", "test-model", None, None),
+                Exception("rate limited"),
                 "test prompt",
                 "test-model",
             )
@@ -134,8 +129,6 @@ async def test_rate_limit_callback_fires_on_retry():
 @pytest.mark.anyio
 async def test_rate_limit_callback_not_fired_on_connection_error():
     """Rate limit callback should NOT fire for non-rate-limit retries."""
-    from litellm.exceptions import APIConnectionError
-
     callback = MagicMock()
     config = DAGConfig(rate_limit_callback=callback)
 
@@ -144,7 +137,11 @@ async def test_rate_limit_callback_not_fired_on_connection_error():
     async def flaky_llm_func():
         call_count["n"] += 1
         if call_count["n"] == 1:
-            raise APIConnectionError("connection failed", "test-model", None)
+            raise SDConnectionError(
+                Exception("connection failed"),
+                "test prompt",
+                "test-model",
+            )
         return "success"
 
     result = await managed_llm_call(

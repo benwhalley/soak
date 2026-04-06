@@ -175,7 +175,7 @@ def _extract_from_output(output_list: list, key: str):
 
     item = output_list[0]
 
-    # handle ChatterResult structure
+    # handle StruckdownResult structure
     if isinstance(item, dict) and "results" in item:
         results = item["results"]
         if key in results:

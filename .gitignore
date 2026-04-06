@@ -4,6 +4,7 @@ __pycache__
 .env
 .cache
 .embeddings/
+.prompts/
 .scrubadub_cache/
 data-private/
 *.egg-info

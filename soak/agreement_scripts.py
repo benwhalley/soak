@@ -33,7 +33,7 @@ def collect_field_categories(
             # Handle different result types
             output_dict = {}
             if hasattr(result, "results"):
-                # ChatterResult
+                # StruckdownResult
                 output_dict = result.results
             elif isinstance(result, dict):
                 output_dict = result

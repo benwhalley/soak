@@ -8,11 +8,12 @@ from typing import Any, Dict, List, Literal, Optional, Union
 import anyio
 import pandas as pd
 from pydantic import Field, PrivateAttr
-from struckdown import LLM, LLMError, chatter_async
+from struckdown import LLM, LLMError, complete_async
 from struckdown.parsing import parse_syntax
 
 from soak.error_handlers import managed_llm_call
-from soak.models.base import TrackedItem, get_action_lookup, get_semaphore
+from soak.models.base import (TrackedItem, get_action_lookup,
+                              get_max_concurrency, get_semaphore)
 from soak.models.utils import extract_output_dict
 
 from .base import CompletionDAGNode, ItemsNode
@@ -60,8 +61,8 @@ class Classifier(ItemsNode, CompletionDAGNode):
         """Process each item through the classification template.
 
         Returns:
-            If single model: List of ChatterResults
-            If multiple models: Dict mapping model_name -> List of ChatterResults
+            If single model: List of StruckdownResults
+            If multiple models: Dict mapping model_name -> List of StruckdownResults
         """
         # Import here to avoid circular import
         from .batch import BatchList
@@ -91,6 +92,11 @@ class Classifier(ItemsNode, CompletionDAGNode):
         # Initialize result storage
         self._model_results = {}
 
+        logger.info(
+            f"Classifier '{self.name}': processing {len(items)} items "
+            f"with concurrency={get_max_concurrency()}"
+        )
+
         # Run classification for each model
         for model_name in self.model_names:
             logger.debug(f"Running classification with model: {model_name}")
@@ -118,10 +124,10 @@ class Classifier(ItemsNode, CompletionDAGNode):
                                 extra_kwargs = self.get_llm_kwargs()
 
                                 try:
-                                    chatter_result = await managed_llm_call(
+                                    complete_result = await managed_llm_call(
                                         node_name=self.name,
                                         config=self.dag.config,
-                                        llm_func=chatter_async,
+                                        llm_func=complete_async,
                                         item_index=index,
                                         multipart_prompt=self.template,
                                         context={**filtered_context, **item},
@@ -129,7 +135,7 @@ class Classifier(ItemsNode, CompletionDAGNode):
                                         credentials=self.dag.config.llm_credentials,
                                         extra_kwargs=extra_kwargs,
                                     )
-                                    results[index] = chatter_result
+                                    results[index] = complete_result
                                 except Exception as e:
                                     # catch-all for any non-struckdown errors
                                     logger.error(

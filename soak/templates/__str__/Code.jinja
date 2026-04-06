@@ -1,0 +1,6 @@
+code: {{ code.slug }}:
+  name: {{ code.name }}
+  description: {{ code.description }}
+  supporting_quotes:
+  {% for q in code.all_quotes %}- {{ q }}
+  {% endfor %}

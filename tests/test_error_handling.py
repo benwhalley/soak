@@ -42,18 +42,17 @@ async def test_error_handling_implementation_exists():
 @pytest.mark.anyio
 async def test_error_behavior_config():
     """Test error behavior configuration options."""
-    from litellm.exceptions import (ContentPolicyViolationError,
-                                    ContextWindowExceededError)
+    from struckdown.errors import ContentFilterError, ContextWindowError
 
     from soak.error_handlers import ErrorBehavior, get_error_behavior
     from soak.models.dag import DAGConfig
 
-    # Create mock errors
-    context_error = ContextWindowExceededError(
-        message="Context window exceeded", model="gpt-4", llm_provider="openai"
+    # Create struckdown error instances
+    context_error = ContextWindowError(
+        Exception("Context window exceeded"), "test prompt", "gpt-4"
     )
-    content_error = ContentPolicyViolationError(
-        message="Content policy violation", model="gpt-4", llm_provider="openai"
+    content_error = ContentFilterError(
+        Exception("Content policy violation"), "test prompt", "gpt-4"
     )
 
     # Test context window error behavior

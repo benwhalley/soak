@@ -5,7 +5,7 @@ import logging
 from typing import Any, List, Literal, Optional, Union
 
 from pydantic import BaseModel
-from struckdown import ChatterResult
+from struckdown import StruckdownResult
 
 from .base import DAGNode
 

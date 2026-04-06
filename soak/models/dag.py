@@ -13,7 +13,7 @@ from typing import (TYPE_CHECKING, Annotated, Any, Callable, Dict, List,
 import anyio
 from jinja2 import Environment, StrictUndefined, Undefined, meta
 from pydantic import BaseModel, Field, model_validator
-from struckdown import LLM, ChatterResult, LLMCredentials
+from struckdown import LLM, StruckdownResult, LLMCredentials
 
 from soak.document_utils import (extract_text, get_scrubber, is_spreadsheet,
                                  unpack_zip_to_temp_paths_if_needed)
@@ -467,18 +467,18 @@ DAGNodeUnion = Annotated[
 ]
 
 # Type alias for node outputs
-# Note: Any at end handles deserialized ChatterResult data (ChatterResult isn't Pydantic)
+# Note: Any at end handles deserialized StruckdownResult data (StruckdownResult isn't Pydantic)
 OutputUnion = Union[
     str,
     List[str],
     List[List[str]],
-    ChatterResult,
-    List[ChatterResult],
-    List[List[ChatterResult]],
+    StruckdownResult,
+    List[StruckdownResult],
+    List[List[StruckdownResult]],
     # for top matches
     List[Dict[str, Union[str, List[tuple[str, float]]]]],
     # for multi-model classifier
-    Dict[str, List[ChatterResult]],
+    Dict[str, List[StruckdownResult]],
     "BatchList",  # Forward reference to avoid circular import
     List[Any],  # fallback for serialized outputs (may contain None or dicts)
     Dict[str, Any],  # fallback for other serialized outputs
@@ -499,6 +499,11 @@ class DAG(BaseModel):
     )  # Allow any value including nested dicts (e.g., models: {default: gpt-4})
     template_dirs: List[str] = []  # additional template search directories
     scrub: Optional[bool] = None  # if False, suppress PII warning
+    allow_web_overrides: Dict[str, List[Any]] = Field(
+        default_factory=dict,
+        description="Node settings overridable from web UI. Items can be plain strings "
+        "or dicts with metadata: {node_name: ['field1', {'field2': {'label': '...'}}]}",
+    )
 
     nodes: List["DAGNodeUnion"] = Field(default_factory=list)
     config: Optional[DAGConfig] = Field(default_factory=DAGConfig, exclude=False)
@@ -882,19 +887,19 @@ Export Time: {datetime.now().isoformat()}
         }
 
     def _node_has_unknown_costs(self, node) -> bool:
-        """Check if node has any unknown costs by examining its ChatterResult outputs"""
+        """Check if node has any unknown costs by examining its StruckdownResult outputs"""
         if not hasattr(node, "output") or node.output is None:
             return False
 
         # handle different output types
-        from struckdown import ChatterResult
+        from struckdown import StruckdownResult
 
         outputs = []
         if isinstance(node.output, list):
-            outputs = [o for o in node.output if isinstance(o, ChatterResult)]
+            outputs = [o for o in node.output if isinstance(o, StruckdownResult)]
         elif isinstance(node.output, dict):
-            outputs = [o for o in node.output.values() if isinstance(o, ChatterResult)]
-        elif isinstance(node.output, ChatterResult):
+            outputs = [o for o in node.output.values() if isinstance(o, StruckdownResult)]
+        elif isinstance(node.output, StruckdownResult):
             outputs = [node.output]
 
         return any(result.has_unknown_costs for result in outputs)
@@ -904,14 +909,14 @@ Export Time: {datetime.now().isoformat()}
         if not hasattr(node, "output") or node.output is None:
             return True
 
-        from struckdown import ChatterResult
+        from struckdown import StruckdownResult
 
         outputs = []
         if isinstance(node.output, list):
-            outputs = [o for o in node.output if isinstance(o, ChatterResult)]
+            outputs = [o for o in node.output if isinstance(o, StruckdownResult)]
         elif isinstance(node.output, dict):
-            outputs = [o for o in node.output.values() if isinstance(o, ChatterResult)]
-        elif isinstance(node.output, ChatterResult):
+            outputs = [o for o in node.output.values() if isinstance(o, StruckdownResult)]
+        elif isinstance(node.output, StruckdownResult):
             outputs = [node.output]
 
         if not outputs:
@@ -925,7 +930,7 @@ Export Time: {datetime.now().isoformat()}
         Returns:
             Tuple of (fresh_cost, fresh_count, cached_count)
         """
-        from struckdown import ChatterResult
+        from struckdown import StruckdownResult
 
         outputs = []
 
@@ -935,12 +940,12 @@ Export Time: {datetime.now().isoformat()}
         # Fallback: Check node.output ONLY if _llm_results is empty/missing (backward compatibility)
         elif hasattr(node, "output") and node.output is not None:
             if isinstance(node.output, list):
-                outputs.extend([o for o in node.output if isinstance(o, ChatterResult)])
+                outputs.extend([o for o in node.output if isinstance(o, StruckdownResult)])
             elif isinstance(node.output, dict):
                 outputs.extend(
-                    [o for o in node.output.values() if isinstance(o, ChatterResult)]
+                    [o for o in node.output.values() if isinstance(o, StruckdownResult)]
                 )
-            elif isinstance(node.output, ChatterResult):
+            elif isinstance(node.output, StruckdownResult):
                 outputs.append(node.output)
 
         fresh_cost = sum(result.fresh_cost for result in outputs)

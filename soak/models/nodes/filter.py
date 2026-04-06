@@ -12,8 +12,8 @@ from simpleeval import (AttributeDoesNotExist, EvalWithCompoundTypes,
                         NameNotDefined)
 
 from soak.error_handlers import managed_llm_call
-from soak.models.base import (TrackedItem, extract_content, safe_json_dump,
-                              get_semaphore)
+from soak.models.base import (TrackedItem, extract_content, get_max_concurrency,
+                              get_semaphore, safe_json_dump)
 
 from .base import (CompletionDAGNode, ItemsNode, default_map_task,
                    render_strict_template)
@@ -208,6 +208,11 @@ class Filter(ItemsNode, CompletionDAGNode):
                         mininterval=0.1,
                     )
 
+        logger.info(
+            f"Filter '{self.name}': processing {len(boxed_items)} items "
+            f"with concurrency={get_max_concurrency()}"
+        )
+
         try:
             async with anyio.create_task_group() as tg:
                 for idx, item in enumerate(boxed_items):
@@ -285,7 +290,7 @@ class Filter(ItemsNode, CompletionDAGNode):
             # the expression references extracted fields directly (e.g., "funny == True")
             context = {}
 
-            # add extracted fields from ChatterResult
+            # add extracted fields from StruckdownResult
             if hasattr(llm_result, "response"):
                 response = llm_result.response
                 if isinstance(response, dict):
@@ -299,8 +304,8 @@ class Filter(ItemsNode, CompletionDAGNode):
             if hasattr(llm_result, "outputs"):
                 context.update(llm_result.outputs)
 
-            # also make the full ChatterResult available
-            context["_chatter_result"] = llm_result
+            # also make the full StruckdownResult available
+            context["_complete_result"] = llm_result
 
             # evaluate expression
             eval_result = self._evaluate_expression(context)

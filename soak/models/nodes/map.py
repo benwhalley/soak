@@ -12,9 +12,9 @@ from struckdown import LLMError
 from struckdown.parsing import parse_syntax
 
 from soak.error_handlers import managed_llm_call
-from soak.models.base import (TrackedItem, extract_prompt, safe_json_dump,
-                              get_semaphore)
-from soak.models.utils import post_process_chatter_result
+from soak.models.base import (TrackedItem, extract_prompt, get_max_concurrency,
+                              get_semaphore, safe_json_dump)
+from soak.models.utils import post_process_complete_result
 
 from .base import (CompletionDAGNode, ItemsNode, default_map_task,
                    template_map_task)
@@ -51,7 +51,7 @@ class Map(ItemsNode, CompletionDAGNode):
             progress_bar: Optional tqdm progress bar to update
 
         Returns:
-            Flat list of results (ChatterResult or rendered strings)
+            Flat list of results (StruckdownResult or rendered strings)
         """
         # Track input count for progress reporting
         self._input_count = len(items)
@@ -111,12 +111,26 @@ class Map(ItemsNode, CompletionDAGNode):
                         mininterval=0.1,
                     )
 
+        # Signal progress: node starting with total item count
+        if self.dag.config.progress_callback:
+            self.dag.config.progress_callback(
+                self.name, 0, len(boxed_items), 0.0
+            )
+
+        logger.info(
+            f"Map '{self.name}': processing {len(boxed_items)} items "
+            f"with concurrency={get_max_concurrency()}"
+        )
+
         try:
             async with anyio.create_task_group() as tg:
                 for idx, item in enumerate(boxed_items):
 
                     async def run_and_store(index=idx, item=item, progress_bar=pbar):
                         async with get_semaphore():
+                            logger.info(
+                                f"Map '{self.name}': starting item {index + 1}/{len(boxed_items)}"
+                            )
                             try:
                                 if self.mode == "template":
                                     # Template-only mode: just render Jinja2, no LLM call
@@ -140,7 +154,7 @@ class Map(ItemsNode, CompletionDAGNode):
                                         **extra_kwargs,
                                     )
                                     # Post-process outputs to populate resolved_quotes/resolved_code_refs
-                                    post_process_chatter_result(
+                                    post_process_complete_result(
                                         results[index], llm_context
                                     )
                             except Exception as e:
@@ -161,8 +175,9 @@ class Map(ItemsNode, CompletionDAGNode):
                                     try:
                                         # Count completed items (non-None results)
                                         done = sum(1 for r in results if r is not None)
-                                        logger.debug(
-                                            f"Map {self.name}: progress {done}/{len(results)}"
+                                        logger.info(
+                                            f"Map '{self.name}': completed item {index + 1}, "
+                                            f"progress {done}/{len(results)}"
                                         )
                                         self.dag.config.progress_callback(
                                             self.name,
@@ -229,7 +244,7 @@ class Map(ItemsNode, CompletionDAGNode):
                     }
                 )
             else:
-                # LLM mode: output is ChatterResult
+                # LLM mode: output is StruckdownResult
                 row.update(
                     {
                         "prompt": extract_prompt(output_item),
@@ -243,7 +258,7 @@ class Map(ItemsNode, CompletionDAGNode):
                             if hasattr(output_item, "response")
                             else None
                         ),
-                        "chatter_result": output_item,
+                        "complete_result": output_item,
                     }
                 )
 
@@ -258,7 +273,7 @@ class Map(ItemsNode, CompletionDAGNode):
 
     def export(self, folder: Path, unique_id: str = ""):
         """Export Map node details with numbered prompts and responses."""
-        from ..utils import export_chatter_result
+        from ..utils import export_complete_result
         from .batch import BatchList
 
         super().export(folder, unique_id=unique_id)
@@ -295,8 +310,8 @@ class Map(ItemsNode, CompletionDAGNode):
                     # Template mode: export rendered text
                     (folder / f"{file_prefix}_rendered.txt").write_text(str(result))
                 else:
-                    # LLM mode: export ChatterResult
-                    export_chatter_result(result, folder, file_prefix)
+                    # LLM mode: export StruckdownResult
+                    export_complete_result(result, folder, file_prefix)
 
     async def skip(self) -> Optional[List[Any]]:
         """When skipped (e.g., due to bypass), pass input through unchanged.

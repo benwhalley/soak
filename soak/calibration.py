@@ -857,7 +857,7 @@ def generate_paraphrases(
     Returns:
         DataFrame with columns: original, text, category
     """
-    from struckdown import LLM, chatter
+    from struckdown import LLM, complete
 
     # load prompt
     prompt = prompt_path.read_text()
@@ -871,7 +871,7 @@ def generate_paraphrases(
     def on_complete(index, result):
         pbar.update(1)
 
-    results = chatter(
+    results = complete(
         prompt,
         contexts,
         model=LLM(model_name=llm_model),

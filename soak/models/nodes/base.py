@@ -15,8 +15,8 @@ import pandas as pd
 import tiktoken
 from box import Box
 from jinja2 import Environment, TemplateSyntaxError
-from pydantic import BaseModel, Field, PrivateAttr
-from struckdown import LLM, ChatterResult, LLMError, chatter_async
+from pydantic import BaseModel, Field, PrivateAttr, field_validator
+from struckdown import LLM, StruckdownResult, LLMError, complete_async
 from struckdown.parsing import parse_syntax
 from tqdm import tqdm
 
@@ -27,6 +27,101 @@ from soak.models.dag import (DAG, OutputUnion, render_strict_template,
                              render_template_preserve_undefined)
 
 logger = logging.getLogger(__name__)
+
+
+class _TemplateProxy:
+    """Read-only proxy over a StruckdownResult for template use.
+
+    Wraps list outputs in container types for __str__ rendering
+    (e.g. [Theme, ...] -> Themes, [Code, ...] -> CodeList).
+    Resolves theme.code_slugs -> theme.resolved_code_refs using codes from the DAG.
+    """
+
+    def __init__(self, cr, all_codes: list = None):
+        self._cr = cr
+        self._all_codes = all_codes or []
+
+    def _resolve_theme_codes(self, theme) -> None:
+        """Resolve code_slugs on a Theme using collected codes from the DAG."""
+        if not self._all_codes or not theme.code_slugs or theme.resolved_code_refs:
+            return
+        code_by_slug = {c.slug: c for c in self._all_codes}
+        matched = [
+            c.model_dump() for slug in theme.code_slugs
+            if (c := code_by_slug.get(slug))
+        ]
+        if matched:
+            theme.resolved_code_refs = matched
+
+    def __getattr__(self, name):
+        if name.startswith("_"):
+            raise AttributeError(name)
+        from soak.models.base import Code, CodeList, Theme, Themes
+        if name in self._cr.results:
+            output = self._cr.results[name].output
+            # wrap typed lists in container types for __str__ rendering
+            if isinstance(output, list) and output:
+                first = output[0]
+                if isinstance(first, Theme):
+                    for t in output:
+                        self._resolve_theme_codes(t)
+                    return Themes(themes=output)
+                if isinstance(first, Code):
+                    return CodeList(codes=output)
+            return output
+        raise AttributeError(
+            f"No slot '{name}' in StruckdownResult "
+            f"(slots: {list(self._cr.results.keys())})"
+        )
+
+    def __str__(self):
+        return str(self._cr)
+
+    def __repr__(self):
+        return f"<_TemplateProxy slots={list(self._cr.results.keys())}>"
+
+
+def _collect_codes_from_dag(dag) -> list:
+    """Scan all completed DAG node outputs for Code objects."""
+    from struckdown import StruckdownResult
+    from soak.models.base import Code
+    codes = []
+
+    for node in dag.nodes_dict.values():
+        if node.output is None:
+            continue
+        outputs = node.output if isinstance(node.output, list) else [node.output]
+        for item in outputs:
+            if isinstance(item, Code):
+                codes.append(item)
+            elif isinstance(item, StruckdownResult):
+                for seg in item.results.values():
+                    out = seg.output
+                    if isinstance(out, list):
+                        codes.extend(c for c in out if isinstance(c, Code))
+                    elif isinstance(out, Code):
+                        codes.append(out)
+    return codes
+
+
+def _prepare_for_template(output, source_node_type: str = "", all_codes: list = None):
+    """Wrap StruckdownResult outputs in _TemplateProxy for downstream templates.
+
+    Transform/TransformReduce: unwrap single-element list, return one proxy.
+    Map/Filter/Classifier: return list of proxies.
+    Bare StruckdownResult: return one proxy.
+    Anything else: pass through unchanged.
+    """
+    from struckdown import StruckdownResult
+    if source_node_type in ("Transform", "TransformReduce"):
+        if (isinstance(output, list) and len(output) == 1
+                and isinstance(output[0], StruckdownResult)):
+            return _TemplateProxy(output[0], all_codes)
+    if isinstance(output, list) and output and isinstance(output[0], StruckdownResult):
+        return [_TemplateProxy(cr, all_codes) for cr in output]
+    if isinstance(output, StruckdownResult):
+        return _TemplateProxy(output, all_codes)
+    return output
 
 
 class DAGNode(BaseModel):
@@ -99,10 +194,16 @@ class DAGNode(BaseModel):
         if "documents" in self.inputs:
             ctx["documents"] = self.dag.config.load_documents()
 
+        # collect all codes from completed DAG nodes for theme resolution
+        all_codes = _collect_codes_from_dag(self.dag)
+
         prev_nodes = {k: self.dag.nodes_dict.get(k) for k in self.inputs}
-        prev_output = {
-            k: v.output for k, v in prev_nodes.items() if v and v.output is not None
-        }
+        prev_output = {}
+        for k, v in prev_nodes.items():
+            if v and v.output is not None:
+                prev_output[k] = _prepare_for_template(
+                    v.output, source_node_type=v.type, all_codes=all_codes,
+                )
         ctx.update(prev_output)
 
         return ctx
@@ -224,19 +325,27 @@ class CompletionDAGNode(DAGNode):
     model_name: Optional[str] = None
     temperature: float = 1
     max_tokens: Optional[int] = None
+    thinking: Optional[str] = None
+
+    @field_validator("thinking", mode="before")
+    @classmethod
+    def coerce_thinking(cls, v):
+        if v is False:
+            return "off"
+        return v
 
     # cost tracking (private attributes, not serialized)
     _total_cost: float = PrivateAttr(default=0.0)
     _fresh_cost: float = PrivateAttr(default=0.0)  # cost of non-cached calls only
     _prompt_tokens: int = PrivateAttr(default=0)
     _completion_tokens: int = PrivateAttr(default=0)
-    _llm_results: List[ChatterResult] = PrivateAttr(default_factory=list)
+    _llm_results: List[StruckdownResult] = PrivateAttr(default_factory=list)
     _input_count: int = PrivateAttr(
         default=0
     )  # tracks expected input count for progress
 
-    def _accumulate_costs(self, result: ChatterResult) -> None:
-        """Extract and accumulate costs from a ChatterResult"""
+    def _accumulate_costs(self, result: StruckdownResult) -> None:
+        """Extract and accumulate costs from a StruckdownResult"""
         self._total_cost += result.total_cost
         self._fresh_cost += result.fresh_cost  # only non-cached calls
         self._prompt_tokens += result.prompt_tokens
@@ -262,6 +371,8 @@ class CompletionDAGNode(DAGNode):
         }
         if self.max_tokens is not None:
             kwargs["max_tokens"] = self.max_tokens
+        if self.thinking is not None:
+            kwargs["thinking"] = self.thinking
         return kwargs
 
     async def run(self, items: List[Any] = None) -> List[Any]:
@@ -606,9 +717,9 @@ async def default_map_task(template, context, model, credentials, **kwargs):
     # intact for struckdown to fill after checkpoint processing.
     rt = render_template_preserve_undefined(template, context)
 
-    # call chatter as async function within the main event loop
+    # call complete as async function within the main event loop
     # errors will propagate to the calling node for handling
-    result = await chatter_async(
+    result = await complete_async(
         multipart_prompt=rt,
         context=context,
         model=model,
@@ -622,7 +733,7 @@ async def default_map_task(template, context, model, credentials, **kwargs):
 async def template_map_task(template, context, **kwargs):
     """Template-only map task that renders Jinja2 template without LLM call.
 
-    Returns the rendered string directly (no ChatterResult wrapper).
+    Returns the rendered string directly (no StruckdownResult wrapper).
     Used when Map node has function="template" for pure templating.
     """
     return render_strict_template(template, context)
@@ -1068,7 +1179,7 @@ class Split(ItemsNode):
                 elif isinstance(doc, dict) and "content" in doc:
                     content = doc["content"]
                 else:
-                    # Skip items that can't be processed (e.g., ChatterResult from wrong node type)
+                    # Skip items that can't be processed (e.g., StruckdownResult from wrong node type)
                     logger.debug(
                         f"Skipping non-text output in Split export: {type(doc)}"
                     )

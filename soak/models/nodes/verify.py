@@ -20,7 +20,7 @@ import pandas as pd
 from pydantic import Field, PrivateAttr
 from rank_bm25 import BM25Okapi
 from sklearn.metrics.pairwise import cosine_similarity
-from struckdown import ChatterResult, LLMError, chatter_async
+from struckdown import StruckdownResult, LLMError, complete_async
 from struckdown.parsing import parse_syntax
 from tqdm import tqdm
 
@@ -132,7 +132,7 @@ class LLMVerdict:
 
     is_contained: Optional[bool]
     explanation: str
-    chatter_result: Optional[Any] = None
+    complete_result: Optional[Any] = None
 
 
 @dataclass
@@ -141,7 +141,7 @@ class LLMFairnessVerdict:
 
     is_fair: Optional[bool]
     explanation: str
-    chatter_result: Optional[Any] = None
+    complete_result: Optional[Any] = None
 
 
 @dataclass
@@ -357,10 +357,10 @@ def _trim_and_position(
 
 
 def _extract_llm_field(result, field_name: str, default=None):
-    """Extract a field from ChatterResult with safe attribute access.
+    """Extract a field from StruckdownResult with safe attribute access.
 
     Args:
-        result: ChatterResult object
+        result: StruckdownResult object
         field_name: Name of field to extract
         default: Default value if field not found
 
@@ -851,7 +851,7 @@ class VerifyQuotes(CompletionDAGNode):
     verification_type: Optional[str] = None  # "code" or "theme"
 
     # Private attribute for organizing LLM results by type (for export)
-    _llm_results_by_type: Dict[str, Dict[str, ChatterResult]] = PrivateAttr(
+    _llm_results_by_type: Dict[str, Dict[str, StruckdownResult]] = PrivateAttr(
         default_factory=dict
     )
 
@@ -872,11 +872,13 @@ class VerifyQuotes(CompletionDAGNode):
         """Normalize any input format to list of Themes/CodeList objects.
 
         Handles:
-        - List of ChatterResults (from Map nodes)
-        - Single ChatterResult (from Transform/Reduce nodes)
+        - List of StruckdownResults (from Map nodes)
+        - Single StruckdownResult (from Transform/Reduce nodes)
         - Direct Themes or CodeList objects
         - List of Code objects (wrapped into CodeList)
         - List of Theme objects (wrapped into Themes)
+        - Plain dicts with "slug" key (legacy serialized Code objects)
+        - Plain dicts with "code_slugs" key (legacy serialized Theme objects)
 
         Returns:
             List of Themes or CodeList objects ready for quote extraction
@@ -890,23 +892,53 @@ class VerifyQuotes(CompletionDAGNode):
 
         # check if items is a list of Code or Theme objects directly
         if items and all(isinstance(item, Code) for item in items):
-            # wrap plain list of Code objects into CodeList
             outputs.append(CodeList(codes=items))
             return outputs
         if items and all(isinstance(item, Theme) for item in items):
-            # wrap plain list of Theme objects into Themes
             outputs.append(Themes(themes=items))
             return outputs
 
+        # check if items is a list of dicts (legacy serialized data from restart)
+        if items and all(isinstance(item, dict) for item in items):
+            first = items[0]
+            if "slug" in first:
+                # legacy Code dicts -- reconstruct
+                codes = [Code.model_validate(d) for d in items]
+                outputs.append(CodeList(codes=codes))
+                return outputs
+            if "code_slugs" in first:
+                # legacy Theme dicts -- reconstruct
+                themes = [Theme.model_validate(d) for d in items]
+                outputs.append(Themes(themes=themes))
+                return outputs
+
         for item in items:
             if isinstance(item, (Themes, CodeList)):
-                # direct model -- add to outputs
                 outputs.append(item)
+            elif hasattr(item, "_cr"):
+                # _TemplateProxy wrapping a StruckdownResult -- unwrap and extract
+                cr = item._cr
+                for seg in cr.results.values():
+                    out = seg.output
+                    if isinstance(out, (Themes, CodeList)):
+                        outputs.append(out)
+                    elif isinstance(out, list) and out:
+                        first_val = out[0]
+                        if isinstance(first_val, Code):
+                            outputs.append(CodeList(codes=out))
+                        elif isinstance(first_val, Theme):
+                            outputs.append(Themes(themes=out))
             elif hasattr(item, "outputs"):
-                # ChatterResult -- extract outputs dict
+                # StruckdownResult -- extract outputs dict
                 for output_val in item.outputs.values():
                     if isinstance(output_val, (Themes, CodeList)):
                         outputs.append(output_val)
+                    elif isinstance(output_val, list) and output_val:
+                        first_val = output_val[0]
+                        if isinstance(first_val, Code):
+                            outputs.append(CodeList(codes=output_val))
+                        elif isinstance(first_val, Theme):
+                            outputs.append(Themes(themes=output_val))
 
         return outputs
 
@@ -988,13 +1020,13 @@ class VerifyQuotes(CompletionDAGNode):
                     elif isinstance(item, str):
                         texts.append(item)
                     elif hasattr(item, "response"):
-                        # ChatterResult - use response text
+                        # StruckdownResult - use response text
                         texts.append(str(item.response))
                 return "\n\n".join(texts)
             elif isinstance(node_output, TrackedItem):
                 return node_output.content
             elif hasattr(node_output, "response"):
-                # Single ChatterResult
+                # Single StruckdownResult
                 return str(node_output.response)
             else:
                 raise ValueError(
@@ -1031,7 +1063,7 @@ class VerifyQuotes(CompletionDAGNode):
         result = await managed_llm_call(
             node_name=self.name,
             config=self.dag.config,
-            llm_func=chatter_async,
+            llm_func=complete_async,
             item_index=None,
             multipart_prompt=prompt,
             context={"source": source, "quote": quote},
@@ -1054,7 +1086,7 @@ class VerifyQuotes(CompletionDAGNode):
         return {
             "explanation": explanation,
             "is_contained": is_contained,
-            "chatter_result": result,
+            "complete_result": result,
         }
 
     async def check_quote_fairness(
@@ -1077,7 +1109,7 @@ class VerifyQuotes(CompletionDAGNode):
             original_text: Context window around the quote from source document
 
         Returns:
-            Dict with 'explanation', 'is_fair', and 'chatter_result' keys
+            Dict with 'explanation', 'is_fair', and 'complete_result' keys
         """
         # Use custom template if provided, otherwise load default
         if self.fairness_template:
@@ -1106,7 +1138,7 @@ class VerifyQuotes(CompletionDAGNode):
         result = await managed_llm_call(
             node_name=self.name,
             config=self.dag.config,
-            llm_func=chatter_async,
+            llm_func=complete_async,
             item_index=None,
             multipart_prompt=prompt,
             context=context,
@@ -1120,7 +1152,7 @@ class VerifyQuotes(CompletionDAGNode):
             return {
                 "explanation": "LLM Error occurred (skipped)",
                 "is_fair": None,
-                "chatter_result": None,
+                "complete_result": None,
             }
 
         # Accumulate cost from LLM call
@@ -1133,7 +1165,7 @@ class VerifyQuotes(CompletionDAGNode):
         return {
             "explanation": explanation,
             "is_fair": is_fair,
-            "chatter_result": result,
+            "complete_result": result,
         }
 
     def extract_context_window(
@@ -1269,10 +1301,10 @@ class VerifyQuotes(CompletionDAGNode):
         # Create lookup from quote hash to match results
         quote_hash_to_match = {r["quote_hash"]: r for r in matches}
 
-        # Initialize storage for LLM ChatterResults (for export organization)
+        # Initialize storage for LLM StruckdownResults (for export organization)
         self._llm_results_by_type = {
-            "existence": {},  # quote_hash -> ChatterResult
-            "fairness": {},  # quote_hash -> ChatterResult  (for themes only)
+            "existence": {},  # quote_hash -> StruckdownResult
+            "fairness": {},  # quote_hash -> StruckdownResult  (for themes only)
         }
 
         # --- Convert to dataframe and compute stats ---
@@ -1374,23 +1406,23 @@ class VerifyQuotes(CompletionDAGNode):
                             result = await self.llm_as_judge(quote, source_doc_content)
                             df.at[idx, "llm_explanation"] = result.get("explanation")
                             df.at[idx, "llm_is_contained"] = result.get("is_contained")
-                            # Store ChatterResult for export and cache statistics
-                            if result.get("chatter_result"):
+                            # Store StruckdownResult for export and cache statistics
+                            if result.get("complete_result"):
                                 self._llm_results_by_type["existence"][quote_hash] = (
-                                    result["chatter_result"]
+                                    result["complete_result"]
                                 )
-                                self._llm_results.append(result["chatter_result"])
+                                self._llm_results.append(result["complete_result"])
 
                                 # Update progress bar with per-node cost if using CostProgressBar
                                 from soak.models.progress import \
                                     CostProgressBar
 
                                 if isinstance(pbar, CostProgressBar):
-                                    chatter = result["chatter_result"]
+                                    complete = result["complete_result"]
                                     pbar.update_cost(
-                                        chatter.fresh_cost,
-                                        chatter.prompt_tokens
-                                        + chatter.completion_tokens,
+                                        complete.fresh_cost,
+                                        complete.prompt_tokens
+                                        + complete.completion_tokens,
                                     )
                     finally:
                         pbar.update(1)
@@ -1516,14 +1548,14 @@ class VerifyQuotes(CompletionDAGNode):
                             ]
                             df.at[idx, "llm_is_fair"] = fairness_result["is_fair"]
 
-                            # Store ChatterResult for export and cache statistics
-                            if fairness_result["chatter_result"]:
+                            # Store StruckdownResult for export and cache statistics
+                            if fairness_result["complete_result"]:
                                 quote_hash = item["quote"].hash()
                                 self._llm_results_by_type["fairness"][quote_hash] = (
-                                    fairness_result["chatter_result"]
+                                    fairness_result["complete_result"]
                                 )
                                 self._llm_results.append(
-                                    fairness_result["chatter_result"]
+                                    fairness_result["complete_result"]
                                 )
 
                                 # Update progress bar with per-node cost if using CostProgressBar
@@ -1531,11 +1563,11 @@ class VerifyQuotes(CompletionDAGNode):
                                     CostProgressBar
 
                                 if isinstance(pbar_fairness, CostProgressBar):
-                                    chatter = fairness_result["chatter_result"]
+                                    complete = fairness_result["complete_result"]
                                     pbar_fairness.update_cost(
-                                        chatter.fresh_cost,
-                                        chatter.prompt_tokens
-                                        + chatter.completion_tokens,
+                                        complete.fresh_cost,
+                                        complete.prompt_tokens
+                                        + complete.completion_tokens,
                                     )
                     finally:
                         pbar_fairness.update(1)
@@ -1773,7 +1805,7 @@ class VerifyQuotes(CompletionDAGNode):
 
         # Export LLM prompts and responses
         if self._llm_results_by_type:
-            from ..utils import export_chatter_result
+            from ..utils import export_complete_result
 
             # Export existence check LLM calls
             if self._llm_results_by_type.get("existence"):
@@ -1784,7 +1816,7 @@ class VerifyQuotes(CompletionDAGNode):
                     sorted(self._llm_results_by_type["existence"].items())
                 ):
                     file_prefix = f"{idx:04d}_{quote_hash}"
-                    export_chatter_result(result, existence_folder, file_prefix)
+                    export_complete_result(result, existence_folder, file_prefix)
 
             # Export fairness check LLM calls (themes only)
             if self._llm_results_by_type.get("fairness"):
@@ -1795,4 +1827,4 @@ class VerifyQuotes(CompletionDAGNode):
                     sorted(self._llm_results_by_type["fairness"].items())
                 ):
                     file_prefix = f"{idx:04d}_{quote_hash}"
-                    export_chatter_result(result, fairness_folder, file_prefix)
+                    export_complete_result(result, fairness_folder, file_prefix)

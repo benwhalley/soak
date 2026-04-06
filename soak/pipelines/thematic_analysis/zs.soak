@@ -79,6 +79,23 @@ default_context:
   
 scrub: false
 randomise_document_order: true
+
+allow_web_overrides:
+  chunks:
+    - chunk_size:
+        label: Chunk size (in words)
+    - min_split:
+        label: Minimum size for a chunk make from splitting documents
+    - overlap:
+        label: Overlap between chunks
+  checkquotes:
+    - check_fairness:
+        label: Check fairness
+        help_text: Checks quotes for fairness using an extra LLM call for each quote found with a low confidence score. This is slower but more accurate.
+  narrative:
+    - temperature:
+        label: Temperature
+        help_text: Controls the randomness of the narrative generation. Higher temperatures make the narrative more random, while lower temperatures make it more focused and deterministic. Best results between 0.7 and 1.2.
 config:
     report_texts: 
       narrative.meta_narrative:
@@ -91,7 +108,7 @@ config:
 default_config:
   models:
     default: gpt-5-mini
-    best: gpt-5.2
+    best: gpt-5-mini
     cheap: gpt-5-mini
   embeddings: text-embedding-3-large
   seed: 1
@@ -104,9 +121,9 @@ nodes:
   - name: chunks
     type: Split
     split_unit: words
-    chunk_size: 15000
+    chunk_size: 12000
     min_split: 500
-    overlap: 200
+    overlap: 100
     inputs:
       - documents
       
@@ -114,6 +131,7 @@ nodes:
     type: Map
     template: initial_codes.sd
     model: default
+    thinking: low
     inputs:
       - chunks
 
@@ -132,6 +150,7 @@ nodes:
     type: Map
     inputs: [groupedcodes]
     model: default
+    thinking: low
     template: consolidate_codes.sd
 
   - name: codes
@@ -142,6 +161,7 @@ nodes:
   - name: checkquotes
     type: VerifyQuotes
     model: cheap
+    thinking: off
     inputs: [codes]
     check_fairness: false
 
@@ -152,10 +172,12 @@ nodes:
       name: hdbscan
       min_cluster_size: 50
       
+  # produces a list of theme lists, one for each code group
   - name: theme_groups
     type: Map
     template: make_theme_group.sd
     model: best
+    thinking: medium
     inputs:
       - big_code_groups
 
@@ -163,6 +185,7 @@ nodes:
     type: Transform
     template: final_themes.sd
     model: best
+    thinking: medium
     inputs:
       - theme_groups
 
@@ -171,5 +194,6 @@ nodes:
     template: narrative_report.sd
     temperature: 1.0
     model: best
+    thinking: medium
     inputs:
       - themes

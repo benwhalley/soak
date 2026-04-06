@@ -1,54 +1,43 @@
 """Error handling utilities for LLM API errors in soak pipelines.
 
 This module provides centralized error handling logic for dealing with various
-LiteLLM/OpenAI API exceptions that can occur during pipeline execution.
+LLM API exceptions that can occur during pipeline execution. Uses struckdown's
+error types exclusively -- no direct dependency on litellm or pydantic-ai.
 """
 
 import logging
 import os
 import sys
 import threading
+from datetime import datetime
+from pathlib import Path
 from typing import Any, Optional
 
-from litellm.exceptions import (APIConnectionError, APIResponseValidationError,
-                                AuthenticationError, BadRequestError,
-                                BudgetExceededError,
-                                ContentPolicyViolationError,
-                                ContextWindowExceededError,
-                                InternalServerError, NotFoundError,
-                                PermissionDeniedError, RateLimitError,
-                                Timeout, UnsupportedParamsError)
 from struckdown import LLMError
-from struckdown.errors import RateLimitError as SDRateLimitError
+from struckdown.errors import (
+    AuthError,
+    BadRequestError,
+    ConnectionError as SDConnectionError,
+    ContentFilterError,
+    ContextWindowError,
+    RateLimitError,
+)
 from tenacity import (before_sleep_log, retry, retry_if_exception,
                       stop_after_attempt, wait_exponential)
 
 logger = logging.getLogger(__name__)
 
-# Exceptions that should trigger retry with backoff
-RETRYABLE_EXCEPTIONS = (
-    APIConnectionError,
-    InternalServerError,
-    RateLimitError,
-    Timeout,
-)
-
 
 def _is_retryable_exception(exc: Exception) -> bool:
     """Check if exception should trigger a retry (handles wrapped LLMError)."""
-    if isinstance(exc, RETRYABLE_EXCEPTIONS):
-        return True
-    if isinstance(exc, SDRateLimitError):
-        return True
     if isinstance(exc, LLMError):
-        original = getattr(exc, "original_error", None)
-        return isinstance(original, RETRYABLE_EXCEPTIONS)
+        return exc.is_retryable
     return False
 
 
 def _is_rate_limit_error(exc: Exception) -> bool:
     """Check if exception is a rate limit error (direct or wrapped)."""
-    if isinstance(exc, (RateLimitError, SDRateLimitError)):
+    if isinstance(exc, RateLimitError):
         return True
     if isinstance(exc, LLMError):
         original = getattr(exc, "original_error", None)
@@ -57,15 +46,15 @@ def _is_rate_limit_error(exc: Exception) -> bool:
 
 
 class MaxConsecutiveConnectionErrorsExceeded(Exception):
-    """Raised when consecutive APIConnectionError threshold is exceeded"""
+    """Raised when consecutive connection error threshold is exceeded"""
 
     pass
 
 
 class ConnectionErrorCounter:
-    """Thread-safe counter for tracking consecutive APIConnectionErrors.
+    """Thread-safe counter for tracking consecutive connection errors.
 
-    Tracks consecutive APIConnectionError occurrences across the entire pipeline run.
+    Tracks consecutive connection error occurrences across the entire pipeline run.
     When the threshold is exceeded, raises MaxConsecutiveConnectionErrorsExceeded.
     """
 
@@ -77,7 +66,7 @@ class ConnectionErrorCounter:
         self._lock = threading.Lock()
 
     def record_connection_error(self) -> None:
-        """Record an APIConnectionError and check if threshold exceeded.
+        """Record a connection error and check if threshold exceeded.
 
         Raises:
             MaxConsecutiveConnectionErrorsExceeded: If threshold is reached
@@ -106,27 +95,21 @@ class ErrorBehavior:
 
     FAIL = "fail"  # fail entire pipeline
     SKIP = "skip"  # skip item, continue pipeline
-    RETRY = "retry"  # let instructor retry
+    RETRY = "retry"  # let retry logic handle
 
 
-# map exception types to default behaviors
+# map struckdown error types to default behaviors
 EXCEPTION_BEHAVIORS = {
     # fatal errors -- always fail pipeline
-    AuthenticationError: ErrorBehavior.FAIL,
-    PermissionDeniedError: ErrorBehavior.FAIL,
-    NotFoundError: ErrorBehavior.FAIL,
+    AuthError: ErrorBehavior.FAIL,
     BadRequestError: ErrorBehavior.FAIL,
-    UnsupportedParamsError: ErrorBehavior.FAIL,
-    APIResponseValidationError: ErrorBehavior.FAIL,
-    BudgetExceededError: ErrorBehavior.FAIL,
     MaxConsecutiveConnectionErrorsExceeded: ErrorBehavior.FAIL,
     # configurable errors
-    ContentPolicyViolationError: ErrorBehavior.SKIP,  # configurable via skip_content_policy_violations
-    ContextWindowExceededError: ErrorBehavior.SKIP,  # configurable via fail_on_context_exceeded
-    # retryable/skippable errors
-    Timeout: ErrorBehavior.SKIP,  # LLM call timed out -- skip item and continue
-    # retryable errors -- instructor handles these
-    # (these shouldn't reach us if instructor's retry works, but we handle them gracefully)
+    ContentFilterError: ErrorBehavior.SKIP,
+    ContextWindowError: ErrorBehavior.SKIP,
+    # retryable errors -- handled by retry decorator
+    RateLimitError: ErrorBehavior.RETRY,
+    SDConnectionError: ErrorBehavior.RETRY,
 }
 
 
@@ -140,19 +123,21 @@ def get_error_behavior(error: Exception, config) -> str:
     Returns:
         ErrorBehavior constant (FAIL/SKIP/RETRY)
     """
-    # unwrap LLMError if needed
-    original_error = error.original_error if isinstance(error, LLMError) else error
-    error_type = type(original_error)
+    # unwrap LLMError to get the struckdown error subclass
+    if isinstance(error, LLMError):
+        error_type = type(error)
+    else:
+        error_type = type(error)
 
     # handle configurable errors
-    if error_type == ContentPolicyViolationError:
+    if isinstance(error, ContentFilterError):
         return (
             ErrorBehavior.SKIP
             if config.skip_content_policy_violations
             else ErrorBehavior.FAIL
         )
 
-    if error_type == ContextWindowExceededError:
+    if isinstance(error, ContextWindowError):
         return (
             ErrorBehavior.SKIP
             if not config.fail_on_context_exceeded
@@ -182,7 +167,7 @@ def log_error_to_stderr(
     # unwrap LLMError if needed
     if isinstance(error, LLMError):
         original_error = error.original_error
-        error_type = type(original_error).__name__
+        error_type = type(error).__name__
         model_name = error.model_name
         prompt = error.prompt
         prompt_length = len(prompt)
@@ -198,20 +183,17 @@ def log_error_to_stderr(
 
     # determine log level and prefix based on behavior
     if behavior == ErrorBehavior.FAIL:
-        level = "CRITICAL"
-        prefix = "⚠️  PIPELINE FAILED ⚠️"
+        prefix = "PIPELINE FAILED"
         log_func = logger.critical
     elif behavior == ErrorBehavior.SKIP:
-        level = "WARNING"
-        prefix = "⚠️"
+        prefix = "SKIPPING"
         log_func = logger.warning
     else:
-        level = "INFO"
-        prefix = "ℹ️"
+        prefix = "RETRYING"
         log_func = logger.info
 
     # special handling for specific error types
-    if isinstance(original_error, ContentPolicyViolationError):
+    if isinstance(error, ContentFilterError):
         log_func(
             f"\n{prefix} [{error_type}] Content Policy Violation in node '{node_name}'{item_str}"
         )
@@ -224,23 +206,23 @@ def log_error_to_stderr(
             sys.stderr.write(f"{'-'*60}\n")
             sys.stderr.write(f"{prompt}\n")
             sys.stderr.write(f"{'='*60}\n\n")
-            sys.stderr.flush()  # ensure prompt is visible immediately
+            sys.stderr.flush()
 
         if behavior == ErrorBehavior.SKIP:
             log_func("Skipping this item and continuing...")
 
-    elif isinstance(original_error, ContextWindowExceededError):
+    elif isinstance(error, ContextWindowError):
         if behavior == ErrorBehavior.FAIL:
             log_func(f"\n{'='*60}")
             log_func(f"{prefix} [{error_type}] CONTEXT WINDOW EXCEEDED")
             log_func(f"{'='*60}")
         else:
-            log_func(f"\n{prefix}⚠️⚠️ [{error_type}] CONTEXT WINDOW EXCEEDED ⚠️⚠️")
+            log_func(f"\n{prefix} [{error_type}] CONTEXT WINDOW EXCEEDED")
 
         log_func(f"Node: '{node_name}'{item_str}")
         log_func(f"Model: {model_name}")
         if prompt_length:
-            estimated_tokens = prompt_length // 4  # rough estimate
+            estimated_tokens = prompt_length // 4
             log_func(
                 f"Prompt length: ~{estimated_tokens:,} tokens ({prompt_length:,} chars)"
             )
@@ -253,18 +235,16 @@ def log_error_to_stderr(
         else:
             log_func("Skipping this item. Consider chunking or reducing input size.")
 
-    elif isinstance(original_error, Timeout):
+    elif isinstance(error, RateLimitError):
         log_func(
-            f"\n{prefix} [{error_type}] LLM call timed out in node '{node_name}'{item_str}"
+            f"\n{prefix} [{error_type}] Rate limit in node '{node_name}'{item_str}"
         )
         log_func(f"Model: {model_name}")
-        log_func("The API did not respond within the timeout period.")
-        log_func("Try increasing --timeout or check API endpoint responsiveness.")
         if behavior == ErrorBehavior.SKIP:
             log_func("Skipping this item and continuing...")
 
     else:
-        # generic error logging - lead with error type
+        # generic error logging
         log_func(f"\n{prefix} [{error_type}] in node '{node_name}'{item_str}")
         log_func(f"Model: {model_name}")
         log_func(f"Error: {original_error}")
@@ -277,30 +257,15 @@ def log_error_to_stderr(
         elif behavior == ErrorBehavior.SKIP:
             log_func("Skipping this item and continuing...")
 
-    # log to stderr as well for visibility - always include error type prominently
-    if behavior == ErrorBehavior.FAIL:
-        sys.stderr.write(
-            f"\n[{level}] [{error_type}] in node '{node_name}'{item_str}: {original_error}\n"
-        )
-        sys.stderr.flush()  # ensure immediate visibility
-    else:
-        # for non-fatal errors, still log to stderr but less prominently
-        sys.stderr.write(
-            f"\n[{level}] [{error_type}] in node '{node_name}'{item_str}\n"
-        )
-        sys.stderr.flush()  # ensure immediate visibility
+    # log to stderr for visibility
+    sys.stderr.write(
+        f"\n[{prefix}] [{error_type}] in node '{node_name}'{item_str}: {original_error}\n"
+    )
+    sys.stderr.flush()
 
 
 def should_continue_pipeline(error: Exception, config) -> bool:
-    """Determine if pipeline should continue after this error.
-
-    Args:
-        error: The exception to handle
-        config: DAGConfig instance with error handling settings
-
-    Returns:
-        True if pipeline should continue, False if it should fail
-    """
+    """Determine if pipeline should continue after this error."""
     behavior = get_error_behavior(error, config)
     return behavior != ErrorBehavior.FAIL
 
@@ -314,40 +279,19 @@ def handle_llm_error_in_node(
 ) -> bool:
     """Handle LLM API error in a node with logging and behavior determination.
 
-    This is a helper function to eliminate repetitive error handling code across nodes.
-    It handles the standard pattern: calculate behavior, log, determine whether to skip or fail.
-
-    Args:
-        error: The LLMError or other exception
-        node_name: Name of the node where error occurred
-        config: DAGConfig instance with error handling settings
-        item_index: Optional index of the item being processed
-        item_type: Type of item ("item", "batch", "node") for log messages
-
     Returns:
-        True if should skip this item and continue, False if should re-raise and fail pipeline
-
-    Raises:
-        MaxConsecutiveConnectionErrorsExceeded: If threshold of consecutive APIConnectionErrors is reached
+        True if should skip this item and continue, False if should re-raise
     """
-    # unwrap error to check for connection errors
-    original_error = error.original_error if isinstance(error, LLMError) else error
-
-    # track consecutive connection errors (APIConnectionError or InternalServerError with connection error message)
-    if isinstance(original_error, APIConnectionError):
+    # track consecutive connection errors
+    if isinstance(error, SDConnectionError):
         connection_error_counter.record_connection_error()
-        # if threshold exceeded, this will raise MaxConsecutiveConnectionErrorsExceeded
-    elif (
-        isinstance(original_error, InternalServerError)
-        and "connection error" in str(original_error).lower()
+    elif isinstance(error, LLMError) and isinstance(
+        error.original_error, SDConnectionError
     ):
         connection_error_counter.record_connection_error()
-        # if threshold exceeded, this will raise MaxConsecutiveConnectionErrorsExceeded
 
-    # calculate behavior first
     behavior = get_error_behavior(error, config)
 
-    # log error with full context
     log_error_to_stderr(
         error=error,
         node_name=node_name,
@@ -356,22 +300,26 @@ def handle_llm_error_in_node(
         config=config,
     )
 
-    # determine if we should continue or fail
     if should_continue_pipeline(error, config):
-        # log skip message
-        if item_index is not None:
-            logger.info(
-                f"Skipping {item_type} {item_index} in node '{node_name}' "
-                f"due to {type(error.original_error if isinstance(error, LLMError) else error).__name__}"
-            )
-        else:
-            logger.info(
-                f"Skipping {item_type} in node '{node_name}' "
-                f"due to {type(error.original_error if isinstance(error, LLMError) else error).__name__}"
-            )
-        return True  # skip this item
+        logger.info(
+            f"Skipping {item_type}{f' {item_index}' if item_index is not None else ''} "
+            f"in node '{node_name}' due to {type(error).__name__}"
+        )
+        return True
     else:
-        return False  # re-raise to fail pipeline
+        return False
+
+
+def _save_debug_prompt(node_name: str, prompt_text: str, item_index: Optional[int] = None):
+    """Save rendered prompt to .prompts/ when DEBUG is set."""
+    if not os.environ.get("DEBUG"):
+        return
+    prompts_dir = Path(".prompts")
+    prompts_dir.mkdir(exist_ok=True)
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    suffix = f"_{item_index}" if item_index is not None else ""
+    filename = f"{ts}_{node_name}{suffix}.txt"
+    (prompts_dir / filename).write_text(prompt_text)
 
 
 async def managed_llm_call(
@@ -379,29 +327,18 @@ async def managed_llm_call(
 ) -> Optional[Any]:
     """Centralized wrapper for LLM calls with error handling, retry, and connection tracking.
 
-    This function handles the standard pattern for all LLM calls:
-    - Retry with exponential backoff on transient errors (connection, timeout, 5xx, 429)
-    - Reset connection error counter on success
-    - Handle LLMError with appropriate behavior (skip/fail)
-    - Let other exceptions propagate
-    - Fire rate_limit_callback on rate limit retries (if configured on DAGConfig)
-
-    Retry behaviour: N attempts, exponential backoff (max 60s)
-
-    Args:
-        node_name: Name of the node making the call
-        config: DAGConfig instance with error handling settings
-        llm_func: Async callable to execute (e.g., chatter_async, default_map_task)
-        item_index: Optional index for error logging
-        *args: Positional arguments passed to llm_func
-        **kwargs: Keyword arguments passed to llm_func
-
-    Returns:
-        Result from llm_func on success, None if error was skipped
-
-    Raises:
-        Exception: If error should fail the pipeline
+    Retry behaviour: 3 attempts, exponential backoff (max 60s).
+    Uses struckdown's is_retryable property to determine retry eligibility.
     """
+    # save rendered prompts to .prompts/ when DEBUG is set
+    if os.environ.get("DEBUG"):
+        from soak.models.dag import render_template_preserve_undefined
+        prompt_text = kwargs.get("multipart_prompt") or kwargs.get("template")
+        context = kwargs.get("context", {})
+        if prompt_text and context:
+            prompt_text = render_template_preserve_undefined(prompt_text, context)
+        if prompt_text:
+            _save_debug_prompt(node_name, prompt_text, item_index)
 
     def _before_sleep_with_rate_limit_tracking(retry_state):
         """Log retry and fire rate_limit_callback if the error is a rate limit."""
@@ -430,9 +367,4 @@ async def managed_llm_call(
     except LLMError as e:
         if handle_llm_error_in_node(e, node_name, config, item_index):
             return None  # skip this item
-        raise
-    except RETRYABLE_EXCEPTIONS as e:
-        # Retryable error that exhausted all retries (not wrapped in LLMError)
-        if handle_llm_error_in_node(e, node_name, config, item_index):
-            return None
         raise

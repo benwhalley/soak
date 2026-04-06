@@ -247,7 +247,7 @@ async def test_transform_node_multi_slot():
     # Should have output
     assert transform_node.output is not None
 
-    # Transform output is a ChatterResult with structured data
+    # Transform output is a StruckdownResult with structured data
     output = transform_node.output
     assert hasattr(
         output, "response"

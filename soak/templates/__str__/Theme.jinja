@@ -1,0 +1,9 @@
+theme: {{ theme.name }}:
+  description: {{ theme.description }}
+  {% if theme.resolved_codes %}
+  codes:
+{% for code in theme.resolved_codes %}{{ code|string|indent(4, first=true) }}
+{% endfor %}
+  {% endif %}
+
+  

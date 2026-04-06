@@ -174,34 +174,15 @@ Always follow this specific guidance when generating themes.
 These were generated in batches. They are likely to overlap or be insufficiently distinct. We must rationalise them.
 
 <preliminary-themes>
-
 {% for batch in theme_groups %}
-------------
+---
 {% for theme in batch.themes %}
-- {{ theme.name }}: {{ theme.description }}
-  Linked codes: {% for slug in theme.code_slugs %}{{ slug }}{% if not loop.last %}, {% endif %}{% endfor %}
+{{theme}}
 
 {% endfor %}
 
 {% endfor %}
-
 </preliminary-themes>
-
-
-# AVAILABLE CODES
-
-These are the codes you may reference when linking themes to codes.
-Use the exact code slug (identifier) when linking.
-
-<codes>
-{% for batch in theme_groups %}
-{% for theme in batch.themes %}
-{% for code in theme.resolved_codes %}
-- `{{ code.slug }}`: {{ code.name }}
-{% endfor %}
-{% endfor %}
-{% endfor %}
-</codes>
 
 
 # TASK: PLANNING THEME CONSOLIDATION

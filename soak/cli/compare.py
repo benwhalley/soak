@@ -97,7 +97,7 @@ async def _generate_llm_labels(
 ) -> list[str]:
     """Generate short, unique labels for themes using LLM."""
     from jinja2 import StrictUndefined, Template
-    from struckdown import LLM, LLMCredentials, chatter_async
+    from struckdown import LLM, LLMCredentials, complete_async
 
     prompt_path = Path(__file__).parent.parent / "templates" / "make_labels.sd"
     prompt_template = prompt_path.read_text()
@@ -109,7 +109,7 @@ async def _generate_llm_labels(
     credentials = LLMCredentials(api_key=api_key, base_url=base_url)
     llm = LLM(model_name=model)
 
-    result = await chatter_async(
+    result = await complete_async(
         multipart_prompt=prompt,
         model=llm,
         credentials=credentials,

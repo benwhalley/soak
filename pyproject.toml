@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "soaking"
-version = "0.7.1"
+version = "0.9.0"
 description = "soak: graph-based pipelines and tools for LLM-assisted qualitative text analysis"
 authors = [
   { name = "Ben Whalley", email = "ben.whalley@plymouth.ac.uk" }
@@ -13,7 +13,6 @@ license = { text = "AGPL-3.0-or-later" }
 readme = "README_PYPI.md"
 requires-python = ">=3.12"
 dependencies = [
-    "instructor>=1.10.0",
     "jinja2>=3.1.6",
     "lark>=1.2.2",
     "matplotlib>=3.10.3",
@@ -77,7 +76,7 @@ scrub = [
 
 
 [tool.setuptools.package-data]
-soak = ["templates/*.html", "templates/*.md", "templates/**/*.html", "templates/**/*.md", "templates/**/*.sd", "pipelines/**/*.soak", "pipelines/**/*.sd", "soak-data/**/*", "calibration-data/**/*"]
+soak = ["templates/*.html", "templates/*.md", "templates/**/*.html", "templates/**/*.md", "templates/**/*.sd", "templates/**/*.jinja", "pipelines/**/*.soak", "pipelines/**/*.sd", "soak-data/**/*", "calibration-data/**/*"]
 django_soak = ["templates/**/*.html", "static/**/*"]
 
 [tool.setuptools.packages.find]
@@ -92,7 +91,7 @@ package = true
 
 [tool.uv.sources]
 # Local development version
-# struckdown = { path = "/Users/benwhalley/dev/struckdown", editable = true }
+struckdown = { path = "/Users/benwhalley/dev/struckdown", editable = true }
 spacy-transformers = { git = "https://github.com/explosion/spacy-transformers.git", rev = "bf2fe03" }
 umap-learn = { git = "https://github.com/lmcinnes/umap", branch = "master" }
 

@@ -5,23 +5,37 @@ import hashlib
 import json
 import logging
 import os
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import anyio
 from decouple import config as env_config
 from joblib import Memory
-from pydantic import BaseModel, Field, constr
-from struckdown import (ChatterResult, LLMCredentials, get_embedding,
+from pydantic import BaseModel, ConfigDict, Field, constr
+from struckdown import (StruckdownResult, LLMCredentials, get_embedding,
                         get_embedding_async)
 from struckdown.response_types import ResponseTypes
 from struckdown.return_type_models import ResponseModel
+
+from jinja2 import Environment, FileSystemLoader
 
 logger = logging.getLogger(__name__)
 
 # Configuration: Quote hash length (base32 encoding)
 QUOTE_HASH_LENGTH = int(os.getenv("QUOTE_HASH_LENGTH", "8"))
+
+# Jinja2 environment for __str__ templates
+_str_template_dir = Path(__file__).resolve().parent.parent / "templates" / "__str__"
+_str_env = Environment(
+    loader=FileSystemLoader(_str_template_dir),
+    keep_trailing_newline=False,
+)
+
+
+def render_str_template(template_name: str, context: Dict[str, Any]) -> str:
+    """Render a str_template by name (e.g. 'Code.jinja')."""
+    return _str_env.get_template(template_name).render(context)
 
 SOAK_MAX_RUNTIME = 60 * 30  # 30 mins
 
@@ -33,6 +47,7 @@ memory = Memory(Path(".embeddings"), verbose=0)
 # Concurrency settings
 MAX_CONCURRENCY = env_config("SOAK_MAX_CONCURRENCY", default=20, cast=int)
 _semaphore = None
+_max_concurrency_value = MAX_CONCURRENCY
 
 
 def get_semaphore() -> anyio.Semaphore:
@@ -43,10 +58,16 @@ def get_semaphore() -> anyio.Semaphore:
     return _semaphore
 
 
+def get_max_concurrency() -> int:
+    """Get the current maximum concurrency value."""
+    return _max_concurrency_value
+
+
 def set_max_concurrency(n: int) -> None:
     """Set the maximum concurrency for LLM calls. Replaces the semaphore."""
-    global _semaphore
+    global _semaphore, _max_concurrency_value
     _semaphore = anyio.Semaphore(n)
+    _max_concurrency_value = n
 
 
 # Exception classes for backward compatibility
@@ -76,7 +97,7 @@ class QuoteProvenanceError(Exception):
 class BatchList(BaseModel):
     """Container for batched results."""
 
-    batches: Union[List[List[ChatterResult]], List[List[str]]]
+    batches: Union[List[List[StruckdownResult]], List[List[str]]]
 
     def __iter__(self):
         return iter(self.batches)
@@ -161,12 +182,9 @@ class Code(ResponseModel):
 
     # post-processed field (excluded from LLM schema)
     resolved_quotes: Optional[List[Dict]] = PostProcessedField(default=None)
-
+    
     def __str__(self):
-        quotes_text = "".join([f"""\n- {i}""" for i in self.all_quotes])
-        return f"""Code: `{self.slug}`: {self.name}
-Description: {self.description}
-Supporting quotes: {quotes_text}"""
+        return render_str_template("Code.jinja", {"code": self})
 
     @property
     def all_quotes(self) -> List[Quote]:
@@ -223,7 +241,13 @@ class CodeList(BaseModel):
     codes: List[Code] = Field(..., min_length=0)
 
     def __str__(self):
-        return "\n\n".join([str(i) for i in self.codes])
+        return render_str_template("CodeList.jinja", {"codes": self.codes})
+
+    def __iter__(self):
+        return iter(self.codes)
+
+    def __len__(self):
+        return len(self.codes)
 
     def post_process(self, context: Dict[str, Any]):
         """Post-process each code in the list."""
@@ -244,8 +268,7 @@ class Theme(ResponseModel):
     )
 
     def __str__(self):
-        cds_ = str([str(c) for c in self.resolved_codes])
-        return f"Theme: {self.name}\n{self.description}\nCodes: {cds_}"
+        return render_str_template("Theme.jinja", {"theme": self})
 
     # Post-processed fields (excluded from LLM schema)
     resolved_code_refs: Optional[List[Dict]] = PostProcessedField(default=None)
@@ -282,7 +305,13 @@ class Themes(BaseModel):
     themes: List[Theme] = Field(..., min_length=1)
 
     def __str__(self):
-        return "---\n\n".join([str(i) for i in self.themes])
+        return render_str_template("Themes.jinja", {"themes": self.themes})
+
+    def __iter__(self):
+        return iter(self.themes)
+
+    def __len__(self):
+        return len(self.themes)
 
     def post_process(self, context: Dict[str, Any]):
         """Post-process each theme in the list."""
@@ -299,14 +328,13 @@ class Document:
     metadata: Dict[str, Any] = field(default_factory=dict)
 
 
-@dataclass
-class TrackedItem:
+class TrackedItem(BaseModel):
     """Wrapper for content with provenance metadata.
 
     Tracks items through the pipeline with unique IDs and source provenance.
 
     Fields:
-        content: str (for documents) or ChatterResult (for LLM outputs)
+        content: str (for documents) or StruckdownResult (for LLM outputs)
         id: Unique identifier for THIS item
         sources: List of source item IDs that contributed to this (provenance trail)
         metadata: Additional metadata (filename, etc.)
@@ -319,16 +347,18 @@ class TrackedItem:
     Examples:
         TrackedItem(content="text", id="doc1", sources=["doc1"])  # Original document
         TrackedItem(content="chunk", id="doc1__chunks__0", sources=["doc1"])  # After split
-        TrackedItem(content=ChatterResult(...), id="doc1__chunks__0__coded", sources=["doc1__chunks__0"])  # After map
+        TrackedItem(content=StruckdownResult(...), id="doc1__chunks__0__coded", sources=["doc1__chunks__0"])  # After map
         TrackedItem(content="combined", id="all_codes", sources=["doc1__coded", "doc2__coded"])  # After reduce
     """
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
     content: Union[
         str, Any
-    ]  # str for documents, ChatterResult for LLM outputs, Any for flexibility
+    ]  # str for documents, StruckdownResult for LLM outputs, Any for flexibility
     id: str  # THIS item's unique ID
     sources: List[str]  # IDs that contributed to this item
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
     content_excluding_overlap: Optional[Tuple[int, int]] = (
         None  # (start, end) indices for core content without overlap
     )
@@ -352,6 +382,16 @@ class TrackedItem:
     def __repr__(self) -> str:
         """Return representation showing ID and sources."""
         return f"TrackedItem(id={self.id!r}, sources={self.sources!r})"
+
+    def __hash__(self) -> int:
+        """Hash based on id for use in sets and as dict keys."""
+        return hash(self.id)
+
+    def __eq__(self, other) -> bool:
+        """Equality based on id."""
+        if isinstance(other, TrackedItem):
+            return self.id == other.id
+        return NotImplemented
 
     @property
     def lineage(self) -> List[str]:
@@ -413,7 +453,7 @@ class TrackedItem:
         Returns:
             Dict suitable for JSON serialization
         """
-        result = asdict(self)
+        result = self.model_dump(mode="json")
 
         # clean metadata to ensure JSON serializability
         if result.get("metadata"):
@@ -656,7 +696,7 @@ def get_action_lookup():
 
 
 def safe_json_dump(obj: Any, indent: int = 2) -> str:
-    """Serialize to JSON, handling ChatterResult and Pydantic models."""
+    """Serialize to JSON, handling StruckdownResult and Pydantic models."""
     try:
         # Handle Pydantic models
         if hasattr(obj, "model_dump"):
@@ -682,13 +722,13 @@ def extract_content(obj) -> Optional[str]:
     return None
 
 
-def extract_prompt(chatter_result) -> Optional[str]:
-    """Extract prompt text from ChatterResult.results."""
-    if not chatter_result or not hasattr(chatter_result, "results"):
+def extract_prompt(complete_result) -> Optional[str]:
+    """Extract prompt text from StruckdownResult.results."""
+    if not complete_result or not hasattr(complete_result, "results"):
         return None
 
-    if chatter_result.results:
-        first_seg = next(iter(chatter_result.results.values()), None)
+    if complete_result.results:
+        first_seg = next(iter(complete_result.results.values()), None)
         return getattr(first_seg, "prompt", None) if first_seg else None
 
     return None

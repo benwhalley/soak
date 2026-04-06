@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional, Union
 
 from soak.models.dag import render_strict_template
-from soak.models.utils import unwrap_chatter_items
+from soak.models.utils import unwrap_complete_items
 
 from .base import DAGNode
 
@@ -21,7 +21,7 @@ class Reduce(DAGNode):
     - Flat list: Reduce to single string
 
     Behavior (items_field mode):
-    - When items_field is set, extracts structured items from containers (e.g., ChatterResult)
+    - When items_field is set, extracts structured items from containers (e.g., StruckdownResult)
     - Flattens all inputs into a single list of extracted items
     - Returns the list directly without template rendering
     - Useful for collecting Code/Theme objects from multiple Map outputs
@@ -40,7 +40,7 @@ class Reduce(DAGNode):
         - name: all_codes
           type: Reduce
           items_field: codes
-          inputs: [coded_chunks]  # List of ChatterResults with codes
+          inputs: [coded_chunks]  # List of StruckdownResults with codes
     """
 
     type: Literal["Reduce"] = "Reduce"
@@ -131,7 +131,7 @@ class Reduce(DAGNode):
             raw_items = [input_data]
 
         # Extract items using items_field
-        extracted = unwrap_chatter_items(raw_items, self.items_field)
+        extracted = unwrap_complete_items(raw_items, self.items_field)
 
         self.output = extracted
         logger.info(

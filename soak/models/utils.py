@@ -16,13 +16,13 @@ logger = logging.getLogger(__name__)
 def extract_output_dict(
     output_item, serialize_iterables: bool = True
 ) -> Dict[str, Any]:
-    """Extract output dictionary from a ChatterResult or similar output item.
+    """Extract output dictionary from a StruckdownResult or similar output item.
 
     Handles both output objects with .outputs attribute and plain dicts,
     normalizing them to a consistent dict format for DataFrame export.
 
     Args:
-        output_item: ChatterResult, dict, or other output object
+        output_item: StruckdownResult, dict, or other output object
         serialize_iterables: If True, convert lists/tuples to strings for CSV export
 
     Returns:
@@ -52,8 +52,8 @@ def extract_output_dict(
     return output_dict
 
 
-def export_chatter_result(result, folder: Path, file_prefix: str) -> None:
-    """Export ChatterResult prompt, response, and JSON to files.
+def export_complete_result(result, folder: Path, file_prefix: str) -> None:
+    """Export StruckdownResult prompt, response, and JSON to files.
 
     Standardizes the export pattern used across multiple node types.
     Safely handles missing attributes and logs warnings on failure.
@@ -61,7 +61,7 @@ def export_chatter_result(result, folder: Path, file_prefix: str) -> None:
     Additionally exports structured responses (Code/Theme/etc.) to CSV if detected.
 
     Args:
-        result: ChatterResult object to export
+        result: StruckdownResult object to export
         folder: Directory to write files to
         file_prefix: Prefix for output filenames (e.g., "0001_item")
     """
@@ -87,25 +87,25 @@ def export_chatter_result(result, folder: Path, file_prefix: str) -> None:
         json_file.write_text(safe_json_dump(result))
 
     except Exception as e:
-        logger.warning(f"Failed to export ChatterResult for {file_prefix}: {e}")
+        logger.warning(f"Failed to export StruckdownResult for {file_prefix}: {e}")
 
 
 def export_slots_as_text_files(result, folder: Path) -> None:
     """Export each response slot as a separate text file and CSV for structured types.
 
-    For Transform nodes where we have one ChatterResult with multiple slots,
+    For Transform nodes where we have one StruckdownResult with multiple slots,
     this creates one .txt file per slot. Additionally, if a slot contains
     Themes or Codes, exports a CSV file with structured data.
 
     Args:
-        result: ChatterResult object to export
+        result: StruckdownResult object to export
         folder: Directory to write files to
     """
     from soak.models.base import Code, CodeList, Theme, Themes
 
     try:
         if not hasattr(result, "results") or not result.results:
-            logger.warning("No output slots found in ChatterResult")
+            logger.warning("No output slots found in StruckdownResult")
             return
 
         # export each slot as a separate text file
@@ -252,8 +252,8 @@ def _export_themes_to_csv(themes: List, folder: Path, file_prefix: str) -> None:
 # Quote provenance post-processing functions
 
 
-def post_process_chatter_result(result, context: Dict[str, Any]) -> None:
-    """Post-process all outputs in a ChatterResult.
+def post_process_complete_result(result, context: Dict[str, Any]) -> None:
+    """Post-process all outputs in a StruckdownResult.
 
     Calls post_process() on any object with a post_process method found in
     the result's outputs. Handles both single objects (e.g., from [[code:c]])
@@ -261,7 +261,7 @@ def post_process_chatter_result(result, context: Dict[str, Any]) -> None:
     and resolved_code_refs fields needed for quote verification.
 
     Args:
-        result: ChatterResult object with .outputs attribute
+        result: StruckdownResult object with .outputs attribute
         context: Template context dict (passed to post_process methods)
     """
     if result is None or not hasattr(result, "outputs"):
@@ -504,7 +504,7 @@ def collect_input_codes(context: Dict[str, Any]) -> List[Code]:
 
     This function searches the context for Code objects in two ways:
 
-    1. Direct context search: Looks for CodeList objects or ChatterResults with CodeList outputs
+    1. Direct context search: Looks for CodeList objects or StruckdownResults with CodeList outputs
        in the provided context dictionary (template variables).
 
     2. DAG traversal fallback: If no codes are found in direct context, and the context contains
@@ -551,14 +551,14 @@ def collect_input_codes(context: Dict[str, Any]) -> List[Code]:
                     )
                     codes.extend(metadata_items)
             elif hasattr(item, "outputs"):
-                # ChatterResult -- extract CodeList from outputs
+                # StruckdownResult -- extract CodeList from outputs
                 logger.debug(
-                    f"collect_input_codes: Found ChatterResult in key '{key}', checking outputs"
+                    f"collect_input_codes: Found StruckdownResult in key '{key}', checking outputs"
                 )
                 for output_key, output_val in item.outputs.items():
                     if isinstance(output_val, CodeList):
                         logger.debug(
-                            f"collect_input_codes: Found CodeList in ChatterResult output '{output_key}' with {len(output_val.codes)} codes"
+                            f"collect_input_codes: Found CodeList in StruckdownResult output '{output_key}' with {len(output_val.codes)} codes"
                         )
                         codes.extend(output_val.codes)
                     elif isinstance(output_val, list):
@@ -657,11 +657,11 @@ def _get_codes_from_ancestors(node, dag, visited: set) -> List[Code]:
                 )
                 codes.extend(item.codes)
             elif hasattr(item, "outputs"):
-                # ChatterResult
+                # StruckdownResult
                 for output_val in item.outputs.values():
                     if isinstance(output_val, CodeList):
                         logger.debug(
-                            f"_get_codes_from_ancestors: Found CodeList in node '{node.name}' ChatterResult"
+                            f"_get_codes_from_ancestors: Found CodeList in node '{node.name}' StruckdownResult"
                         )
                         codes.extend(output_val.codes)
 
@@ -702,25 +702,25 @@ def get_nested_attr(obj: Any, path: str) -> Any:
     return current
 
 
-def unwrap_chatter_items(items: List[Any], items_field: str) -> List[Any]:
+def unwrap_complete_items(items: List[Any], items_field: str) -> List[Any]:
     """Unwrap items from container types using items_field.
 
-    Extracts nested items from ChatterResult or other container objects.
-    For ChatterResult, extracts from each segment's output using the items_field path.
+    Extracts nested items from StruckdownResult or other container objects.
+    For StruckdownResult, extracts from each segment's output using the items_field path.
 
     Args:
-        items: List of items (may be containers like CodeList, ChatterResult, etc.)
+        items: List of items (may be containers like CodeList, StruckdownResult, etc.)
         items_field: Field path to extract items from containers (e.g., "codes")
 
     Returns:
         Flattened list of unwrapped items
 
     Example:
-        # Extract Code objects from ChatterResults
-        codes = unwrap_chatter_items(chatter_results, "codes")
-        # Each ChatterResult's .results.*.output.codes is extracted and flattened
+        # Extract Code objects from StruckdownResults
+        codes = unwrap_complete_items(complete_results, "codes")
+        # Each StruckdownResult's .results.*.output.codes is extracted and flattened
     """
-    from struckdown import ChatterResult
+    from struckdown import StruckdownResult
 
     def _extract_items(obj: Any, field: str) -> Any:
         """Extract items from object, handling various response formats.
@@ -750,8 +750,8 @@ def unwrap_chatter_items(items: List[Any], items_field: str) -> List[Any]:
     for item in items:
         if item is None:
             continue
-        # handle ChatterResult specially - extract from results dict
-        if isinstance(item, ChatterResult):
+        # handle StruckdownResult specially - extract from results dict
+        if isinstance(item, StruckdownResult):
             for segment_name, segment in item.results.items():
                 extracted = _extract_items(segment.output, items_field)
                 if extracted is not None:

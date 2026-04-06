@@ -46,8 +46,10 @@ DO NOT refer to "layered meta-narrative" or "over-arching narrative" in the text
 # TASK: READ THE THEMES CAREFULLY
 
 <themes>
-    
-{{themes}}
+
+{% for t in themes.themes %}
+{{t}}
+{% endfor %}
 
 </themes>
     

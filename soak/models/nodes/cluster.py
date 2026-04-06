@@ -13,7 +13,7 @@ from pydantic import BaseModel, Field, PrivateAttr
 from tqdm import tqdm
 
 from soak.models.base import TrackedItem, get_embedding_async, memory
-from soak.models.utils import unwrap_chatter_items
+from soak.models.utils import unwrap_complete_items
 
 from .base import DAGNode
 from .batch import BatchList
@@ -325,7 +325,7 @@ class Cluster(DAGNode):
             - None (default): Use items as-is
             - "codes": Extract from CodeList.codes (use after Map producing CodeLists)
             - "results.codes.output.codes": Dotted path for nested extraction
-            For ChatterResult inputs, extraction happens from segment.output
+            For StruckdownResult inputs, extraction happens from segment.output
         text_field: How to extract text for embedding from each item:
             - "content" (default): Uses TrackedItem.content or str(item)
             - "metadata.field_name": Extracts from item.metadata["field_name"]
@@ -602,7 +602,7 @@ class Cluster(DAGNode):
 
         # unwrap items from containers (e.g., CodeList -> Code)
         if self.items_field:
-            items = unwrap_chatter_items(raw_items, self.items_field)
+            items = unwrap_complete_items(raw_items, self.items_field)
         else:
             items = raw_items
 
@@ -792,16 +792,17 @@ class Cluster(DAGNode):
 
         if self.output:
             result["metadata"]["num_clusters"] = len(self.output)
-            sizes = [c.metadata["cluster_size"] for c in self.output]
-            result["metadata"]["total_items"] = sum(sizes)
-
-            # cluster size distribution
-            if sizes:
-                result["metadata"]["cluster_sizes"] = {
-                    "min": min(sizes),
-                    "max": max(sizes),
-                    "mean": float(np.mean(sizes)),
-                }
+            # only compute cluster stats when output is TrackedItems with cluster metadata
+            first = self.output[0] if isinstance(self.output, list) and self.output else None
+            if isinstance(first, TrackedItem) and "cluster_size" in first.metadata:
+                sizes = [c.metadata["cluster_size"] for c in self.output]
+                result["metadata"]["total_items"] = sum(sizes)
+                if sizes:
+                    result["metadata"]["cluster_sizes"] = {
+                        "min": min(sizes),
+                        "max": max(sizes),
+                        "mean": float(np.mean(sizes)),
+                    }
 
         return result
 
@@ -813,6 +814,12 @@ class Cluster(DAGNode):
         folder = Path(folder)
 
         if not self.output:
+            return
+
+        # when skip_below triggers in bypass mode, output is raw items (not TrackedItems)
+        # -- nothing meaningful to export in that case
+        first = self.output[0] if isinstance(self.output, list) and self.output else self.output
+        if not isinstance(first, TrackedItem) or "cluster_size" not in getattr(first, "metadata", {}):
             return
 
         # write cluster summary

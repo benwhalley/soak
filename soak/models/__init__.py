@@ -11,8 +11,8 @@ from .base import (  # Exceptions; Base models; Utility functions
     CodeSlugStr, Document, QualitativeAnalysis, QualitativeAnalysisComparison,
     Theme, Themes, TrackedItem, extract_content, extract_prompt,
     get_action_lookup, get_default_llm_credentials, get_embedding,
-    get_embedding_async, get_semaphore, memory, safe_json_dump,
-    set_max_concurrency)
+    get_embedding_async, get_max_concurrency, get_semaphore, memory,
+    safe_json_dump, set_max_concurrency)
 # Context variable models
 from .context import ContextVariable, get_context_defaults, normalize_context
 # DAG execution
@@ -87,6 +87,7 @@ __all__ = [
     # Constants
     "MAX_CONCURRENCY",
     "SOAK_MAX_RUNTIME",
+    "get_max_concurrency",
     "get_semaphore",
     "memory",
     "set_max_concurrency",
