@@ -141,6 +141,12 @@ class Map(ItemsNode, CompletionDAGNode):
                                 else:
                                     # Default LLM mode
                                     extra_kwargs = self.get_llm_kwargs()
+                                    if self.dag.config.streaming_callback:
+                                        extra_kwargs["_streaming_callback"] = (
+                                            self.dag.config.streaming_callback
+                                        )
+                                        extra_kwargs["_stream_node_name"] = self.name
+                                        extra_kwargs["_stream_item_index"] = index
                                     llm_context = {**filtered_context, **item}
                                     results[index] = await managed_llm_call(
                                         node_name=self.name,
@@ -157,6 +163,10 @@ class Map(ItemsNode, CompletionDAGNode):
                                     post_process_complete_result(
                                         results[index], llm_context
                                     )
+                                    # Accumulate costs immediately so progress callback
+                                    # reports up-to-date totals
+                                    self._accumulate_costs(results[index])
+                                    self._llm_results.append(results[index])
                             except Exception as e:
                                 # re-raise all other errors to fail the pipeline
                                 logger.error(
@@ -195,17 +205,13 @@ class Map(ItemsNode, CompletionDAGNode):
             if progress_bar is None and pbar is not None:
                 pbar.close()
 
-        # accumulate costs and track for cache statistics (only for LLM mode)
+        # update CLI progress bar with per-node cost (costs already accumulated during execution)
         if self.mode == "llm":
-            for result in results:
-                if result is not None:
-                    self._accumulate_costs(result)
-                    self._llm_results.append(result)
+            from soak.models.progress import CostProgressBar
 
-                    # update progress bar with per-node cost if using CostProgressBar
-                    from soak.models.progress import CostProgressBar
-
-                    if isinstance(pbar, CostProgressBar):
+            if isinstance(pbar, CostProgressBar):
+                for result in results:
+                    if result is not None:
                         pbar.update_cost(
                             result.fresh_cost,
                             result.prompt_tokens + result.completion_tokens,

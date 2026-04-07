@@ -101,6 +101,11 @@ class DAGConfig(BaseModel):
         default=None, exclude=True
     )  # callback(node_name, model_name) - fired on 429 retries
 
+    # streaming callback for live output visibility (slot completions + token deltas)
+    streaming_callback: Optional[Callable[[str, Optional[int], Any], None]] = Field(
+        default=None, exclude=True
+    )  # callback(node_name, item_index, event) - streaming events
+
     # report configuration - supports both formats:
     # - List: ["narrative.slot1", "narrative.slot2"]
     # - Dict: {"narrative.slot1": {"label": "...", "description": "..."}}

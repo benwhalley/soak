@@ -13,6 +13,10 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
+from decouple import config as _decouple_config
+
+_SOAK_DEBUG = _decouple_config("DEBUG", default=False, cast=bool)
+
 from struckdown import LLMError
 from struckdown.errors import (
     AuthError,
@@ -312,7 +316,7 @@ def handle_llm_error_in_node(
 
 def _save_debug_prompt(node_name: str, prompt_text: str, item_index: Optional[int] = None):
     """Save rendered prompt to .prompts/ when DEBUG is set."""
-    if not os.environ.get("DEBUG"):
+    if not _SOAK_DEBUG:
         return
     prompts_dir = Path(".prompts")
     prompts_dir.mkdir(exist_ok=True)
@@ -331,7 +335,7 @@ async def managed_llm_call(
     Uses struckdown's is_retryable property to determine retry eligibility.
     """
     # save rendered prompts to .prompts/ when DEBUG is set
-    if os.environ.get("DEBUG"):
+    if _SOAK_DEBUG:
         from soak.models.dag import render_template_preserve_undefined
         prompt_text = kwargs.get("multipart_prompt") or kwargs.get("template")
         context = kwargs.get("context", {})

@@ -136,6 +136,9 @@ class Classifier(ItemsNode, CompletionDAGNode):
                                         extra_kwargs=extra_kwargs,
                                     )
                                     results[index] = complete_result
+                                    # Accumulate costs immediately for real-time progress
+                                    self._accumulate_costs(complete_result)
+                                    self._llm_results.append(complete_result)
                                 except Exception as e:
                                     # catch-all for any non-struckdown errors
                                     logger.error(
@@ -150,34 +153,30 @@ class Classifier(ItemsNode, CompletionDAGNode):
                                             getattr(progress_bar, "slots_per_item", 1)
                                         )
 
+                                    # call progress callback for web UI if available
+                                    if self.dag.config.progress_callback:
+                                        try:
+                                            self.dag.config.progress_callback(
+                                                self.name,
+                                                len(self._llm_results),
+                                                self._input_count,
+                                                self._total_cost,
+                                            )
+                                        except Exception:
+                                            pass
+
                         tg.start_soon(run_and_store)
 
-            # accumulate costs and track for cache statistics
-            for result in results:
-                if result is not None:
-                    self._accumulate_costs(result)
-                    self._llm_results.append(result)
+            # update CLI progress bar with per-node cost (costs already accumulated during execution)
+            from soak.models.progress import CostProgressBar
 
-                    # update progress bar with per-node cost if using CostProgressBar
-                    from soak.models.progress import CostProgressBar
-
-                    if isinstance(pbar, CostProgressBar):
+            if isinstance(pbar, CostProgressBar):
+                for result in results:
+                    if result is not None:
                         pbar.update_cost(
                             result.fresh_cost,
                             result.prompt_tokens + result.completion_tokens,
                         )
-
-                    # call progress callback for web UI if available
-                    if self.dag.config.progress_callback:
-                        try:
-                            self.dag.config.progress_callback(
-                                self.name,
-                                len(self._llm_results),
-                                self._input_count,
-                                self._total_cost,
-                            )
-                        except Exception:
-                            pass  # don't let callback errors affect execution
 
             self._model_results[model_name] = results
 

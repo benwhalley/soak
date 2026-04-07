@@ -2,6 +2,7 @@
 
 import logging
 import sys
+from functools import partial
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Union
 
@@ -16,7 +17,7 @@ from soak.models.base import (extract_prompt, get_action_lookup,
 from soak.models.dag import render_template_preserve_undefined
 from soak.models.utils import post_process_complete_result
 
-from .base import CompletionDAGNode, ItemsNode
+from .base import CompletionDAGNode, ItemsNode, complete_async_with_streaming
 
 logger = logging.getLogger(__name__)
 
@@ -128,10 +129,19 @@ class Transform(ItemsNode, CompletionDAGNode):
             try:
                 logger.debug(f"Calling LLM with prompt: {rt}")
                 logger.debug(f"Context: {merged_context}")
+                if self.dag.config.streaming_callback:
+                    llm_func = partial(
+                        complete_async_with_streaming,
+                        streaming_callback=self.dag.config.streaming_callback,
+                        stream_node_name=self.name,
+                        stream_item_index=None,
+                    )
+                else:
+                    llm_func = complete_async
                 result = await managed_llm_call(
                     node_name=self.name,
                     config=self.dag.config,
-                    llm_func=complete_async,
+                    llm_func=llm_func,
                     item_index=None,
                     multipart_prompt=rt,
                     context=merged_context,

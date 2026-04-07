@@ -133,7 +133,8 @@ Briefly, jot down your thoughts. What order will help readers understand the the
 Are themes linked? Should they be described together?  
 Can themes be contrasted or juxtaposed? 
 Are there surprising connections that we should highlight? 
-Consider these and related questions and make a brief plan (note form, VERY abbreviated, capture logic only and frame as instructions for future you):
+Consider these and related questions and make a brief plan 
+(note form, VERY abbreviated, capture logic only and frame as instructions for future you):
 
 [[reportplanning]]
 
@@ -142,6 +143,8 @@ Consider these and related questions and make a brief plan (note form, VERY abbr
 
 Remember the guidance.
 Write up the report in accordance with your plan. 
+DO NOT INCLUDE THE PLAN. 
+JUST WRITE THE REPORT.
 
 [[narrative]]
 
@@ -182,8 +185,28 @@ Use the guidance above. Develop a broader-narrative and set of overarching theme
 
 Think carefully and formulate a plan for a larger narrative that connects and explains the themes.
 
+
+## TASK: READ THE THEMES CAREFULLY
+
+<themes>
+    
+{{themes}}
+
+</themes>
+
+
+## TASK: RE-READ OUR NARRATIVE REPORT ON THE THEMES
+
+<report>
+
+{{narrative}}
+
+</report>
+
+
 ## TASK: WRITE THE SUMMARY/OVERVIEW REPORT
 
-Write the meta-narrative using the guidance and instructions above. Don't include your plan - just the narrative.
+Write the meta-narrative using the guidance and instructions above. 
+DON'T INCLUDE YOUR PLAN - JUST THE NARRATIVE.
 
 [[meta_narrative]]  

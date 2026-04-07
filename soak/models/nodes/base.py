@@ -712,22 +712,86 @@ async def default_map_task(template, context, model, credentials, **kwargs):
     to the calling node (Map) which handles them appropriately via managed_llm_call.
     The connection error counter is reset by managed_llm_call wrapper.
     """
+    # extract streaming kwargs before passing rest to struckdown
+    streaming_callback = kwargs.pop("_streaming_callback", None)
+    stream_node_name = kwargs.pop("_stream_node_name", "")
+    stream_item_index = kwargs.pop("_stream_item_index", None)
+
     # Pre-render context variables but preserve undefined ones for struckdown.
     # This allows {{min_themes}} to render while keeping {{narrative}} (from [[narrative]])
     # intact for struckdown to fill after checkpoint processing.
     rt = render_template_preserve_undefined(template, context)
 
-    # call complete as async function within the main event loop
-    # errors will propagate to the calling node for handling
-    result = await complete_async(
-        multipart_prompt=rt,
-        context=context,
-        model=model,
-        credentials=credentials,
-        extra_kwargs=kwargs,
-    )
+    if streaming_callback:
+        result = await complete_async_with_streaming(
+            multipart_prompt=rt,
+            context=context,
+            model=model,
+            credentials=credentials,
+            extra_kwargs=kwargs,
+            streaming_callback=streaming_callback,
+            stream_node_name=stream_node_name,
+            stream_item_index=stream_item_index,
+        )
+    else:
+        result = await complete_async(
+            multipart_prompt=rt,
+            context=context,
+            model=model,
+            credentials=credentials,
+            extra_kwargs=kwargs,
+        )
 
     return result
+
+
+async def complete_async_with_streaming(
+    multipart_prompt: str,
+    context: dict = {},
+    *,
+    model=None,
+    credentials=None,
+    extra_kwargs=None,
+    streaming_callback=None,
+    stream_node_name: str = "",
+    stream_item_index: Optional[int] = None,
+) -> StruckdownResult:
+    """Streaming-aware wrapper around complete_incremental_async.
+
+    Returns the same StruckdownResult as complete_async, but fires
+    streaming_callback on each incremental event for live UI updates.
+    Fully compatible with managed_llm_call's retry decorator.
+    """
+    import struckdown as sd
+
+    final_result = None
+    async for event in sd.complete_incremental_async(
+        multipart_prompt,
+        model=model,
+        credentials=credentials,
+        context=context,
+        extra_kwargs=extra_kwargs,
+        stream=True,
+    ):
+        if streaming_callback:
+            try:
+                streaming_callback(stream_node_name, stream_item_index, event)
+            except Exception:
+                logger.debug("Streaming callback error (suppressed)", exc_info=True)
+
+        if isinstance(event, sd.ProcessingComplete):
+            final_result = event.result
+        elif isinstance(event, sd.ProcessingError):
+            raise LLMError(
+                original_error=Exception(event.error_message),
+                prompt=multipart_prompt,
+                model_name=str(model) if model else "unknown",
+            )
+
+    if final_result is None:
+        raise RuntimeError("complete_incremental_async ended without ProcessingComplete")
+
+    return final_result
 
 
 async def template_map_task(template, context, **kwargs):

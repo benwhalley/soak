@@ -232,6 +232,9 @@ class Filter(ItemsNode, CompletionDAGNode):
                                     credentials=self.dag.config.llm_credentials,
                                     **extra_kwargs,
                                 )
+                                # Accumulate costs immediately for real-time progress
+                                self._accumulate_costs(llm_results[index])
+                                self._llm_results.append(llm_results[index])
                             except Exception as e:
                                 logger.error(
                                     f"Filter '{self.name}': Error in LLM call for item {index}: {e}"
@@ -243,38 +246,34 @@ class Filter(ItemsNode, CompletionDAGNode):
                                         getattr(progress_bar, "slots_per_item", 1)
                                     )
 
+                                # call progress callback for web UI if available
+                                if self.dag.config.progress_callback:
+                                    try:
+                                        self.dag.config.progress_callback(
+                                            self.name,
+                                            len(self._llm_results),
+                                            self._input_count,
+                                            self._total_cost,
+                                        )
+                                    except Exception:
+                                        pass
+
                     tg.start_soon(run_and_store)
         finally:
             # Only close progress bar if we created it locally
             if progress_bar is None and pbar is not None:
                 pbar.close()
 
-        # accumulate costs from all results and store for cache statistics
-        for result in llm_results:
-            if result is not None:
-                self._accumulate_costs(result)
-                self._llm_results.append(result)
+        # update CLI progress bar with per-node cost (costs already accumulated during execution)
+        from soak.models.progress import CostProgressBar
 
-                # update progress bar with per-node cost if using CostProgressBar
-                from soak.models.progress import CostProgressBar
-
-                if isinstance(pbar, CostProgressBar):
+        if isinstance(pbar, CostProgressBar):
+            for result in llm_results:
+                if result is not None:
                     pbar.update_cost(
                         result.fresh_cost,
                         result.prompt_tokens + result.completion_tokens,
                     )
-
-                # call progress callback for web UI if available
-                if self.dag.config.progress_callback:
-                    try:
-                        self.dag.config.progress_callback(
-                            self.name,
-                            len(self._llm_results),
-                            self._input_count,
-                            self._total_cost,
-                        )
-                    except Exception:
-                        pass  # don't let callback errors affect execution
 
         # now filter based on expression
         included = []
