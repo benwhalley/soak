@@ -88,6 +88,9 @@ allow_web_overrides:
         label: Minimum size for a chunk make from splitting documents
     - overlap:
         label: Overlap between chunks
+  groupedcodes:
+    - skip_below:
+        label: Skip clustering step if we have fewer than this many codes
   checkquotes:
     - check_fairness:
         label: Check fairness
@@ -139,7 +142,7 @@ nodes:
     type: Cluster
     inputs: [codes_from_chunks]
     items_field: codes  # extract from ChatterResult containers
-    skip_below: 300
+    skip_below: 75
     if_skipped_bypass_to: codes  # bypass consolidation of cluster
     method:
       name: hdbscan
