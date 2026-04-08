@@ -91,7 +91,8 @@ package = true
 
 [tool.uv.sources]
 # Local development version
-struckdown = { path = "/Users/benwhalley/dev/struckdown", editable = true }
+# struckdown = { path = "/Users/benwhalley/dev/struckdown", editable = true }
+struckdown = { git = "https://github.com/benwhalley/struckdown", branch = "main" }
 spacy-transformers = { git = "https://github.com/explosion/spacy-transformers.git", rev = "bf2fe03" }
 umap-learn = { git = "https://github.com/lmcinnes/umap", branch = "master" }
 
