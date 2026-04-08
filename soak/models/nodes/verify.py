@@ -1,5 +1,6 @@
 """VerifyQuotes node for validating quotes against source documents."""
 
+import functools
 import hashlib
 import json
 import logging
@@ -1269,13 +1270,20 @@ class VerifyQuotes(CompletionDAGNode):
                 # Use node name for progress tracking
                 base_callback(self.name, done, total, cost)
 
+        embed_fn = get_embedding_async
+        embed_creds = self.dag.config.get_embedding_credentials()
+        if embed_creds:
+            embed_fn = functools.partial(
+                get_embedding_async, credentials=embed_creds
+            )
+
         matches = await verify_quotes_bm25_first(
             quotes_to_verify,
             windows,
             search_corpus,
             doc_boundaries,
             doc_content_map,
-            get_embedding_async,
+            embed_fn,
             bm25_k1=self.bm25_k1,
             bm25_b=self.bm25_b,
             ellipsis_max_gap=self.ellipsis_max_gap,

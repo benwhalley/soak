@@ -63,6 +63,14 @@ class DAGConfig(BaseModel):
     embedding_model: str = (
         "text-embedding-3-large"  # model for embeddings (use "local/model-name" for sentence-transformers)
     )
+    embedding_credentials: Optional[LLMCredentials] = Field(
+        default=None, repr=False, exclude=True,
+        description="Credentials for embedding API calls (falls back to llm_credentials if None)",
+    )
+
+    def get_embedding_credentials(self) -> Optional[LLMCredentials]:
+        """Return embedding credentials, falling back to llm_credentials."""
+        return self.embedding_credentials or self.llm_credentials
 
     # error handling configuration
     fail_on_context_exceeded: bool = True  # if False, skip item with warning

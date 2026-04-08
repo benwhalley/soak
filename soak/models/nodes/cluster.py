@@ -454,6 +454,7 @@ class Cluster(DAGNode):
                 embeddings_list = await get_embedding_async(
                     unique_texts,
                     model=self.dag.config.embedding_model,
+                    credentials=self.dag.config.get_embedding_credentials(),
                 )
                 pbar.update(len(unique_texts))
             finally:
@@ -462,6 +463,7 @@ class Cluster(DAGNode):
             embeddings_list = await get_embedding_async(
                 unique_texts,
                 model=self.dag.config.embedding_model,
+                credentials=self.dag.config.get_embedding_credentials(),
             )
         unique_embeddings = np.array(embeddings_list)
         logger.info("Embeddings computed.")
