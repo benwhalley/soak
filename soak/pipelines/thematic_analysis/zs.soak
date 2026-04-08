@@ -88,6 +88,9 @@ allow_web_overrides:
         label: Minimum size for a chunk make from splitting documents
     - overlap:
         label: Overlap between chunks
+  codes_from_chunks:
+    - thinking:
+        label: Level of thinking for the initial code generation
   groupedcodes:
     - skip_below:
         label: Skip clustering step if we have fewer than this many codes
@@ -95,7 +98,15 @@ allow_web_overrides:
     - check_fairness:
         label: Check fairness
         help_text: Checks quotes for fairness using an extra LLM call for each quote found with a low confidence score. This is slower but more accurate.
+  theme_groups:
+    - thinking:
+        label: Level of thinking for the first-stage theme generation
+  themes:
+    - thinking:
+        label: Level of thinking for the final theme generation
   narrative:
+    - thinking:
+        label: Level of thinking for the narrative report generation
     - temperature:
         label: Temperature
         help_text: Controls the randomness of the narrative generation. Higher temperatures make the narrative more random, while lower temperatures make it more focused and deterministic. Best results between 0.7 and 1.2.
@@ -134,7 +145,7 @@ nodes:
     type: Map
     template: initial_codes.sd
     model: default
-    thinking: low
+    thinking: medium
     inputs:
       - chunks
 
@@ -164,7 +175,7 @@ nodes:
   - name: checkquotes
     type: VerifyQuotes
     model: cheap
-    thinking: off
+    thinking: low
     inputs: [codes]
     check_fairness: false
 
