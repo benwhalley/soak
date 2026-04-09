@@ -63,14 +63,25 @@ class Reduce(DAGNode):
         if len(self.inputs) > 1:
             raise ValueError("Reduce nodes must only have one input.")
 
+        # Items field mode: extract and flatten structured items.
+        # Bypass self.context (which wraps StruckdownResults in _TemplateProxy for
+        # template rendering, hiding individual items from unwrap_complete_items).
+        if self.items_field:
+            if self.inputs:
+                input_name = self.inputs[0]
+                if input_name == "documents":
+                    raw_input = self.dag.config.documents
+                else:
+                    input_node = self.dag.nodes_dict.get(input_name)
+                    raw_input = input_node.output if input_node else None
+            else:
+                raw_input = self.dag.config.documents
+            return await self._reduce_with_items_field(raw_input)
+
         if self.inputs:
             input_data = self.context[self.inputs[0]]
         else:
             input_data = self.dag.config.documents
-
-        # Items field mode: extract and flatten structured items
-        if self.items_field:
-            return await self._reduce_with_items_field(input_data)
 
         # Template mode: original behavior
         if isinstance(input_data, BatchList):
