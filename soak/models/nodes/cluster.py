@@ -583,13 +583,16 @@ class Cluster(DAGNode):
             Tuple of (all_items, all_texts) where all_items are the unwrapped items
             and all_texts are the extracted text strings for embedding.
         """
-        # get input data
+        # get input data directly from the upstream node's raw output.
+        # self.context[...] wraps StruckdownResults in _TemplateProxy for template
+        # rendering, which hides individual items from unwrap_complete_items.
         if self.inputs:
             input_name = self.inputs[0]
             if input_name == "documents":
                 input_data = self.dag.config.load_documents()
             else:
-                input_data = self.context[input_name]
+                input_node = self.dag.nodes_dict.get(input_name)
+                input_data = input_node.output if input_node else None
         else:
             input_data = self.dag.config.load_documents()
 
