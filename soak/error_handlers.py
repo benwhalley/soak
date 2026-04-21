@@ -345,14 +345,15 @@ async def managed_llm_call(
             _save_debug_prompt(node_name, prompt_text, item_index)
 
     def _before_sleep_with_rate_limit_tracking(retry_state):
-        """Log retry and fire rate_limit_callback if the error is a rate limit."""
+        """Log retry and emit RateLimitHit event if the error is a rate limit."""
         before_sleep_log(logger, logging.WARNING)(retry_state)
         exc = retry_state.outcome.exception()
         if _is_rate_limit_error(exc):
-            callback = getattr(config, "rate_limit_callback", None)
-            if callback:
+            emit = getattr(config, "emit", None)
+            if emit:
+                from soak.events import RateLimitHit
                 model_name = getattr(exc, "model_name", "unknown")
-                callback(node_name, model_name)
+                emit(RateLimitHit(node_name, model_name))
 
     @retry(
         retry=retry_if_exception(_is_retryable_exception),
@@ -369,8 +370,10 @@ async def managed_llm_call(
         connection_error_counter.reset()
         return result
     except LLMError as e:
-        if getattr(config, "error_callback", None):
-            config.error_callback(node_name, item_index, e)
+        emit = getattr(config, "emit", None)
+        if emit:
+            from soak.events import NodeError
+            emit(NodeError(node_name, item_index, e))
         if handle_llm_error_in_node(e, node_name, config, item_index):
             return None  # skip this item
         raise

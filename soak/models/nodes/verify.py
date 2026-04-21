@@ -5,15 +5,11 @@ import hashlib
 import json
 import logging
 import re
-import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import (TYPE_CHECKING, Any, Dict, List, Literal, Optional, Tuple,
                     Union)
-
-if TYPE_CHECKING:
-    from soak.models.progress import ProgressManager
 
 import anyio
 import numpy as np
@@ -23,7 +19,6 @@ from rank_bm25 import BM25Okapi
 from sklearn.metrics.pairwise import cosine_similarity
 from struckdown import StruckdownResult, LLMError, complete_async
 from struckdown.parsing import parse_syntax
-from tqdm import tqdm
 
 from soak.error_handlers import (ErrorBehavior, get_error_behavior,
                                  log_error_to_stderr, managed_llm_call,
@@ -387,7 +382,6 @@ async def verify_quotes_bm25_first(
     min_fuzzy_ratio: float = 0.6,
     expand_window_neighbors: int = 1,
     show_progress: bool = True,
-    progress_manager: Optional["ProgressManager"] = None,
     embedding_model: Optional[str] = None,
     progress_callback: Optional[Any] = None,
 ) -> List[Dict[str, Any]]:
@@ -458,27 +452,7 @@ async def verify_quotes_bm25_first(
         logger.debug(f"Sample quote sources: {sample_sources}")
     intermediate_results = []
 
-    # Create progress bar for BM25 matching
-    if show_progress:
-        if progress_manager:
-            pbar_bm25 = progress_manager.create_progress_bar(
-                total=len(extracted_quotes),
-                desc="VerifyQuotes: BM25 matching",
-                unit="quote",
-            )
-        else:
-            desc = "VerifyQuotes: BM25 matching".ljust(35)
-            pbar_bm25 = tqdm(
-                total=len(extracted_quotes),
-                desc=desc,
-                unit="quote",
-                file=sys.stderr,
-                ncols=120,
-                leave=True,
-                mininterval=0.1,
-            )
-    else:
-        pbar_bm25 = None
+    pbar_bm25 = None
 
     for i, quote_obj in enumerate(extracted_quotes):
         # yield control to allow other DAG nodes to run concurrently
@@ -702,34 +676,7 @@ async def verify_quotes_bm25_first(
         f"Phase 2: Computing embeddings for {len(unique_texts)} unique texts..."
     )
 
-    # Batch embed with progress callback
-    if show_progress:
-        if progress_manager:
-            pbar = progress_manager.create_progress_bar(
-                total=len(unique_texts),
-                desc="VerifyQuotes: embeddings",
-                unit="text",
-            )
-        else:
-            desc = "VerifyQuotes: embeddings".ljust(35)
-            pbar = tqdm(
-                total=len(unique_texts),
-                desc=desc,
-                unit="text",
-                file=sys.stderr,
-                ncols=120,
-                leave=True,
-                mininterval=0.1,
-            )
-        try:
-            embeddings_list = await get_embedding_async(
-                unique_texts,
-                progress_callback=lambda n: pbar.update(n),
-            )
-        finally:
-            pbar.close()
-    else:
-        embeddings_list = await get_embedding_async(unique_texts)
+    embeddings_list = await get_embedding_async(unique_texts)
 
     # Build lookup from text -> embedding
     text_to_embedding = {text: emb for text, emb in zip(unique_texts, embeddings_list)}
@@ -1258,17 +1205,10 @@ class VerifyQuotes(CompletionDAGNode):
             extracted_sentences=quote_texts,
         )
         logger.info(f"Created {len(windows)} search windows")
-        # Create BM25 progress callback for web UI
-        bm25_progress_callback = None
-        if (
-            hasattr(self.dag.config, "progress_callback")
-            and self.dag.config.progress_callback
-        ):
-            base_callback = self.dag.config.progress_callback
-
-            def bm25_progress_callback(done: int, total: int, cost: float):
-                # Use node name for progress tracking
-                base_callback(self.name, done, total, cost)
+        # create progress callback that emits NodeProgress events
+        def bm25_progress_callback(done: int, total: int, cost: float):
+            from soak.events import NodeProgress
+            self.dag.emit(NodeProgress(self.name, done, total, cost))
 
         embed_fn = get_embedding_async
         embed_creds = self.dag.config.get_embedding_credentials()
@@ -1291,8 +1231,7 @@ class VerifyQuotes(CompletionDAGNode):
             trim_method=self.trim_method,
             min_fuzzy_ratio=self.min_fuzzy_ratio,
             expand_window_neighbors=self.expand_window_neighbors,
-            show_progress=self.dag.config.show_progress,
-            progress_manager=self.dag.progress_manager,
+            show_progress=False,
             embedding_model=self.dag.config.embedding_model,
             progress_callback=bm25_progress_callback,
         )
@@ -1369,71 +1308,27 @@ class VerifyQuotes(CompletionDAGNode):
             df["llm_is_contained"] = None
 
             # Run LLM judge on poor matches in parallel
-            # Use progress manager if available for coordinated display
-            if self.dag.progress_manager:
-                if self.dag.cost_tracker:
-                    pbar = self.dag.progress_manager.create_cost_progress_bar(
-                        total=len(poor_matches),
-                        node_name=f"{self.type}: {self.name} (LLM existence)",
-                        unit="item",
-                    )
-                else:
-                    pbar = self.dag.progress_manager.create_progress_bar(
-                        total=len(poor_matches),
-                        desc=f"{self.type}: {self.name} (LLM existence)",
-                        unit="item",
-                    )
-            elif self.dag.cost_tracker:
-                from soak.models.progress import CostProgressBar
-
-                pbar = CostProgressBar(
-                    tracker=self.dag.cost_tracker,
-                    node_name=f"{self.type}: {self.name} (LLM existence)",
-                    total=len(poor_matches),
-                    unit="item",
-                )
-            else:
-                desc = f"{self.type}: {self.name} (LLM existence)".ljust(35)
-                pbar = tqdm(
-                    total=len(poor_matches),
-                    desc=desc,
-                    file=sys.stderr,
-                    unit="item",
-                    ncols=120,
-                    leave=True,
-                    mininterval=0.1,
-                )
+            existence_done = 0
 
             async with anyio.create_task_group() as tg:
 
                 async def check_match(idx, quote_hash, quote, source_doc):
-                    try:
-                        async with get_semaphore():
-                            # look up document content from doc_content_map
-                            source_doc_content = doc_content_map.get(source_doc, "")
-                            result = await self.llm_as_judge(quote, source_doc_content)
-                            df.at[idx, "llm_explanation"] = result.get("explanation")
-                            df.at[idx, "llm_is_contained"] = result.get("is_contained")
-                            # Store StruckdownResult for export and cache statistics
-                            if result.get("complete_result"):
-                                self._llm_results_by_type["existence"][quote_hash] = (
-                                    result["complete_result"]
-                                )
-                                self._llm_results.append(result["complete_result"])
-
-                                # Update progress bar with per-node cost if using CostProgressBar
-                                from soak.models.progress import \
-                                    CostProgressBar
-
-                                if isinstance(pbar, CostProgressBar):
-                                    complete = result["complete_result"]
-                                    pbar.update_cost(
-                                        complete.fresh_cost,
-                                        complete.prompt_tokens
-                                        + complete.completion_tokens,
-                                    )
-                    finally:
-                        pbar.update(1)
+                    nonlocal existence_done
+                    async with get_semaphore():
+                        source_doc_content = doc_content_map.get(source_doc, "")
+                        result = await self.llm_as_judge(quote, source_doc_content)
+                        df.at[idx, "llm_explanation"] = result.get("explanation")
+                        df.at[idx, "llm_is_contained"] = result.get("is_contained")
+                        if result.get("complete_result"):
+                            self._llm_results_by_type["existence"][quote_hash] = (
+                                result["complete_result"]
+                            )
+                            self._llm_results.append(result["complete_result"])
+                        existence_done += 1
+                        self.dag.emit(NodeProgress(
+                            self.name, existence_done, len(poor_matches),
+                            self._total_cost, self._fresh_cost,
+                        ))
 
                 for idx, row in poor_matches.iterrows():
                     tg.start_soon(
@@ -1443,8 +1338,6 @@ class VerifyQuotes(CompletionDAGNode):
                         row["quote"],
                         row["source_doc"],
                     )
-
-            pbar.close()
             logger.info(
                 f"LLM existence verification complete for {len(poor_matches)} quotes"
             )
@@ -1484,101 +1377,55 @@ class VerifyQuotes(CompletionDAGNode):
             )
 
             # Run fairness checks in parallel
-            # Use progress manager if available for coordinated display
-            if self.dag.progress_manager:
-                if self.dag.cost_tracker:
-                    pbar_fairness = self.dag.progress_manager.create_cost_progress_bar(
-                        total=len(df),
-                        node_name=f"{self.type}: {self.name} (LLM fairness)",
-                        unit="item",
-                    )
-                else:
-                    pbar_fairness = self.dag.progress_manager.create_progress_bar(
-                        total=len(df),
-                        desc=f"{self.type}: {self.name} (LLM fairness)",
-                        unit="item",
-                    )
-            elif self.dag.cost_tracker:
-                from soak.models.progress import CostProgressBar
-
-                pbar_fairness = CostProgressBar(
-                    tracker=self.dag.cost_tracker,
-                    node_name=f"{self.type}: {self.name} (LLM fairness)",
-                    total=len(df),
-                    unit="item",
-                )
-            else:
-                desc_fairness = f"{self.type}: {self.name} (LLM fairness)".ljust(35)
-                pbar_fairness = tqdm(
-                    total=len(df),
-                    desc=desc_fairness,
-                    file=sys.stderr,
-                    unit="item",
-                    ncols=120,
-                    leave=True,
-                    mininterval=0.1,
-                )
+            fairness_done = 0
 
             async with anyio.create_task_group() as tg:
 
                 async def check_fairness(idx, item, match_result):
-                    try:
-                        async with get_semaphore():
-                            # look up document content from doc_content_map
-                            source_doc = match_result.get("source_doc", "")
-                            source_doc_content = doc_content_map.get(source_doc, "")
+                    nonlocal fairness_done
+                    async with get_semaphore():
+                        source_doc = match_result.get("source_doc", "")
+                        source_doc_content = doc_content_map.get(source_doc, "")
 
-                            # If no source document found, log warning and skip fairness check
-                            if not source_doc_content:
-                                logger.warning(
-                                    f"Cannot verify fairness for quote '{item['quote'].text[:60]}...' - "
-                                    f"source document '{source_doc}' not found. Skipping fairness check."
-                                )
-                                return  # Skip this quote's fairness check
+                        if not source_doc_content:
+                            logger.warning(
+                                f"Cannot verify fairness for quote '{item['quote'].text[:60]}...' - "
+                                f"source document '{source_doc}' not found. Skipping fairness check."
+                            )
+                            return
 
-                            # Run fairness LLM check with full document
-                            fairness_result = await self.check_quote_fairness(
-                                theme_name=item["theme"].name,
-                                theme_description=item["theme"].description,
-                                code_name=item["code"].name,
-                                code_description=item["code"].description,
-                                quote=item["quote"].text,
-                                original_text=source_doc_content,
+                        fairness_result = await self.check_quote_fairness(
+                            theme_name=item["theme"].name,
+                            theme_description=item["theme"].description,
+                            code_name=item["code"].name,
+                            code_description=item["code"].description,
+                            quote=item["quote"].text,
+                            original_text=source_doc_content,
+                        )
+
+                        df.at[idx, "theme"] = item["theme"].name
+                        df.at[idx, "theme_description"] = item["theme"].description
+                        df.at[idx, "code_name"] = item["code"].name
+                        df.at[idx, "code_description"] = item["code"].description
+                        df.at[idx, "llm_fairness_explanation"] = fairness_result[
+                            "explanation"
+                        ]
+                        df.at[idx, "llm_is_fair"] = fairness_result["is_fair"]
+
+                        if fairness_result["complete_result"]:
+                            quote_hash = item["quote"].hash()
+                            self._llm_results_by_type["fairness"][quote_hash] = (
+                                fairness_result["complete_result"]
+                            )
+                            self._llm_results.append(
+                                fairness_result["complete_result"]
                             )
 
-                            # Update dataframe
-                            df.at[idx, "theme"] = item["theme"].name
-                            df.at[idx, "theme_description"] = item["theme"].description
-                            df.at[idx, "code_name"] = item["code"].name
-                            df.at[idx, "code_description"] = item["code"].description
-                            df.at[idx, "llm_fairness_explanation"] = fairness_result[
-                                "explanation"
-                            ]
-                            df.at[idx, "llm_is_fair"] = fairness_result["is_fair"]
-
-                            # Store StruckdownResult for export and cache statistics
-                            if fairness_result["complete_result"]:
-                                quote_hash = item["quote"].hash()
-                                self._llm_results_by_type["fairness"][quote_hash] = (
-                                    fairness_result["complete_result"]
-                                )
-                                self._llm_results.append(
-                                    fairness_result["complete_result"]
-                                )
-
-                                # Update progress bar with per-node cost if using CostProgressBar
-                                from soak.models.progress import \
-                                    CostProgressBar
-
-                                if isinstance(pbar_fairness, CostProgressBar):
-                                    complete = fairness_result["complete_result"]
-                                    pbar_fairness.update_cost(
-                                        complete.fresh_cost,
-                                        complete.prompt_tokens
-                                        + complete.completion_tokens,
-                                    )
-                    finally:
-                        pbar_fairness.update(1)
+                        fairness_done += 1
+                        self.dag.emit(NodeProgress(
+                            self.name, fairness_done, len(df),
+                            self._total_cost, self._fresh_cost,
+                        ))
 
                 # build lookup dict once (O(m))
                 quote_hash_to_context = {
@@ -1593,8 +1440,6 @@ class VerifyQuotes(CompletionDAGNode):
                     if context_item:
                         match_result = quote_hash_to_match[quote_hash]
                         tg.start_soon(check_fairness, idx, context_item, match_result)
-
-            pbar_fairness.close()
             logger.info(f"Fairness verification complete for {len(df)} quotes")
         else:
             if self.skip_llm_verification and self.check_fairness:

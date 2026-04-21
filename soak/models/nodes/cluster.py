@@ -3,15 +3,14 @@
 import hashlib
 import logging
 import random
-import sys
 from typing import Annotated, Any, Dict, List, Literal, Optional, Union
 
 import numpy as np
 from decouple import config as env_config
 from jinja2 import Environment, StrictUndefined
 from pydantic import BaseModel, Field, PrivateAttr
-from tqdm import tqdm
 
+from soak.events import NodeProgress
 from soak.models.base import TrackedItem, get_embedding_async, memory
 from soak.models.utils import unwrap_complete_items
 
@@ -428,49 +427,19 @@ class Cluster(DAGNode):
         # get embeddings with progress bar
         logger.info(f"Computing embeddings for {len(unique_texts)} texts...")
 
-        # Report to web UI that we're starting (marks node as "running")
-        if self.dag.config.progress_callback:
-            self.dag.config.progress_callback(self.name, 0, len(unique_texts), 0.0)
+        # signal start
+        self.dag.emit(NodeProgress(self.name, 0, len(unique_texts), 0.0))
 
-        if self.dag.config.show_progress:
-            if self.dag.progress_manager:
-                pbar = self.dag.progress_manager.create_progress_bar(
-                    total=len(unique_texts),
-                    desc=f"Cluster: {self.name}",
-                    unit="text",
-                )
-            else:
-                desc = f"Cluster: {self.name}".ljust(35)
-                pbar = tqdm(
-                    total=len(unique_texts),
-                    desc=desc,
-                    unit="text",
-                    file=sys.stderr,
-                    ncols=120,
-                    leave=True,
-                    mininterval=0.1,
-                )
-            try:
-                embeddings_list = await get_embedding_async(
-                    unique_texts,
-                    model=self.dag.config.embedding_model,
-                    credentials=self.dag.config.get_embedding_credentials(),
-                )
-                pbar.update(len(unique_texts))
-            finally:
-                pbar.close()
-        else:
-            embeddings_list = await get_embedding_async(
-                unique_texts,
-                model=self.dag.config.embedding_model,
-                credentials=self.dag.config.get_embedding_credentials(),
-            )
+        embeddings_list = await get_embedding_async(
+            unique_texts,
+            model=self.dag.config.embedding_model,
+            credentials=self.dag.config.get_embedding_credentials(),
+        )
         unique_embeddings = np.array(embeddings_list)
         logger.info("Embeddings computed.")
 
-        # Report embedding completion to web UI
-        if self.dag.config.progress_callback:
-            self.dag.config.progress_callback(self.name, len(unique_texts), len(unique_texts), 0.0)
+        # signal completion
+        self.dag.emit(NodeProgress(self.name, len(unique_texts), len(unique_texts), 0.0))
 
         # map back to full set
         logger.debug(

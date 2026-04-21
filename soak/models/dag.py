@@ -7,7 +7,7 @@ import random
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import (TYPE_CHECKING, Annotated, Any, Callable, Dict, List,
+from typing import (TYPE_CHECKING, Annotated, Any, Dict, List,
                     Optional, Set, Tuple, Union)
 
 import anyio
@@ -22,8 +22,8 @@ from soak.models.base import (SOAK_MAX_RUNTIME, TrackedItem,
                               get_default_llm_credentials)
 from soak.models.context import (ContextVariable, get_context_defaults,
                                  normalize_context)
+from soak.events import CLIEventHandler, CostUpdated, DAGEvent, NodeCompleted
 from soak.models.cost_tracker import GlobalCostTracker
-from soak.models.progress import ProgressManager
 
 if TYPE_CHECKING:
     from .nodes.base import DAGNode
@@ -94,30 +94,17 @@ class DAGConfig(BaseModel):
     # debugging
     pdb_on_exception: bool = False  # drop into pdb on unhandled exceptions
 
-    # progress callback for web UI (called when items complete)
-    progress_callback: Optional[Callable[[str, int, int, float], None]] = Field(
-        default=None, exclude=True
-    )  # callback(node_name, done, total, cost)
+    # event handlers for observing DAG execution (progress, errors, streaming, etc.)
+    # typed as list[Any] because Pydantic can't serialize Protocol types
+    event_handlers: list = Field(default_factory=list, exclude=True)
 
-    # node completion callback for web UI (called when each node finishes)
-    node_complete_callback: Optional[Callable[["DAGNode"], None]] = Field(
-        default=None, exclude=True
-    )  # callback(node) - called when node completes (success or failure)
-
-    # error callback (called when an LLM error is skipped or causes failure)
-    error_callback: Optional[Callable[[str, Optional[int], Exception], None]] = Field(
-        default=None, exclude=True
-    )  # callback(node_name, item_index, error) - error has .prompt, .model_name etc
-
-    # rate limit callback (called on each rate limit retry)
-    rate_limit_callback: Optional[Callable[[str, str], None]] = Field(
-        default=None, exclude=True
-    )  # callback(node_name, model_name) - fired on 429 retries
-
-    # streaming callback for live output visibility (slot completions + token deltas)
-    streaming_callback: Optional[Callable[[str, Optional[int], Any], None]] = Field(
-        default=None, exclude=True
-    )  # callback(node_name, item_index, event) - streaming events
+    def emit(self, event: DAGEvent) -> None:
+        """Dispatch an event to all registered handlers."""
+        for handler in self.event_handlers:
+            try:
+                handler.on_event(event)
+            except Exception as e:
+                logger.warning(f"Event handler error for {type(event).__name__}: {e}")
 
     # report configuration - supports both formats:
     # - List: ["narrative.slot1", "narrative.slot2"]
@@ -374,11 +361,13 @@ async def run_node(node):
             await anyio.to_thread.run_sync(node.export, node_folder, unique_id)
             logger.info(f"✓ Exported node: {node.name} to {node_folder.name}")
 
-        # Call node completion callback if set (for web UI incremental saving)
-        if node.dag.config.node_complete_callback:
-            logger.debug(f"Calling node_complete_callback for {node.name}")
-            await anyio.to_thread.run_sync(node.dag.config.node_complete_callback, node)
-            logger.debug(f"node_complete_callback finished for {node.name}")
+        # emit node completion event (runs in thread for ORM-safe handlers)
+        if node.dag.config.event_handlers:
+            logger.debug(f"Emitting NodeCompleted for {node.name}")
+            await anyio.to_thread.run_sync(
+                lambda: node.dag.emit(NodeCompleted(node))
+            )
+            logger.debug(f"NodeCompleted emitted for {node.name}")
 
         logger.debug(f"run_node returning for {node.name}")
         return result
@@ -386,14 +375,14 @@ async def run_node(node):
         logger.error(f"Node {node.name} failed: {e}")
         # Store error on node for callback access
         node._error = e
-        # Call node completion callback on failure too (for partial result saving)
-        if node.dag.config.node_complete_callback:
+        # emit node completion on failure too (for partial result saving)
+        if node.dag.config.event_handlers:
             try:
                 await anyio.to_thread.run_sync(
-                    node.dag.config.node_complete_callback, node
+                    lambda: node.dag.emit(NodeCompleted(node))
                 )
             except Exception as callback_err:
-                logger.warning(f"Node completion callback failed: {callback_err}")
+                logger.warning(f"NodeCompleted handler failed: {callback_err}")
         raise e
 
 
@@ -526,7 +515,6 @@ class DAG(BaseModel):
     nodes: List["DAGNodeUnion"] = Field(default_factory=list)
     config: Optional[DAGConfig] = Field(default_factory=DAGConfig, exclude=False)
     cost_tracker: Optional[GlobalCostTracker] = Field(default=None, exclude=True)
-    progress_manager: Optional[ProgressManager] = Field(default=None, exclude=True)
 
     # computed pipeline version with content hash (version + 4-char hash, e.g., "0.1.0-a1b2")
     pipeline_version: Optional[str] = Field(default=None)
@@ -558,6 +546,10 @@ class DAG(BaseModel):
                     )
 
         return self
+
+    def emit(self, event: DAGEvent) -> None:
+        """Dispatch an event to all registered handlers."""
+        self.config.emit(event)
 
     def compute_content_hash(self) -> str:
         """Compute hash of pipeline content (templates and config).
@@ -728,10 +720,10 @@ class DAG(BaseModel):
                                 )
                             else:
                                 logger.info(f"Skipping node: {name}")
-                            # Call node completion callback for skipped nodes too
-                            if self.config.node_complete_callback:
+                            # emit completion for skipped nodes too
+                            if self.config.event_handlers:
                                 await anyio.to_thread.run_sync(
-                                    self.config.node_complete_callback, node
+                                    lambda n=node: self.emit(NodeCompleted(n))
                                 )
                             continue
                         logger.debug(f"Starting task for node: {name}")
@@ -759,14 +751,26 @@ class DAG(BaseModel):
             if self.config.export_enabled and self.config.export_folder:
                 self._prepare_incremental_export()
 
-            # Create progress manager if progress is enabled
+            # bridge cost tracker into event stream
+            if self.cost_tracker and self.config.event_handlers:
+                self.cost_tracker.register_callback(
+                    lambda: self.emit(CostUpdated(
+                        **self.cost_tracker.get_snapshot().__dict__
+                    ))
+                )
+
+            # add CLI progress handler if show_progress is enabled
+            cli_handler = None
             if self.config.show_progress:
-                self.progress_manager = ProgressManager(self.cost_tracker)
-                with self.progress_manager:
-                    await self._execute_batches(skip_nodes, stop_at_node)
-                self.progress_manager = None
-            else:
+                cli_handler = CLIEventHandler(self.cost_tracker)
+                self.config.event_handlers.append(cli_handler)
+
+            try:
                 await self._execute_batches(skip_nodes, stop_at_node)
+            finally:
+                if cli_handler:
+                    cli_handler.close()
+                    self.config.event_handlers.remove(cli_handler)
 
             # aggregate costs after all nodes complete
             self._aggregate_costs()

@@ -1,16 +1,15 @@
 """Transform node for single-item LLM transformations."""
 
 import logging
-import sys
 from functools import partial
 from pathlib import Path
 from typing import Any, Dict, List, Literal, Union
 
 from pydantic import Field
 from struckdown import LLMError, complete_async
-from tqdm import tqdm
 
 from soak.error_handlers import managed_llm_call
+from soak.events import NodeProgress, StreamingEvent
 from soak.models.base import (extract_prompt, get_action_lookup,
                               get_max_concurrency, get_semaphore,
                               safe_json_dump)
@@ -37,52 +36,9 @@ class Transform(ItemsNode, CompletionDAGNode):
         await super(ItemsNode, self).run()  # Call DAGNode.run(), skip ItemsNode.run()
         input_data = self.get_input_data()
 
-        # Create progress bar with total=1 (Transform always makes exactly 1 LLM call)
-        progress_bar = None
-        if self.dag.config.show_progress:
-            # Use progress manager if available for coordinated display
-            if self.dag.progress_manager:
-                if isinstance(self, CompletionDAGNode) and self.dag.cost_tracker:
-                    progress_bar = self.dag.progress_manager.create_cost_progress_bar(
-                        total=1,
-                        node_name=self.name,
-                        unit="item",
-                    )
-                else:
-                    progress_bar = self.dag.progress_manager.create_progress_bar(
-                        total=1,
-                        desc=f"{self.type}: {self.name}",
-                        unit="item",
-                    )
-            elif isinstance(self, CompletionDAGNode) and self.dag.cost_tracker:
-                from soak.models.progress import CostProgressBar
-
-                progress_bar = CostProgressBar(
-                    tracker=self.dag.cost_tracker,
-                    node_name=self.name,
-                    total=1,  # Always 1 for Transform
-                    unit="item",
-                )
-            else:
-                # pad description to match CostProgressBar alignment
-                desc = f"{self.type}: {self.name}".ljust(35)
-                progress_bar = tqdm(
-                    total=1,  # Always 1 for Transform
-                    desc=desc,
-                    unit="item",
-                    file=sys.stderr,
-                    ncols=120,
-                    leave=True,
-                    mininterval=0.1,
-                )
-
-        try:
-            result = await self._run_recursive(input_data, progress_bar)
-            self.output = result
-            return result
-        finally:
-            if progress_bar:
-                progress_bar.close()
+        result = await self._run_recursive(input_data, None)
+        self.output = result
+        return result
 
     async def process_items(
         self, items: List[Any], progress_bar: Any = None
@@ -115,9 +71,8 @@ class Transform(ItemsNode, CompletionDAGNode):
         # Get LLM kwargs using helper method
         extra_kwargs = self.get_llm_kwargs()
 
-        # Signal progress: starting LLM call
-        if self.dag.config.progress_callback:
-            self.dag.config.progress_callback(self.name, 0, 1, 0.0)
+        # signal progress: starting LLM call
+        self.dag.emit(NodeProgress(self.name, 0, 1, 0.0))
 
         logger.info(
             f"Transform '{self.name}': processing 1 item "
@@ -129,10 +84,12 @@ class Transform(ItemsNode, CompletionDAGNode):
             try:
                 logger.debug(f"Calling LLM with prompt: {rt}")
                 logger.debug(f"Context: {merged_context}")
-                if self.dag.config.streaming_callback:
+                if self.dag.config.event_handlers:
+                    def _streaming_cb(nn, ii, ev):
+                        self.dag.emit(StreamingEvent(nn, ii, ev))
                     llm_func = partial(
                         complete_async_with_streaming,
-                        streaming_callback=self.dag.config.streaming_callback,
+                        streaming_callback=_streaming_cb,
                         stream_node_name=self.name,
                         stream_item_index=None,
                     )
@@ -155,10 +112,9 @@ class Transform(ItemsNode, CompletionDAGNode):
                 # default to skip + continue for unknown errors
                 result = None
 
-        # Signal progress: LLM call complete
-        if self.dag.config.progress_callback:
-            cost = result.total_cost if result else 0.0
-            self.dag.config.progress_callback(self.name, 1, 1, cost)
+        # signal progress: LLM call complete
+        cost = result.total_cost if result else 0.0
+        self.dag.emit(NodeProgress(self.name, 1, 1, cost))
 
         # accumulate costs and track for cache statistics
         if result is not None:
@@ -167,18 +123,6 @@ class Transform(ItemsNode, CompletionDAGNode):
 
             # Post-process outputs to populate resolved_quotes/resolved_code_refs
             post_process_complete_result(result, merged_context)
-
-            # update progress bar with per-node cost if using CostProgressBar
-            from soak.models.progress import CostProgressBar
-
-            if isinstance(progress_bar, CostProgressBar):
-                progress_bar.update_cost(
-                    result.fresh_cost, result.prompt_tokens + result.completion_tokens
-                )
-
-        # update progress bar after processing the item
-        if progress_bar is not None:
-            progress_bar.update(getattr(progress_bar, "slots_per_item", 1))
 
         return [result] if result else []
 

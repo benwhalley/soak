@@ -12,6 +12,7 @@ from struckdown import LLMError
 from struckdown.parsing import parse_syntax
 
 from soak.error_handlers import managed_llm_call
+from soak.events import NodeProgress, StreamingEvent
 from soak.models.base import (TrackedItem, extract_prompt, get_max_concurrency,
                               get_semaphore, safe_json_dump)
 from soak.models.utils import post_process_complete_result
@@ -83,39 +84,11 @@ class Map(ItemsNode, CompletionDAGNode):
 
         results = [None] * len(boxed_items)
 
-        # Use passed-in progress bar if available, otherwise create local one
+        # Use passed-in progress bar if available (for batched execution)
         pbar = progress_bar
-        if pbar is None:
-            # Create local progress bar for backward compatibility (non-batched case)
-            if self.dag.config.show_progress:
-                import sys
 
-                # Use progress manager if available for coordinated display
-                if self.dag.progress_manager:
-                    pbar = self.dag.progress_manager.create_progress_bar(
-                        total=len(boxed_items),
-                        desc=f"{self.type}: {self.name}",
-                        unit="item",
-                    )
-                else:
-                    from tqdm import tqdm
-
-                    desc = f"{self.type}: {self.name}".ljust(35)
-                    pbar = tqdm(
-                        total=len(boxed_items),
-                        desc=desc,
-                        unit="item",
-                        file=sys.stderr,
-                        ncols=120,
-                        leave=True,
-                        mininterval=0.1,
-                    )
-
-        # Signal progress: node starting with total item count
-        if self.dag.config.progress_callback:
-            self.dag.config.progress_callback(
-                self.name, 0, len(boxed_items), 0.0
-            )
+        # signal progress: node starting
+        self.dag.emit(NodeProgress(self.name, 0, len(boxed_items), 0.0))
 
         logger.info(
             f"Map '{self.name}': processing {len(boxed_items)} items "
@@ -141,10 +114,10 @@ class Map(ItemsNode, CompletionDAGNode):
                                 else:
                                     # Default LLM mode
                                     extra_kwargs = self.get_llm_kwargs()
-                                    if self.dag.config.streaming_callback:
-                                        extra_kwargs["_streaming_callback"] = (
-                                            self.dag.config.streaming_callback
-                                        )
+                                    if self.dag.config.event_handlers:
+                                        def _streaming_cb(nn, ii, ev):
+                                            self.dag.emit(StreamingEvent(nn, ii, ev))
+                                        extra_kwargs["_streaming_callback"] = _streaming_cb
                                         extra_kwargs["_stream_node_name"] = self.name
                                         extra_kwargs["_stream_item_index"] = index
                                     llm_context = {**filtered_context, **item}
@@ -184,42 +157,22 @@ class Map(ItemsNode, CompletionDAGNode):
                                         getattr(progress_bar, "slots_per_item", 1)
                                     )
 
-                                # Call progress callback for real-time web UI updates
-                                if self.dag.config.progress_callback:
-                                    try:
-                                        # Count completed items (non-None results)
-                                        done = sum(1 for r in results if r is not None)
-                                        logger.info(
-                                            f"Map '{self.name}': completed item {index + 1}, "
-                                            f"progress {done}/{len(results)}"
-                                        )
-                                        self.dag.config.progress_callback(
-                                            self.name,
-                                            done,
-                                            len(results),
-                                            self._total_cost,
-                                            self._fresh_cost,  # for cache savings display
-                                        )
-                                    except Exception as e:
-                                        logger.warning(f"Progress callback error: {e}")
+                                # emit progress for real-time updates
+                                done = sum(1 for r in results if r is not None)
+                                logger.info(
+                                    f"Map '{self.name}': completed item {index + 1}, "
+                                    f"progress {done}/{len(results)}"
+                                )
+                                self.dag.emit(NodeProgress(
+                                    self.name, done, len(results),
+                                    self._total_cost, self._fresh_cost,
+                                ))
 
                     tg.start_soon(run_and_store)
         finally:
             # Only close progress bar if we created it locally
             if progress_bar is None and pbar is not None:
                 pbar.close()
-
-        # update CLI progress bar with per-node cost (costs already accumulated during execution)
-        if self.mode == "llm":
-            from soak.models.progress import CostProgressBar
-
-            if isinstance(pbar, CostProgressBar):
-                for result in results:
-                    if result is not None:
-                        pbar.update_cost(
-                            result.fresh_cost,
-                            result.prompt_tokens + result.completion_tokens,
-                        )
 
         return results
 

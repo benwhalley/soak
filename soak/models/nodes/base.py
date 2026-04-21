@@ -3,7 +3,7 @@
 import json
 import logging
 import math
-import sys
+
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
@@ -18,7 +18,6 @@ from jinja2 import Environment, TemplateSyntaxError
 from pydantic import BaseModel, Field, PrivateAttr, field_validator
 from struckdown import LLM, StruckdownResult, LLMError, complete_async
 from struckdown.parsing import parse_syntax
-from tqdm import tqdm
 
 from soak.error_handlers import log_error_to_stderr, should_continue_pipeline
 from soak.models.base import TrackedItem, extract_content, get_action_lookup
@@ -419,62 +418,9 @@ class ItemsNode(DAGNode):
         await super().run()
         input_data = self.get_input_data()
 
-        # Create single progress bar for all items (including batched)
-        progress_bar = None
-        if self.dag.config.show_progress:
-            # Calculate total items (BatchList.__len__ uses flatten_all())
-            # Avoid counting string length - single string inputs are 1 item
-            from .batch import BatchList
-
-            if isinstance(input_data, (list, BatchList)):
-                total_items = len(input_data)
-            else:
-                total_items = 1
-
-            # Use progress manager if available for coordinated display
-            if self.dag.progress_manager:
-                if isinstance(self, CompletionDAGNode) and self.dag.cost_tracker:
-                    progress_bar = self.dag.progress_manager.create_cost_progress_bar(
-                        total=total_items,
-                        node_name=f"{self.type}: {self.name}",
-                        unit="item",
-                    )
-                else:
-                    progress_bar = self.dag.progress_manager.create_progress_bar(
-                        total=total_items,
-                        desc=f"{self.type}: {self.name}",
-                        unit="item",
-                    )
-            # fallback to direct tqdm if no progress manager
-            elif isinstance(self, CompletionDAGNode) and self.dag.cost_tracker:
-                from soak.models.progress import CostProgressBar
-
-                progress_bar = CostProgressBar(
-                    tracker=self.dag.cost_tracker,
-                    node_name=f"{self.type}: {self.name}",
-                    total=total_items,
-                    unit="item",
-                )
-            else:
-                # pad description to match CostProgressBar alignment
-                desc = f"{self.type}: {self.name}".ljust(35)
-                progress_bar = tqdm(
-                    total=total_items,
-                    desc=desc,
-                    unit="item",
-                    file=sys.stderr,
-                    ncols=120,
-                    leave=True,
-                    mininterval=0.1,
-                )
-
-        try:
-            result = await self._run_recursive(input_data, progress_bar)
-            self.output = result
-            return result
-        finally:
-            if progress_bar:
-                progress_bar.close()
+        result = await self._run_recursive(input_data, None)
+        self.output = result
+        return result
 
     async def _run_recursive(
         self, data: Union[List[Any], Any], progress_bar: Optional[Any] = None
@@ -634,78 +580,14 @@ class ItemsNode(DAGNode):
     def progress_bar(self, items: List, node_type: str = None):
         """Context manager for optional progress bars.
 
-        Creates a progress bar if show_progress is enabled in config,
-        otherwise yields None. This eliminates repetitive progress bar
-        setup code across nodes.
-
-        Args:
-            items: List of items to process (for total count)
-            node_type: Optional node type label (defaults to self.type)
+        Now a no-op -- progress is handled by the event system via
+        NodeProgress events. Retained for API compatibility with callers
+        that pass progress_bar to process_items.
 
         Yields:
-            tqdm progress bar instance or None. The bar has a `slots_per_item`
-            attribute indicating how many slots per item (for update increments).
+            None always.
         """
-        if not self.dag.config.show_progress:
-            yield None
-            return
-
-        node_type = node_type or self.type
-        node_name = f"{node_type}: {self.name}" if node_type != self.type else self.name
-
-        # estimate slots per item from template (for better progress estimation)
-        slots_per_item = 1
-        if isinstance(self, CompletionDAGNode) and self.template:
-            slots_per_item = max(1, len(self.output_keys()))
-
-        total_completions = len(items) * slots_per_item
-
-        # Use progress manager if available for coordinated display
-        if self.dag.progress_manager:
-            if isinstance(self, CompletionDAGNode) and self.dag.cost_tracker:
-                pbar = self.dag.progress_manager.create_cost_progress_bar(
-                    total=total_completions,
-                    node_name=node_name,
-                    unit="call",
-                )
-            else:
-                pbar = self.dag.progress_manager.create_progress_bar(
-                    total=total_completions,
-                    desc=node_name,
-                    unit="call",
-                )
-        # fallback to direct tqdm if no progress manager
-        elif isinstance(self, CompletionDAGNode) and self.dag.cost_tracker:
-            from soak.models.progress import CostProgressBar
-
-            pbar = CostProgressBar(
-                tracker=self.dag.cost_tracker,
-                node_name=node_name,
-                total=total_completions,
-                unit="call",
-            )
-        else:
-            from tqdm import tqdm
-
-            # pad description to match CostProgressBar alignment
-            padded_name = node_name.ljust(35)
-            pbar = tqdm(
-                total=total_completions,
-                desc=padded_name,
-                unit="call",
-                file=sys.stderr,
-                ncols=120,
-                leave=True,
-                mininterval=0.1,
-            )
-
-        # store slots count so callers know how much to increment
-        pbar.slots_per_item = slots_per_item
-
-        try:
-            yield pbar
-        finally:
-            pbar.close()
+        yield None
 
 
 async def default_map_task(template, context, model, credentials, **kwargs):

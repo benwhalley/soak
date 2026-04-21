@@ -12,6 +12,7 @@ from struckdown import LLM, LLMError, complete_async
 from struckdown.parsing import parse_syntax
 
 from soak.error_handlers import managed_llm_call
+from soak.events import NodeProgress
 from soak.models.base import (TrackedItem, get_action_lookup,
                               get_max_concurrency, get_semaphore)
 from soak.models.utils import extract_output_dict
@@ -159,30 +160,13 @@ class Classifier(ItemsNode, CompletionDAGNode):
                                             getattr(progress_bar, "slots_per_item", 1)
                                         )
 
-                                    # call progress callback for web UI if available
-                                    if self.dag.config.progress_callback:
-                                        try:
-                                            self.dag.config.progress_callback(
-                                                self.name,
-                                                len(self._llm_results),
-                                                self._input_count,
-                                                self._total_cost,
-                                            )
-                                        except Exception:
-                                            pass
+                                    # emit progress for real-time updates
+                                    self.dag.emit(NodeProgress(
+                                        self.name, len(self._llm_results),
+                                        self._input_count, self._total_cost,
+                                    ))
 
                         tg.start_soon(run_and_store)
-
-            # update CLI progress bar with per-node cost (costs already accumulated during execution)
-            from soak.models.progress import CostProgressBar
-
-            if isinstance(pbar, CostProgressBar):
-                for result in results:
-                    if result is not None:
-                        pbar.update_cost(
-                            result.fresh_cost,
-                            result.prompt_tokens + result.completion_tokens,
-                        )
 
             self._model_results[model_name] = results
 
