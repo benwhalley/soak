@@ -457,23 +457,27 @@ def resolve_quote_reference(
 
 
 def post_process_theme_code_refs(theme, context: Dict[str, Any]):
-    """Post-process Theme.code_slugs to match actual Code objects.
+    """Post-process Theme.code_hashes to match actual Code objects.
 
-    Fuzzy matches slugs to Codes in context and stores resolved references.
+    Uses exact hash matching (primary) with fuzzy slug fallback for old data.
     """
     # Collect all codes from context
     input_codes = collect_input_codes(context)
     if not input_codes:
         return
 
-    # Match each slug
+    # Build hash lookup for exact matching
+    code_by_hash = {code.hash(): code for code in input_codes}
+
     matched_codes = []
-    for slug in theme.code_slugs:
-        matched_code = fuzzy_match_code_slug(slug, input_codes)
-        if matched_code:
-            # Store complete Code data including quotes and resolved_quotes
-            code_data = matched_code.model_dump()
-            matched_codes.append(code_data)
+    for ref in theme.code_hashes:
+        # Try exact hash match first
+        matched = code_by_hash.get(ref)
+        if not matched:
+            # Fallback: fuzzy slug matching for old data with long slug-style refs
+            matched = fuzzy_match_code_slug(ref, input_codes)
+        if matched:
+            matched_codes.append(matched.model_dump())
 
     theme.resolved_code_refs = matched_codes
 
@@ -481,7 +485,10 @@ def post_process_theme_code_refs(theme, context: Dict[str, Any]):
 def fuzzy_match_code_slug(
     target_slug: str, candidates: List[Code], threshold: float = 0.85
 ) -> Optional[Code]:
-    """Find best matching Code by slug using edit distance."""
+    """Find best matching Code by slug using edit distance.
+
+    Kept as fallback for old data where code_hashes contains long slug strings.
+    """
     from difflib import SequenceMatcher
 
     target_clean = target_slug.strip().lower()
@@ -489,7 +496,10 @@ def fuzzy_match_code_slug(
     best_ratio = threshold
 
     for candidate in candidates:
-        candidate_clean = candidate.slug.strip().lower()
+        slug = candidate.slug or ""
+        if not slug:
+            continue
+        candidate_clean = slug.strip().lower()
         ratio = SequenceMatcher(None, target_clean, candidate_clean).ratio()
 
         if ratio > best_ratio:

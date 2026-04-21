@@ -136,9 +136,15 @@ class Classifier(ItemsNode, CompletionDAGNode):
                                         extra_kwargs=extra_kwargs,
                                     )
                                     results[index] = complete_result
-                                    # Accumulate costs immediately for real-time progress
-                                    self._accumulate_costs(complete_result)
-                                    self._llm_results.append(complete_result)
+                                    if complete_result is not None:
+                                        self._accumulate_costs(complete_result)
+                                        self._llm_results.append(complete_result)
+                                    else:
+                                        source_id = item.get("source_id", f"item {index}")
+                                        logger.warning(
+                                            f"Classifier '{self.name}': skipped item {index} "
+                                            f"(source: {source_id}) due to LLM error"
+                                        )
                                 except Exception as e:
                                     # catch-all for any non-struckdown errors
                                     logger.error(

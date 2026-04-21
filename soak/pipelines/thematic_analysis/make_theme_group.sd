@@ -48,11 +48,11 @@ A code can appear-in or link-to multiple themes, if relevant.
 - Provide a rich description of around 50 words for each theme.
 - Link themes to Codes (which contain quotes) to ground themes in the data.
 
-Themes must only reference Codes, using their identifier code.
-This is alphanumeric, no spaces, like a url slug.
+Themes must only reference Codes, using their 8-character hash identifier.
 
-Be selective linking to Codes--link only the most relevant.
+Copy the hash exactly from the code listing -- DO NOT invent or modify it.
 
+Be selective when linking Codes to Themes. Link enough codes to fully support the Theme, but link only the most relevant codes.
 
 ### WRITING STYLE
 

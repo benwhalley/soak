@@ -272,12 +272,17 @@ class RunPdfExporter:
         # process themes for template
         theme_list = []
         for theme in themes:
-            codes_list = theme.get("codes", theme.get("code_slugs", []))
+            codes_list = theme.get(
+                "codes", theme.get("code_hashes", theme.get("code_slugs", []))
+            )
+            codes_set = set(codes_list)
             quotes = []
             for code in codes:
                 code_slug = code.get("slug", "")
                 code_name = code.get("name", "").lower().replace(" ", "-")
-                if code_slug in codes_list or code_name in codes_list:
+                from soak.models.base import compute_code_hash
+                code_hash = compute_code_hash(code.get("name", ""), code.get("description", ""))
+                if code_slug in codes_set or code_name in codes_set or code_hash in codes_set:
                     for q in code.get("quotes", [])[:2]:
                         text = q.get("text", str(q)) if isinstance(q, dict) else str(q)
                         quotes.append(text)

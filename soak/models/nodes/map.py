@@ -159,14 +159,18 @@ class Map(ItemsNode, CompletionDAGNode):
                                         credentials=self.dag.config.llm_credentials,
                                         **extra_kwargs,
                                     )
-                                    # Post-process outputs to populate resolved_quotes/resolved_code_refs
-                                    post_process_complete_result(
-                                        results[index], llm_context
-                                    )
-                                    # Accumulate costs immediately so progress callback
-                                    # reports up-to-date totals
-                                    self._accumulate_costs(results[index])
-                                    self._llm_results.append(results[index])
+                                    if results[index] is not None:
+                                        post_process_complete_result(
+                                            results[index], llm_context
+                                        )
+                                        self._accumulate_costs(results[index])
+                                        self._llm_results.append(results[index])
+                                    else:
+                                        source_id = item.get("source_id", f"item {index}")
+                                        logger.warning(
+                                            f"Map '{self.name}': skipped item {index} "
+                                            f"(source: {source_id}) due to LLM error"
+                                        )
                             except Exception as e:
                                 # re-raise all other errors to fail the pipeline
                                 logger.error(

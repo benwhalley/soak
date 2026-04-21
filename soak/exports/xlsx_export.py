@@ -184,7 +184,7 @@ def generate_themes_xlsx(
         ws.cell(row=row, column=2, value=theme.get("name", ""))
         ws.cell(row=row, column=3, value=theme.get("description", ""))
 
-        code_list = theme.get("codes", theme.get("code_slugs", []))
+        code_list = theme.get("codes", theme.get("code_hashes", theme.get("code_slugs", [])))
         ws.cell(row=row, column=4, value=len(code_list))
         ws.cell(row=row, column=5, value=", ".join(code_list))
 
@@ -278,23 +278,31 @@ def generate_codes_xlsx(
 
 def _get_quotes_for_theme(theme: Dict, codes: List[Dict]) -> List[str]:
     """Get quotes from codes belonging to a theme."""
-    code_slugs = theme.get("code_slugs", theme.get("codes", []))
+    from soak.models.base import compute_code_hash
+
+    code_refs = theme.get("code_hashes", theme.get("code_slugs", theme.get("codes", [])))
     resolved_refs = theme.get("resolved_code_refs", [])
 
-    # build set of code identifiers
-    code_ids = set(code_slugs)
+    # build set of code identifiers (hashes, slugs, name-slugs)
+    code_ids = set(code_refs)
     for ref in resolved_refs:
         if isinstance(ref, dict):
             if "slug" in ref:
                 code_ids.add(ref["slug"])
             if "name" in ref:
                 code_ids.add(ref["name"].lower().replace(" ", "-"))
+            # add hash from resolved ref
+            name = ref.get("name", "")
+            desc = ref.get("description", "")
+            if name and desc:
+                code_ids.add(compute_code_hash(name, desc))
 
     quotes = []
     for code in codes:
         code_slug = code.get("slug", "")
         code_name = code.get("name", "").lower().replace(" ", "-")
-        if code_slug in code_ids or code_name in code_ids:
+        code_hash = compute_code_hash(code.get("name", ""), code.get("description", ""))
+        if code_slug in code_ids or code_name in code_ids or code_hash in code_ids:
             for quote in code.get("quotes", [])[:2]:
                 text = (
                     quote.get("text", str(quote))

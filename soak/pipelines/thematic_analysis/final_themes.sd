@@ -51,8 +51,8 @@ A code can appear-in or link-to multiple themes, if relevant.
 - Provide a rich description of around 50 words for each theme.
 - Link themes to Codes (which contain quotes) to ground themes in the data.
 
-Themes must only reference Codes, using their identifier code.
-This is alphanumeric, no spaces, like a url slug.
+Themes must only reference Codes, using their 8-character hash identifier.
+Copy the hash exactly from the code listing -- do not invent or modify it.
 
 Be selective linking to Codes--link only the most relevant.
 
@@ -191,6 +191,8 @@ Start by deciding what level we want themes to work at.
 Use the heuristics to decide how to consolidate themes. 
 Don't worry about the details or write all the themes yet: we will do that later.
 
+In planning this new set of themes, pay careful attention to the codes we will use. Consider which codes (identified by hashes) will be most useful to support the new theme set. 
+
 Sketch out the broad outline of the themes we want to generate,
 and how we will consolidate the material into useful analytic units.
 
@@ -203,8 +205,9 @@ and how we will consolidate the material into useful analytic units.
 
 Produce a final list of themes.
 Be selective linking to Codes--link only the most relevant.
+
 {{theme_size_guidance}}
 
-Use your plan and the guidance. Write the themes.
+Now, use your plan and the guidance above. Write the final consolidated set of themes:
 
 [[theme{ {{min_themes}},{{max_themes}} }:themes]]

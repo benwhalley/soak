@@ -34,7 +34,7 @@ class _TemplateProxy:
 
     Wraps list outputs in container types for __str__ rendering
     (e.g. [Theme, ...] -> Themes, [Code, ...] -> CodeList).
-    Resolves theme.code_slugs -> theme.resolved_code_refs using codes from the DAG.
+    Resolves theme.code_hashes -> theme.resolved_code_refs using codes from the DAG.
     """
 
     def __init__(self, cr, all_codes: list = None):
@@ -42,14 +42,17 @@ class _TemplateProxy:
         self._all_codes = all_codes or []
 
     def _resolve_theme_codes(self, theme) -> None:
-        """Resolve code_slugs on a Theme using collected codes from the DAG."""
-        if not self._all_codes or not theme.code_slugs or theme.resolved_code_refs:
+        """Resolve code_hashes on a Theme using collected codes from the DAG."""
+        if not self._all_codes or not theme.code_hashes or theme.resolved_code_refs:
             return
-        code_by_slug = {c.slug: c for c in self._all_codes}
-        matched = [
-            c.model_dump() for slug in theme.code_slugs
-            if (c := code_by_slug.get(slug))
-        ]
+        code_by_hash = {c.hash(): c for c in self._all_codes}
+        # Also index by slug for backward compat with old data
+        code_by_slug = {c.slug: c for c in self._all_codes if c.slug}
+        matched = []
+        for ref in theme.code_hashes:
+            code = code_by_hash.get(ref) or code_by_slug.get(ref)
+            if code:
+                matched.append(code.model_dump())
         if matched:
             theme.resolved_code_refs = matched
 

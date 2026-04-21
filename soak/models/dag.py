@@ -104,6 +104,11 @@ class DAGConfig(BaseModel):
         default=None, exclude=True
     )  # callback(node) - called when node completes (success or failure)
 
+    # error callback (called when an LLM error is skipped or causes failure)
+    error_callback: Optional[Callable[[str, Optional[int], Exception], None]] = Field(
+        default=None, exclude=True
+    )  # callback(node_name, item_index, error) - error has .prompt, .model_name etc
+
     # rate limit callback (called on each rate limit retry)
     rate_limit_callback: Optional[Callable[[str, str], None]] = Field(
         default=None, exclude=True

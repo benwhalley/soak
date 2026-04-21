@@ -369,6 +369,8 @@ async def managed_llm_call(
         connection_error_counter.reset()
         return result
     except LLMError as e:
+        if getattr(config, "error_callback", None):
+            config.error_callback(node_name, item_index, e)
         if handle_llm_error_in_node(e, node_name, config, item_index):
             return None  # skip this item
         raise

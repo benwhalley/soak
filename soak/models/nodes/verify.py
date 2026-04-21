@@ -878,8 +878,8 @@ class VerifyQuotes(CompletionDAGNode):
         - Direct Themes or CodeList objects
         - List of Code objects (wrapped into CodeList)
         - List of Theme objects (wrapped into Themes)
-        - Plain dicts with "slug" key (legacy serialized Code objects)
-        - Plain dicts with "code_slugs" key (legacy serialized Theme objects)
+        - Plain dicts with "slug" or "name" key (serialized Code objects)
+        - Plain dicts with "code_hashes" or "code_slugs" key (serialized Theme objects)
 
         Returns:
             List of Themes or CodeList objects ready for quote extraction
@@ -902,13 +902,13 @@ class VerifyQuotes(CompletionDAGNode):
         # check if items is a list of dicts (legacy serialized data from restart)
         if items and all(isinstance(item, dict) for item in items):
             first = items[0]
-            if "slug" in first:
-                # legacy Code dicts -- reconstruct
+            if ("slug" in first or "name" in first) and "quotes" in first:
+                # Code dicts -- reconstruct
                 codes = [Code.model_validate(d) for d in items]
                 outputs.append(CodeList(codes=codes))
                 return outputs
-            if "code_slugs" in first:
-                # legacy Theme dicts -- reconstruct
+            if "code_hashes" in first or "code_slugs" in first:
+                # Theme dicts -- reconstruct
                 themes = [Theme.model_validate(d) for d in items]
                 outputs.append(Themes(themes=themes))
                 return outputs

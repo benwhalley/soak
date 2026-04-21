@@ -232,9 +232,15 @@ class Filter(ItemsNode, CompletionDAGNode):
                                     credentials=self.dag.config.llm_credentials,
                                     **extra_kwargs,
                                 )
-                                # Accumulate costs immediately for real-time progress
-                                self._accumulate_costs(llm_results[index])
-                                self._llm_results.append(llm_results[index])
+                                if llm_results[index] is not None:
+                                    self._accumulate_costs(llm_results[index])
+                                    self._llm_results.append(llm_results[index])
+                                else:
+                                    source_id = item.get("source_id", f"item {index}")
+                                    logger.warning(
+                                        f"Filter '{self.name}': skipped item {index} "
+                                        f"(source: {source_id}) due to LLM error"
+                                    )
                             except Exception as e:
                                 logger.error(
                                     f"Filter '{self.name}': Error in LLM call for item {index}: {e}"

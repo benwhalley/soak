@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 import anyio
 from decouple import config as env_config
 from joblib import Memory
-from pydantic import BaseModel, ConfigDict, Field, constr
+from pydantic import BaseModel, ConfigDict, Field, constr, model_validator
 from struckdown import (StruckdownResult, LLMCredentials, get_embedding,
                         get_embedding_async)
 from struckdown.response_types import ResponseTypes
@@ -24,6 +24,16 @@ logger = logging.getLogger(__name__)
 
 # Configuration: Quote hash length (base32 encoding)
 QUOTE_HASH_LENGTH = int(os.getenv("QUOTE_HASH_LENGTH", "8"))
+
+# Configuration: Code hash length (base32 encoding)
+CODE_HASH_LENGTH = int(os.getenv("CODE_HASH_LENGTH", "8"))
+
+
+def compute_code_hash(name: str, description: str) -> str:
+    """Compute deterministic hash for a code from its name and description."""
+    content = f"{name}|{description}"
+    hash_bytes = hashlib.sha256(content.encode()).digest()
+    return base64.b32encode(hash_bytes).decode("ascii")[:CODE_HASH_LENGTH].lower()
 
 # Jinja2 environment for __str__ templates
 _str_template_dir = Path(__file__).resolve().parent.parent / "templates" / "__str__"
@@ -163,10 +173,6 @@ QuoteOrRef = Union[Quote, QuoteReference]
 # Base models for qualitative analysis
 @ResponseTypes.register("code")
 class Code(ResponseModel):
-    slug: CodeSlugStr = Field(
-        ...,
-        description="A very short abbreviated unique slug/reference for this Code. MAXIMUM of 40 ascii characters, never more.",
-    )
     name: str = Field(..., min_length=1, description="A short name for the code.")
     description: str = Field(
         ..., min_length=5, description="A description of the code."
@@ -180,9 +186,14 @@ class Code(ResponseModel):
         description="Example quotes from the text which illustrate the code. Choose the best examples. Maximum 24 quotes allowed, but typically fewer--be selective.",
     )
 
-    # post-processed field (excluded from LLM schema)
+    # post-processed fields (excluded from LLM schema)
+    slug: Optional[str] = PostProcessedField(default=None)
     resolved_quotes: Optional[List[Dict]] = PostProcessedField(default=None)
-    
+
+    def hash(self) -> str:
+        """Deterministic short hash for referencing this code."""
+        return compute_code_hash(self.name, self.description)
+
     def __str__(self):
         return render_str_template("Code.jinja", {"code": self})
 
@@ -200,9 +211,12 @@ class Code(ResponseModel):
         return {q.source for q in self.all_quotes if q.source}
 
     def post_process(self, context: Dict[str, Any]):
-        """Post-process quotes: resolve QuoteReferences and capture source in quotes."""
+        """Post-process: auto-generate slug, resolve quotes."""
+        import re
         from soak.models.utils import post_process_code_quotes
 
+        if not self.slug:
+            self.slug = re.sub(r"[^a-z0-9]+", "-", self.name.lower()).strip("-")
         post_process_code_quotes(self, context)
 
     @classmethod
@@ -255,17 +269,36 @@ class CodeList(BaseModel):
             code.post_process(context)
 
 
+CodeHashStr = constr(min_length=CODE_HASH_LENGTH, max_length=CODE_HASH_LENGTH)
+
+
 @ResponseTypes.register("theme")
 class Theme(ResponseModel):
     name: str = Field(..., min_length=10)
     description: str = Field(..., min_length=10)
-    # refer to codes by slug/identifier
-    code_slugs: List[CodeSlugStr] = Field(
+    code_hashes: List[str] = Field(
         ...,
         min_length=0,
         max_length=60,
-        description="A List of the code-references that are part of this theme. Identify them accurately by the slug/hash from the text. Each code slug MUST BE no more than 40 ascii characters. Alphanumeric only, no spaces. Only refer to codes in the input text above. An absolute MAXIMUM of 60 codes is allowed per theme, but normally far fewer--be selective.",
+        description=(
+            f"List of {CODE_HASH_LENGTH}-character code hash identifiers for codes"
+            " belonging to this theme. Copy the hash exactly from the code listing above."
+            " An absolute MAXIMUM of 60 codes per theme, but normally far fewer -- be selective."
+        ),
     )
+
+    @model_validator(mode="before")
+    @classmethod
+    def _migrate_code_slugs(cls, data):
+        """Backward compat: map old code_slugs field to code_hashes."""
+        if isinstance(data, dict) and "code_slugs" in data and "code_hashes" not in data:
+            data["code_hashes"] = data.pop("code_slugs")
+        return data
+
+    @property
+    def code_slugs(self) -> List[str]:
+        """Backward compat alias."""
+        return self.code_hashes
 
     def __str__(self):
         return render_str_template("Theme.jinja", {"theme": self})
@@ -293,7 +326,7 @@ class Theme(ResponseModel):
         )
 
     def post_process(self, context: Dict[str, Any]):
-        """Post-process code_slugs to match actual Codes."""
+        """Post-process code_hashes to match actual Codes."""
         from soak.models.utils import post_process_theme_code_refs
 
         post_process_theme_code_refs(self, context)

@@ -234,14 +234,21 @@ class QualitativeAnalysisPipeline(DAG):
 
                 # build themes with their related codes for expandable display
                 if analysis_result.themes:
-                    codes_by_slug = {}
+                    codes_by_ref = {}
                     if analysis_result.codes:
                         for code in analysis_result.codes:
+                            # index by hash
+                            code_hash = (
+                                code.hash() if hasattr(code, "hash") else None
+                            )
+                            if code_hash:
+                                codes_by_ref[code_hash] = code
+                            # also index by slug for backward compat
                             slug = (
                                 code.slug if hasattr(code, "slug") else code.get("slug")
                             )
                             if slug:
-                                codes_by_slug[slug] = code
+                                codes_by_ref[slug] = code
 
                     for theme in analysis_result.themes:
                         theme_dict = (
@@ -249,12 +256,14 @@ class QualitativeAnalysisPipeline(DAG):
                             if hasattr(theme, "model_dump")
                             else dict(theme)
                         )
-                        code_slugs = theme_dict.get("code_slugs", [])
+                        code_refs = theme_dict.get(
+                            "code_hashes", theme_dict.get("code_slugs", [])
+                        )
                         related_codes = []
                         total_quotes = 0
 
-                        for slug in code_slugs:
-                            code = codes_by_slug.get(slug)
+                        for ref in code_refs:
+                            code = codes_by_ref.get(ref)
                             if code:
                                 code_dict = (
                                     code.model_dump()
@@ -320,11 +329,11 @@ class QualitativeAnalysisPipeline(DAG):
                     if isinstance(first_item, Theme):
                         return node.output
                     if isinstance(first_item, dict):
-                        # Check if it's a Code or Theme dict (has 'slug' or 'code_slugs')
-                        if "slug" in first_item and "quotes" in first_item:
+                        # Check if it's a Code or Theme dict
+                        if "quotes" in first_item and ("slug" in first_item or "name" in first_item):
                             # This is a list of Code dicts from Reduce node
                             return node.output
-                        if "code_slugs" in first_item:
+                        if "code_hashes" in first_item or "code_slugs" in first_item:
                             # This is a list of Theme dicts from Reduce node
                             return node.output
 
