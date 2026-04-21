@@ -439,7 +439,9 @@ class Cluster(DAGNode):
         logger.info("Embeddings computed.")
 
         # signal completion
-        self.dag.emit(NodeProgress(self.name, len(unique_texts), len(unique_texts), 0.0))
+        self.dag.emit(
+            NodeProgress(self.name, len(unique_texts), len(unique_texts), 0.0)
+        )
 
         # map back to full set
         logger.debug(
@@ -767,7 +769,11 @@ class Cluster(DAGNode):
         if self.output:
             result["metadata"]["num_clusters"] = len(self.output)
             # only compute cluster stats when output is TrackedItems with cluster metadata
-            first = self.output[0] if isinstance(self.output, list) and self.output else None
+            first = (
+                self.output[0]
+                if isinstance(self.output, list) and self.output
+                else None
+            )
             if isinstance(first, TrackedItem) and "cluster_size" in first.metadata:
                 sizes = [c.metadata["cluster_size"] for c in self.output]
                 result["metadata"]["total_items"] = sum(sizes)
@@ -792,8 +798,14 @@ class Cluster(DAGNode):
 
         # when skip_below triggers in bypass mode, output is raw items (not TrackedItems)
         # -- nothing meaningful to export in that case
-        first = self.output[0] if isinstance(self.output, list) and self.output else self.output
-        if not isinstance(first, TrackedItem) or "cluster_size" not in getattr(first, "metadata", {}):
+        first = (
+            self.output[0]
+            if isinstance(self.output, list) and self.output
+            else self.output
+        )
+        if not isinstance(first, TrackedItem) or "cluster_size" not in getattr(
+            first, "metadata", {}
+        ):
             return
 
         # write cluster summary

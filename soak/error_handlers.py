@@ -18,14 +18,10 @@ from decouple import config as _decouple_config
 _SOAK_DEBUG = _decouple_config("DEBUG", default=False, cast=bool)
 
 from struckdown import LLMError
-from struckdown.errors import (
-    AuthError,
-    BadRequestError,
-    ConnectionError as SDConnectionError,
-    ContentFilterError,
-    ContextWindowError,
-    RateLimitError,
-)
+from struckdown.errors import AuthError, BadRequestError
+from struckdown.errors import ConnectionError as SDConnectionError
+from struckdown.errors import (ContentFilterError, ContextWindowError,
+                               RateLimitError)
 from tenacity import (before_sleep_log, retry, retry_if_exception,
                       stop_after_attempt, wait_exponential)
 
@@ -314,7 +310,9 @@ def handle_llm_error_in_node(
         return False
 
 
-def _save_debug_prompt(node_name: str, prompt_text: str, item_index: Optional[int] = None):
+def _save_debug_prompt(
+    node_name: str, prompt_text: str, item_index: Optional[int] = None
+):
     """Save rendered prompt to .prompts/ when DEBUG is set."""
     if not _SOAK_DEBUG:
         return
@@ -337,6 +335,7 @@ async def managed_llm_call(
     # save rendered prompts to .prompts/ when DEBUG is set
     if _SOAK_DEBUG:
         from soak.models.dag import render_template_preserve_undefined
+
         prompt_text = kwargs.get("multipart_prompt") or kwargs.get("template")
         context = kwargs.get("context", {})
         if prompt_text and context:
@@ -352,6 +351,7 @@ async def managed_llm_call(
             emit = getattr(config, "emit", None)
             if emit:
                 from soak.events import RateLimitHit
+
                 model_name = getattr(exc, "model_name", "unknown")
                 emit(RateLimitHit(node_name, model_name))
 
@@ -373,6 +373,7 @@ async def managed_llm_call(
         emit = getattr(config, "emit", None)
         if emit:
             from soak.events import NodeError
+
             emit(NodeError(node_name, item_index, e))
         if handle_llm_error_in_node(e, node_name, config, item_index):
             return None  # skip this item

@@ -115,9 +115,13 @@ class Map(ItemsNode, CompletionDAGNode):
                                     # Default LLM mode
                                     extra_kwargs = self.get_llm_kwargs()
                                     if self.dag.config.event_handlers:
+
                                         def _streaming_cb(nn, ii, ev):
                                             self.dag.emit(StreamingEvent(nn, ii, ev))
-                                        extra_kwargs["_streaming_callback"] = _streaming_cb
+
+                                        extra_kwargs["_streaming_callback"] = (
+                                            _streaming_cb
+                                        )
                                         extra_kwargs["_stream_node_name"] = self.name
                                         extra_kwargs["_stream_item_index"] = index
                                     llm_context = {**filtered_context, **item}
@@ -139,7 +143,9 @@ class Map(ItemsNode, CompletionDAGNode):
                                         self._accumulate_costs(results[index])
                                         self._llm_results.append(results[index])
                                     else:
-                                        source_id = item.get("source_id", f"item {index}")
+                                        source_id = item.get(
+                                            "source_id", f"item {index}"
+                                        )
                                         logger.warning(
                                             f"Map '{self.name}': skipped item {index} "
                                             f"(source: {source_id}) due to LLM error"
@@ -163,10 +169,15 @@ class Map(ItemsNode, CompletionDAGNode):
                                     f"Map '{self.name}': completed item {index + 1}, "
                                     f"progress {done}/{len(results)}"
                                 )
-                                self.dag.emit(NodeProgress(
-                                    self.name, done, len(results),
-                                    self._total_cost, self._fresh_cost,
-                                ))
+                                self.dag.emit(
+                                    NodeProgress(
+                                        self.name,
+                                        done,
+                                        len(results),
+                                        self._total_cost,
+                                        self._fresh_cost,
+                                    )
+                                )
 
                     tg.start_soon(run_and_store)
         finally:

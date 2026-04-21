@@ -1,18 +1,14 @@
 """Integration tests for serialization with pipeline execution and restart."""
 
 import pytest
-from struckdown.results import StruckdownResult, SlotResult
+from struckdown.results import SlotResult, StruckdownResult
 
 from soak.models.base import Code, CodeList, Theme, Themes, TrackedItem
-from soak.models.nodes.base import _TemplateProxy, _collect_codes_from_dag, _prepare_for_template
-from soak.serialization import (
-    deserialize_node_output,
-    deserialize_value,
-    extract_display_output,
-    serialize_node_output,
-    serialize_value,
-)
-
+from soak.models.nodes.base import (_collect_codes_from_dag,
+                                    _prepare_for_template, _TemplateProxy)
+from soak.serialization import (deserialize_node_output, deserialize_value,
+                                extract_display_output, serialize_node_output,
+                                serialize_value)
 
 # --------------------------------------------------------------------------- #
 #  Helpers
@@ -137,9 +133,7 @@ class TestSerializeNodeOutputByType:
 
     def test_reduce_tracked_item(self):
         """Reduce output: TrackedItem is serialized and round-tripped."""
-        item = TrackedItem(
-            content="combined", id="all_codes", sources=["doc1", "doc2"]
-        )
+        item = TrackedItem(content="combined", id="all_codes", sources=["doc1", "doc2"])
         node = FakeNode("Reduce", item)
 
         serialized = serialize_node_output(node)
@@ -305,10 +299,12 @@ class TestSerializeToDisplayPipeline:
 
     def test_transform_multi_slot_display(self):
         """Transform(codes+themes) -> serialize -> extract_display -> {slot: output}."""
-        cr = _make_complete({
-            "codes": [_make_code()],
-            "themes": [_make_theme()],
-        })
+        cr = _make_complete(
+            {
+                "codes": [_make_code()],
+                "themes": [_make_theme()],
+            }
+        )
         node = FakeNode("Transform", [cr])
 
         serialized = serialize_node_output(node)

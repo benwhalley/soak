@@ -3,7 +3,6 @@
 import json
 import logging
 import math
-
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Literal, Optional, Tuple, Union
@@ -16,7 +15,7 @@ import tiktoken
 from box import Box
 from jinja2 import Environment, TemplateSyntaxError
 from pydantic import BaseModel, Field, PrivateAttr, field_validator
-from struckdown import LLM, StruckdownResult, LLMError, complete_async
+from struckdown import LLM, LLMError, StruckdownResult, complete_async
 from struckdown.parsing import parse_syntax
 
 from soak.error_handlers import log_error_to_stderr, should_continue_pipeline
@@ -59,6 +58,7 @@ class _TemplateProxy:
         if name.startswith("_"):
             raise AttributeError(name)
         from soak.models.base import Code, CodeList, Theme, Themes
+
         if name in self._cr.results:
             output = self._cr.results[name].output
             # wrap typed lists in container types for __str__ rendering
@@ -86,7 +86,9 @@ class _TemplateProxy:
 def _collect_codes_from_dag(dag) -> list:
     """Scan all completed DAG node outputs for Code objects."""
     from struckdown import StruckdownResult
+
     from soak.models.base import Code
+
     codes = []
 
     for node in dag.nodes_dict.values():
@@ -115,9 +117,13 @@ def _prepare_for_template(output, source_node_type: str = "", all_codes: list = 
     Anything else: pass through unchanged.
     """
     from struckdown import StruckdownResult
+
     if source_node_type in ("Transform", "TransformReduce"):
-        if (isinstance(output, list) and len(output) == 1
-                and isinstance(output[0], StruckdownResult)):
+        if (
+            isinstance(output, list)
+            and len(output) == 1
+            and isinstance(output[0], StruckdownResult)
+        ):
             return _TemplateProxy(output[0], all_codes)
     if isinstance(output, list) and output and isinstance(output[0], StruckdownResult):
         return [_TemplateProxy(cr, all_codes) for cr in output]
@@ -204,7 +210,9 @@ class DAGNode(BaseModel):
         for k, v in prev_nodes.items():
             if v and v.output is not None:
                 prev_output[k] = _prepare_for_template(
-                    v.output, source_node_type=v.type, all_codes=all_codes,
+                    v.output,
+                    source_node_type=v.type,
+                    all_codes=all_codes,
                 )
         ctx.update(prev_output)
 
@@ -674,7 +682,9 @@ async def complete_async_with_streaming(
             )
 
     if final_result is None:
-        raise RuntimeError("complete_incremental_async ended without ProcessingComplete")
+        raise RuntimeError(
+            "complete_incremental_async ended without ProcessingComplete"
+        )
 
     return final_result
 

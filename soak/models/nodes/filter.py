@@ -13,8 +13,9 @@ from simpleeval import (AttributeDoesNotExist, EvalWithCompoundTypes,
 
 from soak.error_handlers import managed_llm_call
 from soak.events import NodeProgress
-from soak.models.base import (TrackedItem, extract_content, get_max_concurrency,
-                              get_semaphore, safe_json_dump)
+from soak.models.base import (TrackedItem, extract_content,
+                              get_max_concurrency, get_semaphore,
+                              safe_json_dump)
 
 from .base import (CompletionDAGNode, ItemsNode, default_map_task,
                    render_strict_template)
@@ -213,10 +214,14 @@ class Filter(ItemsNode, CompletionDAGNode):
                                     )
 
                                 # emit progress for real-time updates
-                                self.dag.emit(NodeProgress(
-                                    self.name, len(self._llm_results),
-                                    self._input_count, self._total_cost,
-                                ))
+                                self.dag.emit(
+                                    NodeProgress(
+                                        self.name,
+                                        len(self._llm_results),
+                                        self._input_count,
+                                        self._total_cost,
+                                    )
+                                )
 
                     tg.start_soon(run_and_store)
         finally:

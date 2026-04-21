@@ -7,8 +7,9 @@ Requires LLM_API_KEY and LLM_API_BASE environment variables to be set.
 """
 
 import os
-import pytest
 from pathlib import Path
+
+import pytest
 
 
 @pytest.mark.anyio
@@ -18,16 +19,29 @@ from pathlib import Path
 )
 async def test_zs_pipeline_4_docs():
     """Run the full zs.soak thematic analysis pipeline with 4 airline review documents."""
-    from soak.specs import load_template_bundle
     from struckdown import LLMCredentials
 
+    from soak.specs import load_template_bundle
+
     # Load pipeline
-    pipeline_path = Path(__file__).parent.parent / "soak" / "pipelines" / "thematic_analysis" / "zs.soak"
+    pipeline_path = (
+        Path(__file__).parent.parent
+        / "soak"
+        / "pipelines"
+        / "thematic_analysis"
+        / "zs.soak"
+    )
     assert pipeline_path.exists(), f"Pipeline not found: {pipeline_path}"
     dag = load_template_bundle(pipeline_path)
 
     # Load 4 example documents
-    data_dir = Path(__file__).parent.parent / "examples" / "airline-reviews" / "data" / "economy"
+    data_dir = (
+        Path(__file__).parent.parent
+        / "examples"
+        / "airline-reviews"
+        / "data"
+        / "economy"
+    )
     doc_files = sorted(data_dir.glob("*.txt"))[:4]
     assert len(doc_files) == 4, f"Expected 4 docs, found {len(doc_files)}"
 
@@ -47,6 +61,7 @@ async def test_zs_pipeline_4_docs():
 
     # Check themes node output is a list containing a StruckdownResult
     from struckdown import StruckdownResult
+
     themes_node = dag.nodes_dict["themes"]
     assert isinstance(themes_node.output, list)
     assert len(themes_node.output) == 1
@@ -56,6 +71,7 @@ async def test_zs_pipeline_4_docs():
 
     # Check the themes slot has Theme objects
     from soak.models.base import Theme
+
     themes_output = cr.results["themes"].output
     assert isinstance(themes_output, list)
     assert len(themes_output) >= 1
@@ -75,19 +91,25 @@ async def test_zs_pipeline_4_docs():
     from soak.models.nodes.base import _prepare_for_template
 
     # Transform output -> single proxy
-    prepared_themes = _prepare_for_template(themes_node.output, source_node_type="Transform")
+    prepared_themes = _prepare_for_template(
+        themes_node.output, source_node_type="Transform"
+    )
     from soak.models.nodes.base import _TemplateProxy
+
     assert isinstance(prepared_themes, _TemplateProxy)
 
     # Proxy attribute access wraps [Theme] into Themes
     from soak.models.base import Themes
+
     themes_obj = prepared_themes.themes
     assert isinstance(themes_obj, Themes)
     assert len(themes_obj) >= 1
 
     # Map output -> list of proxies
     theme_groups_node = dag.nodes_dict["theme_groups"]
-    prepared_groups = _prepare_for_template(theme_groups_node.output, source_node_type="Map")
+    prepared_groups = _prepare_for_template(
+        theme_groups_node.output, source_node_type="Map"
+    )
     assert isinstance(prepared_groups, list)
     assert all(isinstance(p, _TemplateProxy) for p in prepared_groups)
 

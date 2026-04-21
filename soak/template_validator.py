@@ -136,8 +136,8 @@ class PipelineTemplateValidator:
                 template_content = f.read()
 
             # first validate complete template syntax
-            syntax_valid, syntax_error = self.analyzer.validate_complete_template_syntax(
-                template_content
+            syntax_valid, syntax_error = (
+                self.analyzer.validate_complete_template_syntax(template_content)
             )
             if not syntax_valid:
                 return False, [syntax_error]

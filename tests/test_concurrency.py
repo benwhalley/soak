@@ -6,16 +6,11 @@ from unittest.mock import MagicMock
 import anyio
 import pytest
 from struckdown import LLMError
-from struckdown.errors import (
-    ConnectionError as SDConnectionError,
-    RateLimitError as SDRateLimitError,
-)
+from struckdown.errors import ConnectionError as SDConnectionError
+from struckdown.errors import RateLimitError as SDRateLimitError
 
-from soak.error_handlers import (
-    _is_rate_limit_error,
-    _is_retryable_exception,
-    managed_llm_call,
-)
+from soak.error_handlers import (_is_rate_limit_error, _is_retryable_exception,
+                                 managed_llm_call)
 from soak.models.base import get_semaphore, set_max_concurrency
 from soak.models.dag import DAGConfig
 
@@ -28,7 +23,9 @@ class TestRetryableExceptions:
         assert _is_retryable_exception(exc) is True
 
     def test_connection_error_is_retryable(self):
-        exc = SDConnectionError(Exception("connection failed"), "test prompt", "test-model")
+        exc = SDConnectionError(
+            Exception("connection failed"), "test prompt", "test-model"
+        )
         assert _is_retryable_exception(exc) is True
 
     def test_llm_error_retryable_via_is_retryable(self):
@@ -50,12 +47,16 @@ class TestIsRateLimitError:
         assert _is_rate_limit_error(exc) is True
 
     def test_llm_error_wrapping_rate_limit(self):
-        original = SDRateLimitError(Exception("rate limited"), "test prompt", "test-model")
+        original = SDRateLimitError(
+            Exception("rate limited"), "test prompt", "test-model"
+        )
         exc = LLMError(original, "test prompt", "test-model")
         assert _is_rate_limit_error(exc) is True
 
     def test_connection_error_is_not_rate_limit(self):
-        exc = SDConnectionError(Exception("connection failed"), "test prompt", "test-model")
+        exc = SDConnectionError(
+            Exception("connection failed"), "test prompt", "test-model"
+        )
         assert _is_rate_limit_error(exc) is False
 
 

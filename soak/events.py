@@ -107,8 +107,9 @@ class CLIEventHandler:
 
     def on_event(self, event: DAGEvent) -> None:
         match event:
-            case NodeProgress(node_name=name, done=done, total=total,
-                              cost=cost, fresh_cost=fresh_cost):
+            case NodeProgress(
+                node_name=name, done=done, total=total, cost=cost, fresh_cost=fresh_cost
+            ):
                 if name not in self._bars:
                     self._bars[name] = self._create_bar(name, total)
                 bar = self._bars[name]

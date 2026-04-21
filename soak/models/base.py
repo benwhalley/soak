@@ -11,14 +11,13 @@ from typing import Any, Dict, List, Literal, Optional, Set, Tuple, Union
 
 import anyio
 from decouple import config as env_config
+from jinja2 import Environment, FileSystemLoader
 from joblib import Memory
 from pydantic import BaseModel, ConfigDict, Field, constr, model_validator
-from struckdown import (StruckdownResult, LLMCredentials, get_embedding,
+from struckdown import (LLMCredentials, StruckdownResult, get_embedding,
                         get_embedding_async)
 from struckdown.response_types import ResponseTypes
 from struckdown.return_type_models import ResponseModel
-
-from jinja2 import Environment, FileSystemLoader
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +34,7 @@ def compute_code_hash(name: str, description: str) -> str:
     hash_bytes = hashlib.sha256(content.encode()).digest()
     return base64.b32encode(hash_bytes).decode("ascii")[:CODE_HASH_LENGTH].lower()
 
+
 # Jinja2 environment for __str__ templates
 _str_template_dir = Path(__file__).resolve().parent.parent / "templates" / "__str__"
 _str_env = Environment(
@@ -46,6 +46,7 @@ _str_env = Environment(
 def render_str_template(template_name: str, context: Dict[str, Any]) -> str:
     """Render a str_template by name (e.g. 'Code.jinja')."""
     return _str_env.get_template(template_name).render(context)
+
 
 SOAK_MAX_RUNTIME = 60 * 30  # 30 mins
 
@@ -213,6 +214,7 @@ class Code(ResponseModel):
     def post_process(self, context: Dict[str, Any]):
         """Post-process: auto-generate slug, resolve quotes."""
         import re
+
         from soak.models.utils import post_process_code_quotes
 
         if not self.slug:
@@ -291,7 +293,11 @@ class Theme(ResponseModel):
     @classmethod
     def _migrate_code_slugs(cls, data):
         """Backward compat: map old code_slugs field to code_hashes."""
-        if isinstance(data, dict) and "code_slugs" in data and "code_hashes" not in data:
+        if (
+            isinstance(data, dict)
+            and "code_slugs" in data
+            and "code_hashes" not in data
+        ):
             data["code_hashes"] = data.pop("code_slugs")
         return data
 

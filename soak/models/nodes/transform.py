@@ -85,8 +85,10 @@ class Transform(ItemsNode, CompletionDAGNode):
                 logger.debug(f"Calling LLM with prompt: {rt}")
                 logger.debug(f"Context: {merged_context}")
                 if self.dag.config.event_handlers:
+
                     def _streaming_cb(nn, ii, ev):
                         self.dag.emit(StreamingEvent(nn, ii, ev))
+
                     llm_func = partial(
                         complete_async_with_streaming,
                         streaming_callback=_streaming_cb,

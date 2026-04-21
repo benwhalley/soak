@@ -238,9 +238,7 @@ class QualitativeAnalysisPipeline(DAG):
                     if analysis_result.codes:
                         for code in analysis_result.codes:
                             # index by hash
-                            code_hash = (
-                                code.hash() if hasattr(code, "hash") else None
-                            )
+                            code_hash = code.hash() if hasattr(code, "hash") else None
                             if code_hash:
                                 codes_by_ref[code_hash] = code
                             # also index by slug for backward compat
@@ -330,7 +328,9 @@ class QualitativeAnalysisPipeline(DAG):
                         return node.output
                     if isinstance(first_item, dict):
                         # Check if it's a Code or Theme dict
-                        if "quotes" in first_item and ("slug" in first_item or "name" in first_item):
+                        if "quotes" in first_item and (
+                            "slug" in first_item or "name" in first_item
+                        ):
                             # This is a list of Code dicts from Reduce node
                             return node.output
                         if "code_hashes" in first_item or "code_slugs" in first_item:

@@ -17,7 +17,7 @@ import pandas as pd
 from pydantic import Field, PrivateAttr
 from rank_bm25 import BM25Okapi
 from sklearn.metrics.pairwise import cosine_similarity
-from struckdown import StruckdownResult, LLMError, complete_async
+from struckdown import LLMError, StruckdownResult, complete_async
 from struckdown.parsing import parse_syntax
 
 from soak.error_handlers import (ErrorBehavior, get_error_behavior,
@@ -25,8 +25,8 @@ from soak.error_handlers import (ErrorBehavior, get_error_behavior,
                                  should_continue_pipeline)
 from soak.models.alignment import trim_span_to_quote
 from soak.models.base import (TrackedItem, get_action_lookup,
-                              get_embedding_async, memory, safe_json_dump,
-                              get_semaphore)
+                              get_embedding_async, get_semaphore, memory,
+                              safe_json_dump)
 from soak.models.text_utils import (ELLIPSIS_RE, create_document_boundaries,
                                     extract_context_window,
                                     find_source_document, is_match_truncated,
@@ -1205,17 +1205,17 @@ class VerifyQuotes(CompletionDAGNode):
             extracted_sentences=quote_texts,
         )
         logger.info(f"Created {len(windows)} search windows")
+
         # create progress callback that emits NodeProgress events
         def bm25_progress_callback(done: int, total: int, cost: float):
             from soak.events import NodeProgress
+
             self.dag.emit(NodeProgress(self.name, done, total, cost))
 
         embed_fn = get_embedding_async
         embed_creds = self.dag.config.get_embedding_credentials()
         if embed_creds:
-            embed_fn = functools.partial(
-                get_embedding_async, credentials=embed_creds
-            )
+            embed_fn = functools.partial(get_embedding_async, credentials=embed_creds)
 
         matches = await verify_quotes_bm25_first(
             quotes_to_verify,
@@ -1320,15 +1320,20 @@ class VerifyQuotes(CompletionDAGNode):
                         df.at[idx, "llm_explanation"] = result.get("explanation")
                         df.at[idx, "llm_is_contained"] = result.get("is_contained")
                         if result.get("complete_result"):
-                            self._llm_results_by_type["existence"][quote_hash] = (
-                                result["complete_result"]
-                            )
+                            self._llm_results_by_type["existence"][quote_hash] = result[
+                                "complete_result"
+                            ]
                             self._llm_results.append(result["complete_result"])
                         existence_done += 1
-                        self.dag.emit(NodeProgress(
-                            self.name, existence_done, len(poor_matches),
-                            self._total_cost, self._fresh_cost,
-                        ))
+                        self.dag.emit(
+                            NodeProgress(
+                                self.name,
+                                existence_done,
+                                len(poor_matches),
+                                self._total_cost,
+                                self._fresh_cost,
+                            )
+                        )
 
                 for idx, row in poor_matches.iterrows():
                     tg.start_soon(
@@ -1417,15 +1422,18 @@ class VerifyQuotes(CompletionDAGNode):
                             self._llm_results_by_type["fairness"][quote_hash] = (
                                 fairness_result["complete_result"]
                             )
-                            self._llm_results.append(
-                                fairness_result["complete_result"]
-                            )
+                            self._llm_results.append(fairness_result["complete_result"])
 
                         fairness_done += 1
-                        self.dag.emit(NodeProgress(
-                            self.name, fairness_done, len(df),
-                            self._total_cost, self._fresh_cost,
-                        ))
+                        self.dag.emit(
+                            NodeProgress(
+                                self.name,
+                                fairness_done,
+                                len(df),
+                                self._total_cost,
+                                self._fresh_cost,
+                            )
+                        )
 
                 # build lookup dict once (O(m))
                 quote_hash_to_context = {

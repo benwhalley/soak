@@ -141,7 +141,9 @@ class Classifier(ItemsNode, CompletionDAGNode):
                                         self._accumulate_costs(complete_result)
                                         self._llm_results.append(complete_result)
                                     else:
-                                        source_id = item.get("source_id", f"item {index}")
+                                        source_id = item.get(
+                                            "source_id", f"item {index}"
+                                        )
                                         logger.warning(
                                             f"Classifier '{self.name}': skipped item {index} "
                                             f"(source: {source_id}) due to LLM error"
@@ -161,10 +163,14 @@ class Classifier(ItemsNode, CompletionDAGNode):
                                         )
 
                                     # emit progress for real-time updates
-                                    self.dag.emit(NodeProgress(
-                                        self.name, len(self._llm_results),
-                                        self._input_count, self._total_cost,
-                                    ))
+                                    self.dag.emit(
+                                        NodeProgress(
+                                            self.name,
+                                            len(self._llm_results),
+                                            self._input_count,
+                                            self._total_cost,
+                                        )
+                                    )
 
                         tg.start_soon(run_and_store)
 

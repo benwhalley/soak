@@ -7,22 +7,22 @@ import random
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import (TYPE_CHECKING, Annotated, Any, Dict, List,
-                    Optional, Set, Tuple, Union)
+from typing import (TYPE_CHECKING, Annotated, Any, Dict, List, Optional, Set,
+                    Tuple, Union)
 
 import anyio
 from jinja2 import Environment, StrictUndefined, Undefined, meta
 from pydantic import BaseModel, Field, model_validator
-from struckdown import LLM, StruckdownResult, LLMCredentials
+from struckdown import LLM, LLMCredentials, StruckdownResult
 
 from soak.document_utils import (extract_text, get_scrubber, is_spreadsheet,
                                  unpack_zip_to_temp_paths_if_needed)
+from soak.events import CLIEventHandler, CostUpdated, DAGEvent, NodeCompleted
 from soak.export_utils import export_to_csv
 from soak.models.base import (SOAK_MAX_RUNTIME, TrackedItem,
                               get_default_llm_credentials)
 from soak.models.context import (ContextVariable, get_context_defaults,
                                  normalize_context)
-from soak.events import CLIEventHandler, CostUpdated, DAGEvent, NodeCompleted
 from soak.models.cost_tracker import GlobalCostTracker
 
 if TYPE_CHECKING:
@@ -64,7 +64,9 @@ class DAGConfig(BaseModel):
         "text-embedding-3-large"  # model for embeddings (use "local/model-name" for sentence-transformers)
     )
     embedding_credentials: Optional[LLMCredentials] = Field(
-        default=None, repr=False, exclude=True,
+        default=None,
+        repr=False,
+        exclude=True,
         description="Credentials for embedding API calls (falls back to llm_credentials if None)",
     )
 
@@ -364,9 +366,7 @@ async def run_node(node):
         # emit node completion event (runs in thread for ORM-safe handlers)
         if node.dag.config.event_handlers:
             logger.debug(f"Emitting NodeCompleted for {node.name}")
-            await anyio.to_thread.run_sync(
-                lambda: node.dag.emit(NodeCompleted(node))
-            )
+            await anyio.to_thread.run_sync(lambda: node.dag.emit(NodeCompleted(node)))
             logger.debug(f"NodeCompleted emitted for {node.name}")
 
         logger.debug(f"run_node returning for {node.name}")
@@ -754,9 +754,9 @@ class DAG(BaseModel):
             # bridge cost tracker into event stream
             if self.cost_tracker and self.config.event_handlers:
                 self.cost_tracker.register_callback(
-                    lambda: self.emit(CostUpdated(
-                        **self.cost_tracker.get_snapshot().__dict__
-                    ))
+                    lambda: self.emit(
+                        CostUpdated(**self.cost_tracker.get_snapshot().__dict__)
+                    )
                 )
 
             # add CLI progress handler if show_progress is enabled
@@ -785,7 +785,10 @@ class DAG(BaseModel):
 
             # unwrap ExceptionGroups from async TaskGroup to get the actual exception
             actual_exception = e
-            while isinstance(actual_exception, BaseExceptionGroup) and actual_exception.exceptions:
+            while (
+                isinstance(actual_exception, BaseExceptionGroup)
+                and actual_exception.exceptions
+            ):
                 actual_exception = actual_exception.exceptions[0]
 
             error_str = str(actual_exception)
@@ -920,7 +923,9 @@ Export Time: {datetime.now().isoformat()}
         if isinstance(node.output, list):
             outputs = [o for o in node.output if isinstance(o, StruckdownResult)]
         elif isinstance(node.output, dict):
-            outputs = [o for o in node.output.values() if isinstance(o, StruckdownResult)]
+            outputs = [
+                o for o in node.output.values() if isinstance(o, StruckdownResult)
+            ]
         elif isinstance(node.output, StruckdownResult):
             outputs = [node.output]
 
@@ -937,7 +942,9 @@ Export Time: {datetime.now().isoformat()}
         if isinstance(node.output, list):
             outputs = [o for o in node.output if isinstance(o, StruckdownResult)]
         elif isinstance(node.output, dict):
-            outputs = [o for o in node.output.values() if isinstance(o, StruckdownResult)]
+            outputs = [
+                o for o in node.output.values() if isinstance(o, StruckdownResult)
+            ]
         elif isinstance(node.output, StruckdownResult):
             outputs = [node.output]
 
@@ -962,7 +969,9 @@ Export Time: {datetime.now().isoformat()}
         # Fallback: Check node.output ONLY if _llm_results is empty/missing (backward compatibility)
         elif hasattr(node, "output") and node.output is not None:
             if isinstance(node.output, list):
-                outputs.extend([o for o in node.output if isinstance(o, StruckdownResult)])
+                outputs.extend(
+                    [o for o in node.output if isinstance(o, StruckdownResult)]
+                )
             elif isinstance(node.output, dict):
                 outputs.extend(
                     [o for o in node.output.values() if isinstance(o, StruckdownResult)]

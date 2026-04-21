@@ -1,29 +1,15 @@
 """Tests for soak.serialization -- round-trip and display extraction."""
 
 import pytest
-
 # import StruckdownResult/SlotResult from results module directly
 # to avoid the top-level struckdown __init__ which pulls in litellm
-from struckdown.results import StruckdownResult, SlotResult
+from struckdown.results import SlotResult, StruckdownResult
 
-from soak.models.base import (
-    BatchList,
-    Code,
-    CodeList,
-    Quote,
-    QuoteReference,
-    Theme,
-    Themes,
-    TrackedItem,
-)
-from soak.serialization import (
-    deserialize_node_output,
-    deserialize_value,
-    extract_display_output,
-    serialize_node_output,
-    serialize_value,
-)
-
+from soak.models.base import (BatchList, Code, CodeList, Quote, QuoteReference,
+                              Theme, Themes, TrackedItem)
+from soak.serialization import (deserialize_node_output, deserialize_value,
+                                extract_display_output, serialize_node_output,
+                                serialize_value)
 
 # --------------------------------------------------------------------------- #
 #  Helpers
@@ -323,8 +309,14 @@ class TestExtractDisplayOutput:
         data = {
             "__type__": "StruckdownResult",
             "results": {
-                "codes": {"action": "code", "output": [{"__type__": "Code", "slug": "a-test-slug"}]},
-                "themes": {"action": "theme", "output": [{"__type__": "Theme", "name": "T"}]},
+                "codes": {
+                    "action": "code",
+                    "output": [{"__type__": "Code", "slug": "a-test-slug"}],
+                },
+                "themes": {
+                    "action": "theme",
+                    "output": [{"__type__": "Theme", "name": "T"}],
+                },
             },
         }
         display = extract_display_output(data)
@@ -348,8 +340,18 @@ class TestExtractDisplayOutput:
     def test_list_of_items(self):
         """Lists are extracted element by element."""
         data = [
-            {"__type__": "Code", "slug": "a-code-slug", "name": "A", "description": "D"},
-            {"__type__": "Code", "slug": "b-code-slug", "name": "B", "description": "D"},
+            {
+                "__type__": "Code",
+                "slug": "a-code-slug",
+                "name": "A",
+                "description": "D",
+            },
+            {
+                "__type__": "Code",
+                "slug": "b-code-slug",
+                "name": "B",
+                "description": "D",
+            },
         ]
         display = extract_display_output(data)
         assert len(display) == 2

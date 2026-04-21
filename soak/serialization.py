@@ -24,16 +24,8 @@ def _get_type_registry() -> Dict[str, type]:
     from struckdown import StruckdownResult
     from struckdown.results import SlotResult
 
-    from soak.models.base import (
-        BatchList,
-        Code,
-        CodeList,
-        Quote,
-        QuoteReference,
-        Theme,
-        Themes,
-        TrackedItem,
-    )
+    from soak.models.base import (BatchList, Code, CodeList, Quote,
+                                  QuoteReference, Theme, Themes, TrackedItem)
 
     _TYPE_REGISTRY = {
         "TrackedItem": TrackedItem,
@@ -220,7 +212,9 @@ def _deserialize_complete_result_natural(data: dict) -> Any:
             seg.output = deserialize_value(seg.output)
         return cr
     except (ValueError, TypeError) as e:
-        logger.warning(f"Failed to reconstruct StruckdownResult from natural format: {e}")
+        logger.warning(
+            f"Failed to reconstruct StruckdownResult from natural format: {e}"
+        )
         return data
 
 

@@ -184,7 +184,9 @@ def generate_themes_xlsx(
         ws.cell(row=row, column=2, value=theme.get("name", ""))
         ws.cell(row=row, column=3, value=theme.get("description", ""))
 
-        code_list = theme.get("codes", theme.get("code_hashes", theme.get("code_slugs", [])))
+        code_list = theme.get(
+            "codes", theme.get("code_hashes", theme.get("code_slugs", []))
+        )
         ws.cell(row=row, column=4, value=len(code_list))
         ws.cell(row=row, column=5, value=", ".join(code_list))
 
@@ -280,7 +282,9 @@ def _get_quotes_for_theme(theme: Dict, codes: List[Dict]) -> List[str]:
     """Get quotes from codes belonging to a theme."""
     from soak.models.base import compute_code_hash
 
-    code_refs = theme.get("code_hashes", theme.get("code_slugs", theme.get("codes", [])))
+    code_refs = theme.get(
+        "code_hashes", theme.get("code_slugs", theme.get("codes", []))
+    )
     resolved_refs = theme.get("resolved_code_refs", [])
 
     # build set of code identifiers (hashes, slugs, name-slugs)
