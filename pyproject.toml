@@ -76,7 +76,7 @@ scrub = [
 
 
 [tool.setuptools.package-data]
-soak = ["templates/*.html", "templates/*.md", "templates/**/*.html", "templates/**/*.md", "templates/**/*.sd", "templates/**/*.jinja", "pipelines/**/*.soak", "pipelines/**/*.sd", "soak-data/**/*", "calibration-data/**/*"]
+soak = ["templates/*.html", "templates/*.md", "templates/**/*.html", "templates/**/*.md", "templates/**/*.sd", "templates/**/*.jinja", "pipelines/**/*.soak", "pipelines/**/*.sd", "soak-data/**/*", "calibration-data/**/*", "evals/data/*.sd"]
 django_soak = ["templates/**/*.html", "static/**/*"]
 
 [tool.setuptools.packages.find]
