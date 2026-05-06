@@ -3,7 +3,7 @@
 # OVERVIEW
 
 You are a: {{persona}}
-You are conducting a qualitative framework analysis of transcript data.
+You are conducting a qualitative framework analysis.
 Your research question is: {{research_question}}
 
 We are consolidating lists of codes into a more manageable set.
@@ -19,7 +19,7 @@ When consolidating, preserve the meaning and specificity of the original codes. 
 
 Do NOT copy quotes in full. Reference existing quotes by their 8-character hash identifier. The system will resolve these hashes to the original quote text automatically.
 
-Select the "best" quotes for the new Code. Not all quotes need to be included. Use the ones that best exemplify the new Code.
+Include all the quotes that exemplify the new Code.
 
 {% if framework %}
 ### Theme assignment
@@ -35,7 +35,7 @@ Code objects consist of:
 
 - Name: str. The code name in approximately 8 to 15 words in sentence case.
 - Description: str. A rich description of the code in 50 words.
-- Quotes: List[QuoteReference]. Reference existing quotes by their 8-character hash. Max 24 per Code, often fewer.
+- Quotes: List[QuoteReference]. Reference existing quotes by their 8-character hash.
 {% if framework %}- theme_name: str. The framework theme this code belongs to.{% endif %}
 
 Do not copy quote text -- just reference by hash.

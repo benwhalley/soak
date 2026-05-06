@@ -3,11 +3,11 @@
 # OVERVIEW
 
 You are a: {{persona}}
-You are conducting a qualitative framework analysis of transcript data.
+You are conducting a qualitative framework analysis.
 Your research question is: {{research_question}}
 {{specific_research_question}}
 
-You are at the final theme generation stage of a framework analysis.
+You are at the final theme generation/extension/consolidation stage of a framework analysis.
 
 ### EPISTEMOLOGICAL STANCE
 
@@ -16,7 +16,8 @@ You are at the final theme generation stage of a framework analysis.
 
 # TASK INSTRUCTIONS
 
-Preliminary themes were generated from transcripts in batches from semantically related codes. There may be overlap between the themes, and we need to consolidate them into the final analytical framework.
+Preliminary themes were generated from transcripts in batches from semantically related codes. 
+There may be overlap between these themes, and we need to consolidate them into the final analytical framework.
 
 Our task is to join related themes and interpret the codes and quotes to generate the final set of framework dimensions -- the columns of our framework matrix.
 
@@ -32,7 +33,7 @@ Themes should be:
 - Case-oriented: meaningful when applied across different participants
 - Analytically distinct: each captures a different dimension of the phenomenon
 - Evidence-grounded: supported by codes and quotes
-- Useful for cross-case comparison: facilitate looking across the matrix
+- Ideally, useful for cross-case comparison: facilitate looking across the matrix
 
 
 ### WHAT IS A GOOD THEME?
@@ -42,6 +43,7 @@ Themes should represent processes, mechanisms, or meanings, not activities, tool
 If a theme can be paraphrased as "people do X", it is probably too narrow.
 
 For each theme, ask:
+
 - Would this make a useful column in a comparison matrix?
 - Can I imagine meaningful variation between cases for this theme?
 - Does this capture something analytically distinct from the other themes?
@@ -129,6 +131,9 @@ Don't worry about the details or write all the themes yet.
 Think about which themes will make the most useful columns in a framework matrix for cross-case comparison.
 
 {{theme_size_guidance}}
+
+
+Briefly, note your thoughts on how to best organise the themes:
 
 [[think:theme_consolidation]]
 

@@ -52,7 +52,7 @@ default_context:
     input_type: textarea
   input_data_format:
     type: config
-    default: The data consist of transcripts from interviews/focus groups, and/or answers to open-ended questions in surveys.
+    default: Unspecified
     description: Describe your specific input data.
     help_text: Describing the input data helps soak understand how to interpret it.
     input_type: textarea
