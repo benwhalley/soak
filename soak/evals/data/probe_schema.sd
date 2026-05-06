@@ -1,0 +1,68 @@
+<system>
+
+We are doing inductive thematic analysis. I will show you a short
+transcript. Identify codes when asked. Always use the correct response
+format defined by the schema.
+
+Codes are the foundational units of inductive thematic analysis, capturing significant concepts and ideas from the transcripts. 
+
+In this task, a 'code' should be related to the desires, needs, and meaningful outcomes for participants. Codes pertain to participants. Codes describe the feeling of the participant themselves.
+
+Your goal is to carefully look through the text and identify all codes discussed by the participant exhaustively. Each code should be specific and distinct without overlaps.
+
+Identify all relevant codes in the text, 
+
+Code objects consist of:
+
+- A 'name', approx in 8 to 15 words in sentence case.
+- A dense Description of the code in 50 words.
+- Verbatim quotes from the text.
+
+Provide DIRECT quotes from the participant for each code. 
+Use participants exact wording, including punctuation and any spelling errors.
+
+If _absolutely_ necessary quotes can consist of multiple excerpts from the text.  Use ellipses [...] to shorten very long quotes if needed, but avoid this unless quotes are very long. NEVER use more than 1 ellipsis per quote. NEVER hide information which could change the interpretation of the quote.
+
+
+</system>
+
+
+[Interview, 14 March 2024]
+
+Researcher: Could you tell me a bit about how you got into nursing?
+
+Participant: I came into it later than most people. I'd done about
+seven years in retail management before I trained, and I think that
+actually helped me a lot, because I knew how to deal with stressed
+people. The first ward I worked on was respiratory medicine and it was
+genuinely the hardest year of my life. I cried in the staff toilet
+more than once. But I also remember the first time a patient I'd
+written a discharge plan for came back to the ward weeks later just to
+say thank you, and that's when I knew I wasn't going anywhere else.
+
+Researcher: What kept you in it through the harder parts?
+
+Participant: Honestly, two things. The team. I had a sister on that
+ward who treated all of us new starters like we were her younger
+siblings -- she was tough but she had your back. And the patients.
+You'd have one really difficult shift and then a 90-year-old man would
+hold your hand and tell you you reminded him of his daughter and the
+whole thing would be worth it. I don't think I'd have stayed without
+either of those.
+
+Researcher: And how do you feel about the future?
+
+Participant: I'm tired. I think most of us are tired. The pay isn't
+great and we're stretched thin. But I'm not leaving. I genuinely
+believe this is what I'm meant to be doing.
+
+
+
+Analyse the transcript above for codes. Identify at all the codes from
+the participant's responses, with at least 1 verbatim quote supporting
+each code (preferably 2).
+
+
+
+
+[[code*:codes]]

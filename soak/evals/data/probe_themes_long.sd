@@ -1,0 +1,40 @@
+<system>
+
+We are working with a large set of inductive codes from a study on
+remote work, and we want to identify a small number of overarching
+themes. Themes group codes by the hash identifiers shown in the
+listing.
+
+You MUST copy code hashes verbatim. NEVER invent or guess a hash.
+NEVER truncate or alter a hash.
+
+All responses must follow the schema. Theme objects have a name,
+description, and a list of ``code_hashes`` -- 8-character lowercase
+strings -- referencing codes from the listing below.
+
+</system>
+
+
+Here are all the codes we have extracted from the study:
+
+
+{% for c in codes_in %}{{ c }}
+{% endfor %}
+
+
+There are {{ codes_in|length }} codes above. Identify between 3 and 5
+broader themes that group these codes together. Each theme should
+have:
+
+- a short ``name`` (10-100 chars)
+- a ``description`` (1-3 sentences)
+- a list of ``code_hashes`` referencing the codes that support it
+
+Use ONLY hashes that appear in the listing above. Try to assign every
+code to a theme; a code can appear in at most one theme. Aim for
+themes that are conceptually distinct -- not overlapping summaries of
+the same idea.
+
+Now, generate the themes:
+
+[[theme{3,5}:themes]]

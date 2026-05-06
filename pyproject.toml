@@ -99,5 +99,9 @@ umap-learn = { git = "https://github.com/lmcinnes/umap", branch = "master" }
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+markers = [
+    "llm: tests that hit a real LLM. Skipped by default; opt in with `pytest -m llm`.",
+]
+addopts = "-m 'not llm'"
 
 

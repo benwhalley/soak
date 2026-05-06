@@ -1,0 +1,902 @@
+[
+  {
+    "name": "Improvised Workspace",
+    "description": "Participants describe setting up makeshift desks at kitchen tables, bedrooms, or sofas, often with poor ergonomics and inadequate equipment.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "I was working off the kitchen table for the first six months, and my back paid for it.",
+        "source": "interview_03",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "My 'office' was a folding chair and a laptop on top of a moving box.",
+        "source": "interview_10",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Investing in the Home Office",
+    "description": "Over time, participants gradually invested in proper chairs, monitors, and lighting to make remote work sustainable.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "Once I bought a real chair and a second monitor I realised how much time I had been wasting hunched over.",
+        "source": "interview_02",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "The webcam ring light made me look human on calls again.",
+        "source": "interview_05",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Background Noise and Interruptions",
+    "description": "Children, neighbours, building work, and pets created constant interruptions that participants had to learn to manage during calls.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "The dog barks every time the postman comes, which is roughly once per important meeting.",
+        "source": "interview_02",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "I had to put a sign on the door because my kids would wander in mid-call.",
+        "source": "interview_08",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Lighting and Camera Anxiety",
+    "description": "Participants reflected on how awareness of their on-camera appearance shaped their workspace setup and self-presentation.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "I learned the hard way that morning sun makes me look like a ghost on Zoom.",
+        "source": "interview_08",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "I started turning my camera off because I couldn't bear seeing my own face all day.",
+        "source": "interview_08",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Bleeding into Living Spaces",
+    "description": "Several participants noted that work equipment increasingly took over kitchens, bedrooms, and other shared rooms in the home.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "Eventually the laptop just lived on the coffee table and we ate around it.",
+        "source": "interview_11",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "There was no clear edge anymore between the bedroom and the office.",
+        "source": "interview_07",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Heating and Energy Costs",
+    "description": "Participants raised practical concerns about energy bills rising as they spent full days at home with heating and computers running.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "My winter heating bill basically doubled the year I started working from home.",
+        "source": "interview_04",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "I started wearing a hat indoors before I'd touch the thermostat.",
+        "source": "interview_02",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Pets at the Desk",
+    "description": "Pets featured frequently as both a comfort and a source of distraction throughout the working day.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "My cat sleeps on the keyboard for at least three hours of every day.",
+        "source": "interview_08",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "Honestly the dog has been the best colleague I've had in years.",
+        "source": "interview_01",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Boundary Marking with Family",
+    "description": "Participants developed deliberate rituals -- closed doors, signs, headphones -- to signal to family members that they were 'at work'.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "Headphones on means do not approach. Headphones off, fair game.",
+        "source": "interview_07",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "We had to agree as a household that the spare room door being shut was sacred.",
+        "source": "interview_07",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Window and Natural Light",
+    "description": "Access (or lack of access) to natural light at the desk was repeatedly cited as central to mood and wellbeing.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "My old cubicle had no window at all -- now I face a garden and it's transformed how I feel by lunch.",
+        "source": "interview_10",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "The flat is dark and that's been harder than I expected on grey days.",
+        "source": "interview_01",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Sound Insulation Hacks",
+    "description": "Participants described creative low-cost solutions -- duvets over doors, foam panels, closets -- to reduce echo and outside noise on calls.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "I record podcasts inside a wardrobe full of coats, and it actually sounds great.",
+        "source": "interview_12",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "We taped sound foam to the back of the door because the alley behind was too loud.",
+        "source": "interview_08",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Asynchronous Habits",
+    "description": "Teams shifted to written, asynchronous communication for many tasks that would previously have been a quick desk conversation.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "We try to write everything down now -- if it isn't in Slack, it didn't happen.",
+        "source": "interview_05",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "I send a Loom instead of booking a meeting and it's been a real unlock.",
+        "source": "interview_12",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Meeting Overload",
+    "description": "Participants reported a steady creep of back-to-back video meetings replacing what used to be informal coffee chats.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "On a bad day I'm in seven hours of video calls and have done no actual work.",
+        "source": "interview_04",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "Every chat that used to be a corridor moment is now a calendar invite.",
+        "source": "interview_10",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Loss of Hallway Conversations",
+    "description": "The lack of corridor and lunch interactions was named as a major loss for organisational learning, gossip, and casual problem solving.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "I used to learn most of my job by overhearing things, and that's just gone.",
+        "source": "interview_02",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "I miss bumping into a senior person at the coffee machine.",
+        "source": "interview_06",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Tooling Fragmentation",
+    "description": "Multiple competing tools (Slack, Teams, Notion, email, Jira) created friction and unclear conventions about where things belonged.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "I have the same conversation in four tools because no-one agreed where it should live.",
+        "source": "interview_01",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "We have a wiki and a Slack and a Notion and a shared drive, and the truth is in none of them.",
+        "source": "interview_01",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Camera-Off Culture",
+    "description": "Norms around whether cameras should be on varied widely and were a frequent point of friction or relief for participants.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "Our team agreed cameras off by default and the meetings got 30% shorter.",
+        "source": "interview_01",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "When my manager has the camera off, I can't read the room at all.",
+        "source": "interview_11",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Onboarding New Joiners",
+    "description": "Bringing new hires into a remote team without informal interactions was widely regarded as harder and slower than in-person onboarding.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "It took my new hire about three months to understand the team's actual dynamics.",
+        "source": "interview_09",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "We tried to overcompensate with welcome calls and it still didn't fix it.",
+        "source": "interview_01",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Time Zone Coordination",
+    "description": "Distributed teams reported significant overhead in finding meeting times and the friction of waiting overnight for replies.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "Half my morning is gone before any of my US colleagues are even online.",
+        "source": "interview_07",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "We do a lot of work by handoff and trust now -- there's no other way.",
+        "source": "interview_11",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Documenting Decisions",
+    "description": "Teams developed stronger norms for writing down decisions because hallway memory was no longer reliable.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "If a decision isn't in the doc with someone's name on it, it didn't happen.",
+        "source": "interview_04",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "We learned the hard way that 'we agreed in that call' is not a record.",
+        "source": "interview_07",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Virtual Whiteboarding",
+    "description": "Tools like Miro and FigJam were appreciated but participants noted that real-time collaboration on them rarely matched in-person sessions.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "Miro is fine but two people moving stickies at once on Zoom is a mess.",
+        "source": "interview_12",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "I miss standing at a whiteboard with markers in my hand.",
+        "source": "interview_01",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Manager Visibility Anxiety",
+    "description": "Participants described pressure -- real or perceived -- to be constantly responsive on chat to demonstrate that they were working.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "I keep Slack on because I worry about looking idle.",
+        "source": "interview_09",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "There's an unspoken rule that you reply within five minutes or someone is annoyed.",
+        "source": "interview_04",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Eroding Boundaries",
+    "description": "Participants described work blurring into evenings and weekends as the physical separation of office from home disappeared.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "I'd answer one Slack message at 9pm and look up at midnight.",
+        "source": "interview_08",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "There's no commute that ends the day for me anymore.",
+        "source": "interview_08",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Reclaimed Commute Time",
+    "description": "Many participants framed the absence of a daily commute as the single biggest improvement in their lives.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "I got two hours a day back -- that's a different life, frankly.",
+        "source": "interview_09",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "I haven't missed standing on a crowded train for a single second.",
+        "source": "interview_04",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Lunch as a Chore",
+    "description": "Lunch shifted from a social or restorative pause to something brief and functional eaten at the desk.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "Lunch is a sandwich at the keyboard now, if I remember at all.",
+        "source": "interview_06",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "I used to eat with colleagues and now I eat with my laptop.",
+        "source": "interview_04",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Always-on Pressure",
+    "description": "The expectation -- explicit or implicit -- that one would be reachable across longer hours was widely felt.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "Even on holiday I find myself opening email 'just to keep on top of things'.",
+        "source": "interview_11",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "My boss never says it directly but the late-night messages tell you what's expected.",
+        "source": "interview_04",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Family Logistics Rebalance",
+    "description": "Participants with children renegotiated the day around school runs, naps, and after-school care alongside their work.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "I work an hour before they wake up and finish after bedtime -- the middle is a circus.",
+        "source": "interview_08",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "We split who does the school run by who has fewer 9 a.m. calls.",
+        "source": "interview_05",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Exercise Becoming Possible",
+    "description": "Several participants reported that the time savings from no commute let them build new exercise routines.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "I run three mornings a week now because I have the daylight.",
+        "source": "interview_01",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "I cycle on my lunch break and feel like a different person at 2pm.",
+        "source": "interview_07",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Weekend Work Drift",
+    "description": "Participants noted a quiet expansion of work into weekends, especially Sundays, often described as 'just catching up'.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "Sunday evening is its own little working day and I hate that.",
+        "source": "interview_09",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "I tell myself I'll just clear the inbox and then it's two hours gone.",
+        "source": "interview_11",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Small Domestic Wins",
+    "description": "Routine domestic tasks -- laundry, post collection, deliveries -- became markedly easier to fit into the working day.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "I can put the laundry on between meetings and it's revolutionary.",
+        "source": "interview_02",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "Being home for a parcel without taking a half day is genuinely liberating.",
+        "source": "interview_03",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Vacation Guilt",
+    "description": "Despite encouragement to rest, participants described feeling pressure to stay reachable while on annual leave.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "I checked email on a Greek beach last week and I wasn't proud of it.",
+        "source": "interview_11",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "It feels harder to truly switch off than it did from an office.",
+        "source": "interview_12",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "End-of-Day Rituals",
+    "description": "Some participants invented deliberate rituals -- shutting the laptop in a drawer, a short walk, a different jumper -- to mark the end of the working day.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "I take a walk around the block at 6pm to fake the commute.",
+        "source": "interview_05",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "Closing the laptop and putting it under the bed sounds silly but it works.",
+        "source": "interview_02",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Daily Loneliness",
+    "description": "Participants described a chronic, low-grade loneliness from spending most of the working day alone, even when otherwise content with remote work.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "Some days I realise I haven't spoken aloud to another human until 5pm.",
+        "source": "interview_12",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "Loneliness is not the right word but something close to it.",
+        "source": "interview_06",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Therapist Recommendations",
+    "description": "Several participants reported that mental-health professionals encouraged them to reintroduce social structure and routine into remote-working life.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "My therapist basically told me I needed to build small social rituals back in.",
+        "source": "interview_12",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "Even my GP suggested I try a co-working day a week.",
+        "source": "interview_12",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Identity Beyond the Job",
+    "description": "Without the social cues of an office, participants described having to actively construct identities outside of work.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "I used to be 'the person at the office' and now I have to figure out who I am the rest of the time.",
+        "source": "interview_09",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "Hobbies stopped being optional once the job stopped being a place.",
+        "source": "interview_07",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Mood Tracking the Weather",
+    "description": "Several participants noticed that their mood became more sensitive to weather, daylight, and seasons because they no longer left the house for work.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "On a grey week I can feel myself drifting and I have to do something about it.",
+        "source": "interview_09",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "Sun in the kitchen at 10am makes my whole day better.",
+        "source": "interview_11",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Substance Creep",
+    "description": "Some participants admitted that alcohol consumption or snacking habits drifted upward without the structure and observation of an office environment.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "There's no commute home so the wine after work happens half an hour earlier.",
+        "source": "interview_04",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "Nobody can see me eat biscuits all day, and apparently that's all I needed to know.",
+        "source": "interview_05",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Body Movement Decline",
+    "description": "Participants noted a sharp drop in incidental walking and standing compared to office life.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "Five hundred steps in a whole working day is a normal number for me now.",
+        "source": "interview_05",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "Even walking to the printer used to add up.",
+        "source": "interview_10",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Anxiety About Re-emergence",
+    "description": "Returning to in-person work or social events became a source of anxiety for participants who had adjusted deeply to home life.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "The first time I had to go back to the office I felt physically sick.",
+        "source": "interview_08",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "Big events feel louder and harder than they used to.",
+        "source": "interview_09",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Need for Human Voices",
+    "description": "Participants described seeking out radio, podcasts, or background calls during the day to compensate for the absence of voices in the home.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "I leave the radio on for company even when I'm not listening.",
+        "source": "interview_07",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "Podcasts have become my ambient colleagues.",
+        "source": "interview_10",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Erratic Sleep Patterns",
+    "description": "Without a fixed start time, participants reported sleep schedules that drifted later, with knock-on effects on energy and focus.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "I don't have to be anywhere by nine, so I drift later and later until I have to reset.",
+        "source": "interview_01",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "My weekends and weekdays look the same now and I think that's part of the problem.",
+        "source": "interview_08",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Coffee Shop as Refuge",
+    "description": "Many participants began routinely working from cafes specifically for the soft social presence of strangers.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "I go to the cafe just to work near people, even if I never speak to them.",
+        "source": "interview_04",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "Hearing other lives at neighbouring tables is somehow grounding.",
+        "source": "interview_12",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Deep Focus Gains",
+    "description": "Some participants reported significant gains in concentration on solo, deep work that had been difficult in open-plan offices.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "I get more done in two morning hours at home than a whole afternoon in the office.",
+        "source": "interview_07",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "I can think a thought all the way through now without being interrupted.",
+        "source": "interview_07",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Procrastination Patterns",
+    "description": "Without ambient social pressure, participants described characteristic procrastination patterns -- laundry, the kettle, news sites -- they had to learn to manage.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "I have a whole choreography of small jobs that aren't work but feel productive.",
+        "source": "interview_11",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "The kettle gets boiled an unholy number of times before I open the doc.",
+        "source": "interview_03",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Calendar as Discipline",
+    "description": "Time-blocking and explicit calendars became important tools for participants trying to keep momentum across an unstructured day.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "If it isn't on the calendar with a colour, it doesn't happen.",
+        "source": "interview_06",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "I block 9-11 every day for the work that actually matters.",
+        "source": "interview_09",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Energy Audit Awareness",
+    "description": "Participants developed sharper awareness of their own energy peaks and troughs and matched task type to time of day accordingly.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "Mornings for thinking, afternoons for meetings -- I learned that the hard way.",
+        "source": "interview_12",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "I try not to put deep work after 2pm because I'll just stare at it.",
+        "source": "interview_11",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Distraction Engineering",
+    "description": "Strategies like phone in another room, website blockers, focus modes, and turned-off notifications were widely adopted.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "I leave the phone in a different room and my output doubled.",
+        "source": "interview_12",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "Once I muted Slack for 90 minutes I realised how much it had been pulling at me.",
+        "source": "interview_06",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Creative Output Variability",
+    "description": "Creative quality felt more variable to many participants -- great days were better, bad days were worse, with fewer mid-range days.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "On a good day I write the best thing I've written in years; on a bad day, nothing.",
+        "source": "interview_02",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "There's less of the medium-okay day that the office used to fill out.",
+        "source": "interview_08",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Pomodoro and Sprint Methods",
+    "description": "Time-bounded work techniques were specifically credited with rescuing motivation on hard or boring tasks.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "Twenty-five minutes is the longest I can promise myself, and that's enough.",
+        "source": "interview_11",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "I do a sprint with a colleague on a video call for hard tasks and it just works.",
+        "source": "interview_09",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Avoiding Drift",
+    "description": "Participants described needing explicit re-orientation every morning to avoid drifting into low-value tasks.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "If I don't write the day's three priorities down before email, the day is lost.",
+        "source": "interview_02",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "Without a plan I just pick up whatever is loudest and that's not real work.",
+        "source": "interview_03",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Reward and Closure Habits",
+    "description": "Small rewards and explicit closure rituals -- crossing things off, a walk after a hard meeting -- helped participants maintain morale.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "I close every day by writing what I finished, even on bad days.",
+        "source": "interview_09",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "A walk after a hard meeting is non-negotiable now.",
+        "source": "interview_07",
+        "metadata": {}
+      }
+    ]
+  },
+  {
+    "name": "Loss of External Validation",
+    "description": "Without immediate feedback from a manager or colleagues, some participants lost a sense of whether they were doing well.",
+    "quotes": [
+      {
+        "type": "quote",
+        "text": "Nobody walks past my desk and goes 'nice'. I have to invent that for myself.",
+        "source": "interview_06",
+        "metadata": {}
+      },
+      {
+        "type": "quote",
+        "text": "I miss the unscripted feedback you'd get just by being seen working.",
+        "source": "interview_08",
+        "metadata": {}
+      }
+    ]
+  }
+]

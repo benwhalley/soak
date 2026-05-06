@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "name": "ta_pt23_themegroups",
+  "stage": "theme_groups",
+  "source": "analysis_run:pt23ebvxzw",
+  "original_model": "gpt-4.1-mini",
+  "created_at": "2026-05-06T13:56:07.424352+00:00",
+  "scrubbed": true,
+  "notes": "Sample snapshot from thematic-analysis run; theme_groups stage"
+}

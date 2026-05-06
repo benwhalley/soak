@@ -1,0 +1,2052 @@
+{
+  "themes": [
+    [
+      {
+        "name": "Complex feelings about AI's role in mental health support",
+        "label": null,
+        "__type__": "Theme",
+        "code_slugs": [
+          "preference-for-human-support-in-emotional-wellbeing",
+          "need-for-human-access-alongside-ai-for-emotional-support",
+          "importance-of-human-support-and-non-replacement-by-ai",
+          "limited-ai-benefit-for-serious-mental-health-issues",
+          "ai-as-accessible-mental-health-support",
+          "comfort-and-openness-to-ai-for-anonymous-emotional-support",
+          "chatbot-preferred-for-non-judgmental-safe-space",
+          "reluctance-to-use-ai-for-emotional-or-wellbeing-support",
+          "skepticism-and-nervousness-about-ai-for-emotional-support",
+          "conditional-use-of-ai-chatbot-for-support",
+          "value-of-accessible-private-chatbot-support-to-overcome-barriers"
+        ],
+        "llm_config": {
+          "seed": null,
+          "model": null,
+          "thinking": null,
+          "max_tokens": null,
+          "temperature": 0.7
+        },
+        "description": "Participants express a nuanced view of AI chatbots as accessible and non-judgmental tools valuable for minor emotional support and academic stress, yet emphasize the irreplaceable value of human empathy, confidentiality, and specialized help for serious mental health issues.",
+        "resolved_code_refs": [
+          {
+            "name": "Preference for human support in emotional wellbeing over AI",
+            "slug": "preference-for-human-support-in-emotional-wellbeing",
+            "quotes": [
+              {
+                "hash": "ts3co2nb",
+                "type": "quotereference"
+              },
+              {
+                "hash": "wjrm73cj",
+                "type": "quotereference"
+              },
+              {
+                "hash": "qjmziboc",
+                "type": "quotereference"
+              },
+              {
+                "hash": "vriqpfhq",
+                "type": "quotereference"
+              },
+              {
+                "hash": "skojcrfp",
+                "type": "quotereference"
+              },
+              {
+                "hash": "injnokye",
+                "type": "quotereference"
+              },
+              {
+                "hash": "xobxxgyx",
+                "type": "quotereference"
+              },
+              {
+                "hash": "iir6amzr",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants express a clear preference for human interaction over AI for emotional or wellbeing support, citing the importance of empathy, trust, and personalized care that AI chatbots cannot provide, especially for delicate or serious emotional issues.",
+            "resolved_quotes": [
+              {
+                "text": "I just do n't trust that with , like , my information and my personal life I do n't know , it 's a bit scary .",
+                "type": "quote",
+                "source": "3d<phone>d__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I don't think they can provide... like, the support that a human gives you, if that makes sense?",
+                "type": "quote",
+                "source": "a286ccfc66fa__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I just feel like, yeah, AI is smart and it's clever, but I just feel like it can't give you the same level as... a human.",
+                "type": "quote",
+                "source": "a286ccfc66fa__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "At a certain point , it is better to talk to a person , because a person can help you .",
+                "type": "quote",
+                "source": "997d8998c1ed__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "There 's not really , like , an online resource that I would use . I would just , like , go to people around me .",
+                "type": "quote",
+                "source": "faf64e4553d7__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I think it would just give you , like , generalized responses , so if you 're having , like , a really personal issue , I think it 's not gon na help you in the way it needs to , I guess , because it 's , like , automatic responses , right ?",
+                "type": "quote",
+                "source": "faf64e4553d7__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I do n't think it 's , like , the solution to people 's well-being , just because I think , like , human interaction is really important to , like , get people to do better .",
+                "type": "quote",
+                "source": "faf64e4553d7__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "For something as sort of delicate as that, I think it needs more of a human touch ... I don\u2019t think that it\u2019s safe really, to use AI for that sort of thing.",
+                "type": "quote",
+                "source": "88725a6a714e__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Need for human access alongside AI for emotional support and referrals",
+            "slug": "need-for-human-access-alongside-ai-for-emotional-support",
+            "quotes": [
+              {
+                "hash": "5wuxht3l",
+                "type": "quotereference"
+              },
+              {
+                "hash": "gf4xo6bc",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants emphasize that AI chatbots for emotional support should be supplemented by accessible human professionals who can intervene, provide referrals, or offer deeper connection, viewing AI as a starting point rather than a full replacement for human contact.",
+            "resolved_quotes": [
+              {
+                "text": "there 'd need to be , like , a proper person at the end of , like\u2026 accessible still . At the end of it , you know , they would need to be able to , like , refer you , potentially , to someone .",
+                "type": "quote",
+                "source": "c4fb<phone>__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Yeah , it 's a good\u2026 maybe as a little starting point .",
+                "type": "quote",
+                "source": "c4fb<phone>__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Importance of human support and concern about AI replacing services",
+            "slug": "importance-of-human-support-and-non-replacement-by-ai",
+            "quotes": [
+              {
+                "hash": "uixogjrr",
+                "type": "quotereference"
+              },
+              {
+                "hash": "kt52cyxz",
+                "type": "quotereference"
+              },
+              {
+                "hash": "5fo7reyn",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants emphasize that AI should supplement, not replace, existing human wellbeing services. Reassurance about AI as an 'add-on' that supports minor issues while maintaining real human help is important for user confidence and acceptance.",
+            "resolved_quotes": [
+              {
+                "text": "I think the important thing is to make sure that Students do n't know that\u2026 or students are confident that it 's not something which is replacing another service . Because that 's a , you know , that 's a big thing , is\u2026 AI replacing things .",
+                "type": "quote",
+                "source": "c4fb<phone>__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I think the chatbot would be better as something alongside someone needing help , not the only source of help .",
+                "type": "quote",
+                "source": "997d8998c1ed__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "we 're thinking , obviously , you 've got the student wellbeing service that you can go to , and then this will just be as an add-on , and more for , like , the minor . situations . Um , just to get people started and sort of in a triage way kind of .",
+                "type": "quote",
+                "source": "997d8998c1ed__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Limited perceived benefit of AI chatbot for students with serious mental health issues",
+            "slug": "limited-ai-benefit-for-serious-mental-health-issues",
+            "quotes": [
+              {
+                "hash": "nxlgcris",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "This code reflects the perception that while AI chatbots may assist students with minor concerns, students with serious mental health issues may not find AI support as beneficial, implying a need for more specialized human support for serious conditions.",
+            "resolved_quotes": [
+              {
+                "text": "Students with more serious mental health issues .",
+                "type": "quote",
+                "source": "ae9ef6e76456__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "AI as an easier and more accessible mental health support option",
+            "slug": "ai-as-accessible-mental-health-support",
+            "quotes": [
+              {
+                "hash": "quxovjqb",
+                "type": "quotereference"
+              },
+              {
+                "hash": "jjegzsgx",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "This code captures the perception that AI chatbots can significantly improve accessibility and ease of obtaining mental health support for students, breaking down barriers to initial help seeking and providing a supportive, approachable option for mental wellbeing.",
+            "resolved_quotes": [
+              {
+                "text": "I think it could make getting help for mental health stuff a lot easier and more accessible .",
+                "type": "quote",
+                "source": "ae9ef6e76456__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "it means , yeah , more people can access help and it 'll be a lot easier way for . people to go further into student services if they need it , or if they just need someone to talk to , then they have that .",
+                "type": "quote",
+                "source": "0662cb55784b__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Comfort and openness to using AI for anonymous emotional support",
+            "slug": "comfort-and-openness-to-ai-for-anonymous-emotional-support",
+            "quotes": [
+              {
+                "hash": "jeddagdi",
+                "type": "quotereference"
+              },
+              {
+                "hash": "h6yhrp3v",
+                "type": "quotereference"
+              },
+              {
+                "hash": "ks5zk7v4",
+                "type": "quotereference"
+              },
+              {
+                "hash": "jomguth4",
+                "type": "quotereference"
+              },
+              {
+                "hash": "or2f6ebi",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants express comfort and openness to using AI chatbots for emotional support, appreciating the anonymity, absence of social judgment, and the ease compared to human interaction for sharing emotions and seeking wellbeing support.",
+            "resolved_quotes": [
+              {
+                "text": "I do n't find as peculiar , because I understand it from the standpoint of there 's no other person that could be judging you on the other end . ... I wouldn't\u2026 I would be open to using\u2026 such a thing to , you know , cope with just to , you know , someone to talk to well not someone , something to talk to uh just to , you know , maybe you want to say something and you do n't want to be judged for it .",
+                "type": "quote",
+                "source": "6fac46bbec92__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I think I \u2019d be pretty comfortable using one , yeah .",
+                "type": "quote",
+                "source": "ae9ef6e76456__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Easier .",
+                "type": "quote",
+                "source": "ae9ef6e76456__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Just because there \u2019s no social interaction , so there \u2019s not really that fear of judgement , you know ?",
+                "type": "quote",
+                "source": "ae9ef6e76456__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I use it as , like , a therapist for myself ... Yeah , it is easier and more comfortable .",
+                "type": "quote",
+                "source": "820ecc2fd487__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Chatbot preferred for non-judgmental and safe emotional space",
+            "slug": "chatbot-preferred-for-non-judgmental-safe-space",
+            "quotes": [
+              {
+                "hash": "52pfjrx3",
+                "type": "quotereference"
+              },
+              {
+                "hash": "wsm2ex2u",
+                "type": "quotereference"
+              },
+              {
+                "hash": "v64itgfb",
+                "type": "quotereference"
+              },
+              {
+                "hash": "36hymdye",
+                "type": "quotereference"
+              },
+              {
+                "hash": "g6u5vz57",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants favor chatbots over human interaction because chatbots provide a non-judgmental, safe, and private environment. This space fosters openness without fear of judgment or embarrassment and allows immediate, unbiased responses, promoting comfort especially during sensitive emotional conversations.",
+            "resolved_quotes": [
+              {
+                "text": "I feel like there would be no judgment coming from the other side . It 's just\u2026 It 's a safe space ... Sometimes maybe I think , like , oh , what if this person tells someone else about what I've\u2026 what I 'm thinking and how I 'm feeling , and then I 'm gon na feel embarrassed , but I would n't have that worry with the chatbot .",
+                "type": "quote",
+                "source": "6fac46bbec92__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Trying to establish that relationship can be nerve-wracking , whereas with a chatbot , it might be easier because it \u2019 s not a physical person . Definitely more judgment-free .",
+                "type": "quote",
+                "source": "be3147e35354__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I do , because , funny enough , I find it easier to talk to . ... I just feel like it has , like , an unbiased perspective , and sometimes that 's what you need . ... But at the same time , like , I 'm always scared , I 'm like , I 'm literally giving away all this information about myself .",
+                "type": "quote",
+                "source": "6c2d9f0b10dc__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "It 's nice sometimes . ... it 's doing more good than bad but if it was a thing involving other parties . That maybe it would... slightly put them off , and there 's literally no one in that room to , like , judge them except you just texting the chat box , so I do n't really ... how it would have , like ... add conversations with it , I do n't know .",
+                "type": "quote",
+                "source": "6c2d9f0b10dc__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I feel like you would n't have\u2026 be worrying about judgment . ... And you would get , like , an instant response from it , rather than having to wait for things to happen .",
+                "type": "quote",
+                "source": "0662cb55784b__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Reluctance to use AI chatbots for personal emotional or wellbeing support",
+            "slug": "reluctance-to-use-ai-for-emotional-or-wellbeing-support",
+            "quotes": [
+              {
+                "hash": "xyi53sta",
+                "type": "quotereference"
+              },
+              {
+                "hash": "fx2izgsp",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Several participants indicate low likelihood of using AI chatbots for their own emotional or wellbeing support due to mistrust, discomfort, or uncertainty about their helpfulness, preferring traditional human support mechanisms.",
+            "resolved_quotes": [
+              {
+                "text": "Probably not likely .",
+                "type": "quote",
+                "source": "3d<phone>d__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I do n't know if I would . I 've never , like , tried to . I do n't know if it would be helpful .",
+                "type": "quote",
+                "source": "0662cb55784b__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Skepticism and nervousness about using AI for emotional wellbeing support",
+            "slug": "skepticism-and-nervousness-about-ai-for-emotional-support",
+            "quotes": [
+              {
+                "hash": "5ll5rmsw",
+                "type": "quotereference"
+              },
+              {
+                "hash": "saateh35",
+                "type": "quotereference"
+              },
+              {
+                "hash": "bldugsoi",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants express doubts and nervousness about the effectiveness and safety of AI chatbots for emotional support, acknowledging the human availability challenges but remaining wary and wanting to test AI extensively before trust is given.",
+            "resolved_quotes": [
+              {
+                "text": "Um , I do n't think it 's the greatest idea , but I understand why people are n't always available or chatbot would be . I get that .",
+                "type": "quote",
+                "source": "997d8998c1ed__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I think I feel a little bit nervous , really . I 'd have to test it out . I like to test things out before I fully commit . It 's a new area , I suppose , these chatbots .",
+                "type": "quote",
+                "source": "be3147e35354__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Not emotional now . I 'm in like a pickle with something like that , I do n't know what to do . I might ask it to see if it can give any advice , but then that 's also very ... Yeah . Not going to take it by , like , as of when , you know what I mean ?",
+                "type": "quote",
+                "source": "bc<phone>f39__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Conditional willingness to use AI chatbot based on personal need",
+            "slug": "conditional-use-of-ai-chatbot-for-support",
+            "quotes": [
+              {
+                "hash": "y7qq2wra",
+                "type": "quotereference"
+              },
+              {
+                "hash": "3iyebsie",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants express willingness to use the AI chatbot for wellbeing support only if they experience mental health or personal problems, showing that engagement depends on perceived relevance and necessity rather than proactive or preventive use.",
+            "resolved_quotes": [
+              {
+                "text": "Yeah , I would , if I actually had a problem .",
+                "type": "quote",
+                "source": "ae9ef6e76456__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Not very likely , just because I don \u2019 t feel like I have , or have had , any issues that I need help or advice with\u2026um but if I did need help then yeh I would probably use it .",
+                "type": "quote",
+                "source": "ae9ef6e76456__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Value of accessible, private chatbot support to overcome barriers and stigma",
+            "slug": "value-of-accessible-private-chatbot-support-to-overcome-barriers",
+            "quotes": [
+              {
+                "hash": "vjwdj6z6",
+                "type": "quotereference"
+              },
+              {
+                "hash": "s5byn3x2",
+                "type": "quotereference"
+              },
+              {
+                "hash": "roq3x6d4",
+                "type": "quotereference"
+              },
+              {
+                "hash": "m4ip7juj",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants value AI chatbots for their accessibility anytime and private use, helping overcome stigma related to mental health. Chatbots are seen as convenient for those hesitant to seek traditional help due to practical or emotional barriers, including language and social isolation issues.",
+            "resolved_quotes": [
+              {
+                "text": "With people who are concerned about the stigma around mental health , I 'd say this is something I 'd use . because of something you can just , you know , [...] you 're in bed , no ones around , and you can just quickly go on it . No one need to know .",
+                "type": "quote",
+                "source": "c4fb<phone>__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "The whole process of , like , seeking for help can be quite daunting sometimes . Um , you have to email people , call people , you know , you have to schedule things , especially if it 's NHS-based . You have to speak to GPs who might not always , you know , understand what ... in my experience , they 're not taking me quite seriously all the time , so I feel like this would be quite big help to people in such situations .",
+                "type": "quote",
+                "source": "6fac46bbec92__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "For example, like exchange students who, obviously, there could be a language barrier there, and they don't feel like they could speak to anyone. I do think that's a good way, because I've heard some horror stories about exchange students not being able to talk to people.",
+                "type": "quote",
+                "source": "a286ccfc66fa__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Yeah, potentially students who've like learning disabilities. So maybe like autistic students. People that feel, like, a bit excluded, people that don't really have anyone to turn to, that haven't really clicked with anyone at uni.",
+                "type": "quote",
+                "source": "a286ccfc66fa__chunks__0",
+                "metadata": {}
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Privacy concerns and trust balancing safety and confidentiality",
+        "label": null,
+        "__type__": "Theme",
+        "code_slugs": [
+          "concerns-about-ai-privacy-and-privacy-intrusiveness",
+          "balancing-privacy-and-flagging-concerns-in-chatbot-disclosure",
+          "importance-of-privacy-and-conditional-openness-to-monitoring",
+          "value-and-trust-in-ai-safety-monitoring-features"
+        ],
+        "llm_config": {
+          "seed": null,
+          "model": null,
+          "thinking": null,
+          "max_tokens": null,
+          "temperature": 0.7
+        },
+        "description": "Participants reveal tensions between valuing privacy and accepting monitoring features that flag risk and enable intervention. Hesitations about confidentiality, flagging consequences, and fear of burdening others constrain openness, while safety mechanisms are appreciated as safeguards aligning with traditional wellbeing practices.",
+        "resolved_code_refs": [
+          {
+            "name": "Concerns about AI privacy and intrusive data access",
+            "slug": "concerns-about-ai-privacy-and-privacy-intrusiveness",
+            "quotes": [
+              {
+                "hash": "f7n75od3",
+                "type": "quotereference"
+              },
+              {
+                "hash": "i5pozhtm",
+                "type": "quotereference"
+              },
+              {
+                "hash": "zpbefcte",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "This code captures participants' fears and discomfort regarding AI's access to personal data, emphasizing worries about privacy invasion, tracking through cookies and phones, and the omnipresence of AI across platforms. It highlights the need for control and caution in AI's widespread use.",
+            "resolved_quotes": [
+              {
+                "text": "Probably just , like , the fact that they can , like , kind of , like , see your data and stuff , and then that whole , like , cookies thing as well , where they can , like , see your phone and all that . It 's just kind of a bit , like , freaky that they know what we 're doing .",
+                "type": "quote",
+                "source": "3d<phone>d__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Sometimes it can be quite scary with the amount it knows about you. And it's like it's everywhere. It's on Snapchat, it's on Instagram, it's on WhatsApp. It's like literally everywhere.",
+                "type": "quote",
+                "source": "a286ccfc66fa__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Oh, absolutely. Yeah, I think it's I do think it's become a very helpful tool. I just I feel like sometimes it can be quite scary with the amount it knows about you. And it's like it's everywhere.",
+                "type": "quote",
+                "source": "a286ccfc66fa__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Balancing privacy concerns with chatbot flagging and disclosure hesitancy",
+            "slug": "balancing-privacy-and-flagging-concerns-in-chatbot-disclosure",
+            "quotes": [
+              {
+                "hash": "d33dnkyj",
+                "type": "quotereference"
+              },
+              {
+                "hash": "re2tpbb3",
+                "type": "quotereference"
+              },
+              {
+                "hash": "l6nv6oxr",
+                "type": "quotereference"
+              },
+              {
+                "hash": "vd7apwbw",
+                "type": "quotereference"
+              },
+              {
+                "hash": "m34qhzkm",
+                "type": "quotereference"
+              },
+              {
+                "hash": "pbrx6n6j",
+                "type": "quotereference"
+              },
+              {
+                "hash": "cdufoppb",
+                "type": "quotereference"
+              },
+              {
+                "hash": "gtp57aky",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants express conflicted feelings about disclosing sensitive information to the chatbot due to its flagging system. While they acknowledge the potential for timely support through alerts, worries about confidentiality, privacy, and perceived burden limit honesty and openness in sharing personal issues.",
+            "resolved_quotes": [
+              {
+                "text": "... you 'd say it , because , like , nothing\u2026 it 's , like , basically confidential . But then , obviously , if it 's getting flagged up , then it 's going back to someone , so then it 's kind of just , like , you 're a bit worried .",
+                "type": "quote",
+                "source": "3d<phone>d__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Um , it would obviously be better if someone could be aware , because then they would n't have to just track the person down and be like , what 's wrong ? We just know something is wrong .",
+                "type": "quote",
+                "source": "997d8998c1ed__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "But equally , people 's privacy . I suppose the chatbot could like ask first maybe if that 's a I do n't know how it would work .",
+                "type": "quote",
+                "source": "997d8998c1ed__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "If I knew that it was going to be flagged up to a member of stuff , yeah , concerning , I think I 'd be more happy to use it , I guess . More happy to use it , okay . Or I 'm not sure . I think , actually , no , I think I 'd be less happy to use it .",
+                "type": "quote",
+                "source": "bc<phone>f39__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I think I 'd be more hesitant to say something . Yeah . Because then I know , like , if it says something , it 's just gon na go somewhere further . So I 'd like want to like keep it without flagging anything for as long as possible .",
+                "type": "quote",
+                "source": "bc<phone>f39__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "... if I say something concerning and they get the flag , although they ca n't see what I say , I 've now caused the institution to be worried about me . And it 's just a personal take on it . Like I do n't want anyone to like know what I 'm going through . ... I do n't like being a burden to people around me . ... if I 'm being completely honest , I know myself ... I 'll just be like , oh no , like , I do n't really want anybody to be worried about me ...",
+                "type": "quote",
+                "source": "6c2d9f0b10dc__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Could it also be like a sort of like a shout out for help for some , because if they knew about the flagging system . ... if they were n't getting help that they needed from the Student Wellbeing team , then they would be flagged , and then then someone would have to get in contact with them then . ... I also see it from a perspective of someone that 's , like , very close-minded , but they really do n't want people to see them as their weakest point .",
+                "type": "quote",
+                "source": "6c2d9f0b10dc__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Potentially? Um, because I think\u2026 I think it's the same with, like, when you were in school and you're talking to people, like, talking to teachers at school, you'd kind of hold back a bit, because you were worried that it was gonna get\u2026 like, flagged up, or they were going to say something.",
+                "type": "quote",
+                "source": "a286ccfc66fa__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Strong value placed on privacy with conditional openness to monitoring for safety",
+            "slug": "importance-of-privacy-and-conditional-openness-to-monitoring",
+            "quotes": [
+              {
+                "hash": "p3avld7a",
+                "type": "quotereference"
+              },
+              {
+                "hash": "2b2mnhky",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants strongly value privacy in chatbot conversations, preferring limited sharing except when risk to self is flagged. Acceptance of monitoring features depends on individual needs, with willingness to be contacted for serious concerns like self-harm.",
+            "resolved_quotes": [
+              {
+                "text": "I\u2019m a very big advocate for privacy ... if you don\u2019t want something to be shown to others, then you should not have that thing shown to others ... Unless there\u2019s a specific thing that\u2019s been plugged up ... Overall, I think keeping that sort of chat private is good.",
+                "type": "quote",
+                "source": "88725a6a714e__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I think that \u2019 s down to the individual . If I was sharing something like self-harm , I \u2019 d probably want someone to contact me anyway .",
+                "type": "quote",
+                "source": "be3147e35354__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Value and trust in AI safety and monitoring features",
+            "slug": "value-and-trust-in-ai-safety-monitoring-features",
+            "quotes": [
+              {
+                "hash": "yiktnrcz",
+                "type": "quotereference"
+              },
+              {
+                "hash": "sl6zhgq2",
+                "type": "quotereference"
+              },
+              {
+                "hash": "dtpgvqkg",
+                "type": "quotereference"
+              },
+              {
+                "hash": "jspltexj",
+                "type": "quotereference"
+              },
+              {
+                "hash": "g7icat4b",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants appreciate and trust AI chatbots that have safety mechanisms such as risk flagging for serious or concerning messages. These features provide a safety net by ensuring timely human intervention while respecting user privacy, similar to traditional wellbeing service processes.",
+            "resolved_quotes": [
+              {
+                "text": "I think that 's , like , probably more safer than it would be talking to , like , other types of AI , like ChatGPT or like meta , because obviously it 's like being flagged up and stuff .",
+                "type": "quote",
+                "source": "3d<phone>d__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I think that safety feature 's good as well , because for some people , they did n't really know how to , like , potentially , like , reach out for help . And that could be their way of doing it .",
+                "type": "quote",
+                "source": "c4fb<phone>__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I definitely think there needs to be some sort of safety system in place , because , um\u2026 Again , some people may be struggling with , let 's say , suicidal ideation , and you do n't want that to go unnoticed . ... I think it 's good that someone is monitoring what is being said ... someone might say they 're thinking about harming another person , and it 's good to get flagged , and\u2026 to make sure\u2026 That this person is is okay and is n't the right mental state .",
+                "type": "quote",
+                "source": "6fac46bbec92__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I like that it flags more serious cases so they can be looked into properly .",
+                "type": "quote",
+                "source": "ae9ef6e76456__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Yeah, I think that's good. Yeah, I do think that's good, because it's kind of like a normal\u2026 like, if you were to go to the wellbeing, if you say something like that, they have to flag it anyway. So I think that that's still ... that's still good, yeah.",
+                "type": "quote",
+                "source": "a286ccfc66fa__chunks__0",
+                "metadata": {}
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Chatbot design and interaction shaping user comfort and engagement",
+        "label": null,
+        "__type__": "Theme",
+        "code_slugs": [
+          "chatbot-design-resembling-familiar-messaging-apps-for-approachability",
+          "preference-for-friendly-and-simple-chatbot-tone",
+          "positive-reactions-to-calming-chatbot-design-and-style",
+          "limited-frequency-and-personalization-of-chatbot-check-in-nudges",
+          "importance-of-limiting-check-in-nudges-to-prevent-irritation",
+          "preference-for-gentle-and-spaced-check-in-nudges",
+          "appreciation-for-frequent-check-ins-that-convey-care",
+          "preference-for-chatbot-to-continue-after-risk-flagging"
+        ],
+        "llm_config": {
+          "seed": null,
+          "model": null,
+          "thinking": null,
+          "max_tokens": null,
+          "temperature": 0.7
+        },
+        "description": "Participants value chatbots that resemble familiar messaging apps, use friendly and simple tones, and incorporate calming visuals and conversational style. Personalized, gentle, and spaced check-in nudges are preferred to maintain connection without causing irritation or pressure, enhancing approachability and sustained engagement.",
+        "resolved_code_refs": [
+          {
+            "name": "Chatbot design resembling familiar messaging apps for approachability",
+            "slug": "chatbot-design-resembling-familiar-messaging-apps-for-approachability",
+            "quotes": [
+              {
+                "hash": "rm5f524m",
+                "type": "quotereference"
+              },
+              {
+                "hash": "ptenjhfn",
+                "type": "quotereference"
+              },
+              {
+                "hash": "mp3zpoos",
+                "type": "quotereference"
+              },
+              {
+                "hash": "efejtpej",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants appreciate chatbot designs that mimic familiar messaging platforms like WhatsApp or texting friends and family. This similarity enhances approachability, comfort, and ease of use, making technology for wellbeing support feel more natural and user-friendly.",
+            "resolved_quotes": [
+              {
+                "text": "Um , I mean , it feels like you 're texting , like , your friends or family , so I 'd say yeah .",
+                "type": "quote",
+                "source": "3d<phone>d__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Yeah , I like how it 's just set up , like a messaging service .",
+                "type": "quote",
+                "source": "c4fb<phone>__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I think it's\u2026 yeah , I think the design is quite straightforward . I mean , it 's just like texting somebody ... it seems pretty easy to use . ... I think it can be quite convenient , because , again , as you said , it 's on your phone , so it 's available to you pretty much everywhere .",
+                "type": "quote",
+                "source": "6fac46bbec92__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Yeah . It 's good that it 's casual . If it were too\u2026 serious , it would probably put people off .",
+                "type": "quote",
+                "source": "997d8998c1ed__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Preference for friendly and simple chatbot tone",
+            "slug": "preference-for-friendly-and-simple-chatbot-tone",
+            "quotes": [
+              {
+                "hash": "3w6yolre",
+                "type": "quotereference"
+              },
+              {
+                "hash": "efejtpej",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants prefer chatbots to use a friendlier, less formal tone with simpler, shorter questions. This style makes interactions feel more natural and less intimidating, promoting a warmer, casual conversational experience in emotional support technology.",
+            "resolved_quotes": [
+              {
+                "text": "Maybe if it was something a little bit\u2026 More along the lines of\u2026 It was more friendly , maybe more , you know , like , instead of , like , longer sentences asking how you feel , maybe you could just say , how do you feel today ? You know , like , or talk to me about anything , maybe , yeah , maybe less formal questions from the chatbot side .",
+                "type": "quote",
+                "source": "6fac46bbec92__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Yeah . It 's good that it 's casual . If it were too\u2026 serious , it would probably put people off .",
+                "type": "quote",
+                "source": "997d8998c1ed__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Positive reactions to calming chatbot design and style",
+            "slug": "positive-reactions-to-calming-chatbot-design-and-style",
+            "quotes": [
+              {
+                "hash": "77lxirxz",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants respond positively to chatbot designs with calming visuals and a gentle, conversational style that reassures users and acknowledges feelings. This approach avoids interrogation or judgment, creating a feeling of safety and acceptance during interactions.",
+            "resolved_quotes": [
+              {
+                "text": "I quite liked it . I know it might sound silly , but the green background was calming.I liked how it reassured you and acknowledged your feelings , and how it asked open questions . It felt gentle and conversational , not interrogating .",
+                "type": "quote",
+                "source": "be3147e35354__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Limited frequency and personalization of chatbot check-in nudges",
+            "slug": "limited-frequency-and-personalization-of-chatbot-check-in-nudges",
+            "quotes": [
+              {
+                "hash": "45tqidz3",
+                "type": "quotereference"
+              },
+              {
+                "hash": "mxxs7sgx",
+                "type": "quotereference"
+              },
+              {
+                "hash": "bftcfuj3",
+                "type": "quotereference"
+              },
+              {
+                "hash": "aibotl6e",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants express the need for chatbot check-in nudges to be limited in frequency to avoid overwhelming or annoying users. They emphasize the value of personalization, allowing users to set or modify the frequency based on their emotional state, with preferences ranging from once a week to daily depending on need.",
+            "resolved_quotes": [
+              {
+                "text": "I 'd say one large , then close it down , then\u2026 One nudgeman set , and then say , right , that 's it , but if you want to come back on , then come back on . [...] Maybe once a day , maybe ? Maybe one or two initially , and then\u2026one of , like , maybe a week later .",
+                "type": "quote",
+                "source": "c4fb<phone>__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "If it 's in a long enough intervals , like , I would obviously mind it if it was every day , and I 'm getting a reminder every day , maybe I 'm trying to avoid talking about something , but if it 's , like\u2026 I do n't know , I would say once a week , or once every two weeks . I do n't think I would mind that .",
+                "type": "quote",
+                "source": "6fac46bbec92__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Yeah , I feel like a couple of times a week , or , like , every other day sounds good . It depends , I think it just depends on , like , what the person 's going through , though . If it 's , like , a prolonged issue , it might be nice to have it , like , every morning to wake up to , like .",
+                "type": "quote",
+                "source": "faf64e4553d7__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "every few days or like once a week , maybe .",
+                "type": "quote",
+                "source": "0662cb55784b__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Importance of limiting check-in nudges to prevent user irritation and pressure",
+            "slug": "importance-of-limiting-check-in-nudges-to-prevent-irritation",
+            "quotes": [
+              {
+                "hash": "6wstfluc",
+                "type": "quotereference"
+              },
+              {
+                "hash": "wjicbgp5",
+                "type": "quotereference"
+              },
+              {
+                "hash": "d647o5fs",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants highlight the importance of limiting chatbot check-in nudges to avoid user irritation, annoyance, or feeling pressured. They suggest setting maximum limits and enabling users to disable nudges to respect autonomy and maintain natural engagement.",
+            "resolved_quotes": [
+              {
+                "text": "I think it should have a limit to how many times it sends a message before it just\u2026 stops , because I feel like eventually it 's just going to be very apparent it 's just\u2026 Checking in on you . It could also come across as slightly . like , insulting to their , um\u2026",
+                "type": "quote",
+                "source": "997d8998c1ed__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I think once every day would be fine . Uh , any more than once every day is starting to push it , I think , but\u2026 That 's me .",
+                "type": "quote",
+                "source": "997d8998c1ed__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Yeah , there should definitely be a limit on that , because , like I said , with my AI chatbot on my phone , it does n't do anything . I 'm the one that 's always going there to like willingly chat . It makes you want to come to that person more when there 's not that ... How do I put it into words ? There 's not that emergency need to , like , have a conversation . You 're doing it from the bottom of your heart . It feels more natural .",
+                "type": "quote",
+                "source": "6c2d9f0b10dc__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Preference for gentle and spaced check-in nudges to simulate conversational presence",
+            "slug": "preference-for-gentle-and-spaced-check-in-nudges",
+            "quotes": [
+              {
+                "hash": "3zxq6qff",
+                "type": "quotereference"
+              },
+              {
+                "hash": "t5i2pefh",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants prefer subtle and spaced follow-up nudges from the chatbot to gently check in without being intrusive. They suggest timed prompts that simulate a caring conversational presence and support, with intervals such as every 10 minutes, hourly, or every couple of days.",
+            "resolved_quotes": [
+              {
+                "text": "Maybe, like, 10 minutes is probably a good time to just be like, look, are you all right? And then maybe, like, another hour. And then maybe just, like, every day, if they still haven't, like, just daily, just to be like, are you alright? Like\u2026 kind of thing.",
+                "type": "quote",
+                "source": "a286ccfc66fa__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Maybe the chatbot, like every couple of days can just prompt a new conversation, like, oh, how are you feeling with your stress or how's your day been, or\u2026 kind of just a normal general chit chat, so it actually feels like someone's there.",
+                "type": "quote",
+                "source": "a286ccfc66fa__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Appreciation for frequent check-in messages that convey a sense of care and support",
+            "slug": "appreciation-for-frequent-check-ins-that-convey-care",
+            "quotes": [
+              {
+                "hash": "fdlxgg3c",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "One participant values receiving multiple daily check-in messages from the chatbot as it encourages continuous engagement and creates a feeling of being cared for, which is meaningful for emotional connection and support.",
+            "resolved_quotes": [
+              {
+                "text": "Maybe 4 or 5 times a day is gon na be good ... to make me feel that they care , you know ?",
+                "type": "quote",
+                "source": "820ecc2fd487__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Preference for chatbot to continue conversations after risk flagging",
+            "slug": "preference-for-chatbot-to-continue-after-risk-flagging",
+            "quotes": [
+              {
+                "hash": "kbc2b3zb",
+                "type": "quotereference"
+              },
+              {
+                "hash": "lm7x3b6y",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants express a preference for chatbots to not abruptly stop conversations after identifying risk. Instead, chatbots should continue gently, gathering context to avoid misunderstandings and keeping users engaged while awaiting human support. This approach recognizes the chatbot's limitations with language nuances like sarcasm.",
+            "resolved_quotes": [
+              {
+                "text": "I 'm not sure if stopping is\u2026 is\u2026 stop , you know , you 're almost like saying , right , we 're stopping what you 're , you know , Stop me go wrong . [...] maybe it should try and keep it going a little bit . And plus , if it is actually a really serious situation , then , you know , you want to keep them there , you do n't want to stop . You want to make sure they 're still engaging with it while someone else gets on , yeah .",
+                "type": "quote",
+                "source": "c4fb<phone>__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I think it should continue , but just in a way to maybe\u2026 For the chatbot to gather some more details about what the person means . ... it ca n't recognize human language and like sarcasm and stuff like that , as well as actual people . So I think it can maybe sometimes take things out of context and just stop the conversation when it 's not really necessarily needed .",
+                "type": "quote",
+                "source": "6fac46bbec92__chunks__0",
+                "metadata": {}
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "Diverse perceptions of AI usefulness and trust forming acceptance",
+        "label": null,
+        "__type__": "Theme",
+        "code_slugs": [
+          "mixed-openness-and-skepticism-about-ai-chatbot-use",
+          "openness-to-increasing-trust-in-ai-based-on-evidence",
+          "concerns-about-ai-authenticity-trust-and-errors",
+          "negative-preconceptions-about-ai-as-barrier-to-chatbot-use",
+          "curiosity-tempered-by-worries-about-ai-potential-and-impact",
+          "concern-about-ai-ecological-and-social-impacts",
+          "balancing-ai-use-with-environmental-awareness",
+          "ai-impacts-and-user-expectations-in-support-contexts"
+        ],
+        "llm_config": {
+          "seed": null,
+          "model": null,
+          "thinking": null,
+          "max_tokens": null,
+          "temperature": 0.7
+        },
+        "description": "Participants show mixed openness to AI, influenced by familiarity, evidence of effectiveness, and privacy concerns. While curiosity and acceptance grow with demonstrated benefits, negative preconceptions and fears about AI\u2019s authenticity, errors, and ecological impact temper enthusiasm and willingness to use chatbots.",
+        "resolved_code_refs": [
+          {
+            "name": "Mixed openness and skepticism about AI chatbot use based on familiarity and privacy concerns",
+            "slug": "openness-and-skepticism-about-ai-chatbot-use",
+            "quotes": [
+              {
+                "hash": "ox7rplpm",
+                "type": "quotereference"
+              },
+              {
+                "hash": "dm3hszd3",
+                "type": "quotereference"
+              },
+              {
+                "hash": "bazqd3vq",
+                "type": "quotereference"
+              },
+              {
+                "hash": "eel5su4a",
+                "type": "quotereference"
+              },
+              {
+                "hash": "73t6iy23",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants vary in willingness to use AI chatbots, with familiarity increasing acceptance and skepticism prevalent due to novelty and privacy concerns. Awareness of risk flagging may reduce openness, while quality of chatbot design influences intent to use and recommend.",
+            "resolved_quotes": [
+              {
+                "text": "I could , you know , I wo n't rule out immediately . I 'd be skeptical if I had n't , you know , had this conversation first . I reckon most people would be skeptical .",
+                "type": "quote",
+                "source": "c4fb<phone>__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I think students who already use AI would be fine with it , but people who don \u2019 t really use AI would probably rather use something else .",
+                "type": "quote",
+                "source": "ae9ef6e76456__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I say 4 out of 10 ... the idea of it being linked to the institution kind of , like , scares me , because I 'm like , oh , like , I have to deal with... you know , like I said in the start , if I say something concerning and they get the flag , although they ca n't see what I say , I 've now caused the institution to be worried about me .",
+                "type": "quote",
+                "source": "6c2d9f0b10dc__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "less likely to be open as i would subconsciously know that someone would could inevitably be reading what i say",
+                "type": "quote",
+                "source": "ae9ef6e76456__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Yes , depending on how well it \u2019 s built and how good the responses are . A poor experience could put people off .",
+                "type": "quote",
+                "source": "be3147e35354__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Openness to increasing trust in AI chatbots with more evidence",
+            "slug": "openness-to-increasing-trust-in-ai-based-on-evidence",
+            "quotes": [
+              {
+                "hash": "vtgcinyq",
+                "type": "quotereference"
+              },
+              {
+                "hash": "hcvjodxq",
+                "type": "quotereference"
+              },
+              {
+                "hash": "pdkotlcj",
+                "type": "quotereference"
+              },
+              {
+                "hash": "3rkrzwbs",
+                "type": "quotereference"
+              },
+              {
+                "hash": "c6mlwyws",
+                "type": "quotereference"
+              },
+              {
+                "hash": "z7jf3rm7",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants express conditional openness and increased trust toward AI chatbots if robust research and evidence demonstrate effectiveness, benefits, and safety. Trust may build over time through positive outcomes and credible validation, influencing willingness to accept and potentially use AI for wellbeing.",
+            "resolved_quotes": [
+              {
+                "text": "Yeah , I think so . Hmm . ... you 'd put more trust in it , maybe .",
+                "type": "quote",
+                "source": "3d<phone>d__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Say if there 's more research on it , and obviously more students used it , and there 's more benefits towards it , just based on research , could your views on it change over time ? Um , yes , but not for me personally . I probably still would n't use it , but\u2026 I would be less against it if more research was showing . positive results .",
+                "type": "quote",
+                "source": "997d8998c1ed__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Yeah , probably , especially if I hear about it working well or actually experience it being useful .",
+                "type": "quote",
+                "source": "ae9ef6e76456__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "If it had evidence and like experience of like actually helping people and I 'd feel that was a thing , then , yeah , I think my opinion would change completely more open to it , I guess .",
+                "type": "quote",
+                "source": "bc<phone>f39__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Yeah, I think if\u2026 Yeah, I think if there was like evidence that backed it, like obviously I'm still open to using it, but I just feel if there was evidence that backed it fully and that showed that it was useful to people, I think more people as well would be more open to using it.",
+                "type": "quote",
+                "source": "a286ccfc66fa__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "um , become more trustworthy of it .",
+                "type": "quote",
+                "source": "faf64e4553d7__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Concerns about AI authenticity, trust, and potential harm from errors",
+            "slug": "concerns-about-ai-authenticity-trust-and-errors",
+            "quotes": [
+              {
+                "hash": "43ypxv3n",
+                "type": "quotereference"
+              },
+              {
+                "hash": "mjtcubpr",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants express concerns about AI lacking authenticity and honesty, giving overly positive or skewed responses rather than truthful feedback. They worry about AI errors causing harm, especially in sensitive therapeutic contexts, which could damage trust and emotional wellbeing.",
+            "resolved_quotes": [
+              {
+                "text": "Because\u2026 it still does n't feel overly\u2026real , like , ChatGBT . [...] It just tells you what you want it to say . what you want to hear . It 's overly positive , which is not\u2026 something which is probably you want to hear , you want to , you know , you want honest information , not\u2026 skewed information .",
+                "type": "quote",
+                "source": "c4fb<phone>__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "In a sort of therapeutic environment ... if you say the wrong thing, it could have a lot of damage to someone who\u2019s already maybe has some trauma ... That\u2019s a mistake that would be unacceptable.",
+                "type": "quote",
+                "source": "88725a6a714e__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Negative preconceptions about AI as barrier to chatbot use",
+            "slug": "negative-preconceptions-about-ai-as-barrier-to-chatbot-use",
+            "quotes": [
+              {
+                "hash": "ocodfe75",
+                "type": "quotereference"
+              },
+              {
+                "hash": "xjhwahqr",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "This code captures participants' negative preconceptions about AI technology, which create caution or reluctance to use AI chatbots for mental health support. It highlights how prior experiences, mistrust, or anti-AI attitudes can act as barriers to engagement with AI-driven mental health tools.",
+            "resolved_quotes": [
+              {
+                "text": "My own preconceptions, I\u2019ve had quite a negative influence ... they would be more likely to research into AI and know the sort of downsides ... so I think it goes both ways depending on who you\u2019re talking to.",
+                "type": "quote",
+                "source": "88725a6a714e__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Yeah , I think some people , obviously , have like very anti AI . Yeah . opinions . So , like , if they are against AI helping you do research , then I doubt they 'd be open to AI helping you with your mental stress . Mental health for sure .",
+                "type": "quote",
+                "source": "bc<phone>f39__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Curiosity tempered by worries about AI\u2019s potential and impact",
+            "slug": "curiosity-tempered-by-worries-about-ai-potential-and-impact",
+            "quotes": [
+              {
+                "hash": "lqgsfa26",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "This code highlights participants\u2019 interest and curiosity in exploring AI possibilities while simultaneously expressing worries about its sustainability and environmental impact. It reflects a cautious optimism mingled with skepticism about the real-world consequences of AI use.",
+            "resolved_quotes": [
+              {
+                "text": "I am interested to see the possibilities AI has but ... um i i am worried about the environmental impacts it takes to sustain its use .",
+                "type": "quote",
+                "source": "ae9ef6e76456__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Concern about AI\u2019s ecological footprint and social consequences",
+            "slug": "concern-about-ai-ecological-and-social-impacts",
+            "quotes": [
+              {
+                "hash": "uh2u75nn",
+                "type": "quotereference"
+              },
+              {
+                "hash": "y4z5h53j",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants express strong concerns regarding the ecological damage caused by AI technologies, including water pollution and high resource consumption, especially affecting vulnerable regions. There is also worry about broader social consequences, such as job losses attributed to generative AI advancements.",
+            "resolved_quotes": [
+              {
+                "text": "Uh , mainly the ecological downsides . of generative AI 's . Use of resources , water , etc . And the implications of a lot of people losing their jobs .",
+                "type": "quote",
+                "source": "997d8998c1ed__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I am very sceptical to AI ... the actual technology that is \u2026 isn't as good as sort of what is advertised to us ... There are many cases of AI being misused as well ... Also the environmental impact, huge ... I believe it\u2019s the water, like, water pollution is a huge one ... mostly affects, sort of, third world countries ...",
+                "type": "quote",
+                "source": "88725a6a714e__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Balancing AI use with environmental awareness and caution",
+            "slug": "balancing-ai-use-with-environmental-awareness",
+            "quotes": [
+              {
+                "hash": "si665t73",
+                "type": "quotereference"
+              },
+              {
+                "hash": "x4b4if2b",
+                "type": "quotereference"
+              },
+              {
+                "hash": "lvoh73yh",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "This code captures participants' awareness of the environmental impacts of AI, such as excessive resource and water use. It includes their efforts to moderate usage and their hesitance to use AI tools due to environmental concerns, reflecting a tension between practical use and ecological values.",
+            "resolved_quotes": [
+              {
+                "text": "But I also know that we are using like natural resources from using it too much , so I try to\u2026 not do it excessively .",
+                "type": "quote",
+                "source": "6fac46bbec92__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "It might prevent me from using it ... I care about the environment ... I do think that we should try and preserve it ... I am sort of hesitant to use AI tools in general, knowing that sort of ... that it has that impact.",
+                "type": "quote",
+                "source": "88725a6a714e__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "The amount of , like , water it uses to , like , cool down all , like , the monitors and stuff is pretty bad for the environment , so it 's not , like , the best thing .",
+                "type": "quote",
+                "source": "faf64e4553d7__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Perceptions of AI impacts and user expectations in support contexts",
+            "slug": "ai-impacts-and-user-expectations-in-support-contexts",
+            "quotes": [
+              {
+                "hash": "xfrwogap",
+                "type": "quotereference"
+              },
+              {
+                "hash": "25boe76e",
+                "type": "quotereference"
+              },
+              {
+                "hash": "u7kkt4zt",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "This code captures participants' nuanced perceptions of AI in different contexts, valuing its quick response in busy service environments but expressing concerns about transparency when serious issues are flagged, alongside contrasting views of AI's benefits in academic use and harm in social media.",
+            "resolved_quotes": [
+              {
+                "text": "But then , um , I think , like , in , like , social media terms . It 's damaging , but , like , for work , it 's helpful .",
+                "type": "quote",
+                "source": "0662cb55784b__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "obviously that you get , like , a quicker response , because\u2026 Student Services can be very busy and then we can give you advice on that .",
+                "type": "quote",
+                "source": "0662cb55784b__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I feel like if there was a message like we 're going to access further support for you , because\u2026 This is flagged certain things . And here 's why we 're gon na do that , then that 'll probably be better than just them sending that message and then just being left .",
+                "type": "quote",
+                "source": "0662cb55784b__chunks__0",
+                "metadata": {}
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "AI chatbot benefits for specific student groups and contexts",
+        "label": null,
+        "__type__": "Theme",
+        "code_slugs": [
+          "chatbot-as-introvert-friendly-access-point",
+          "chatbot-benefit-for-isolated-students",
+          "target-groups-for-chatbot-support",
+          "using-ai-chatbot-for-stress-and-exam-support",
+          "perceived-benefit-of-ai-chatbots-for-students-struggling-or-with-minor-issues",
+          "preferring-people-for-stress-support"
+        ],
+        "llm_config": {
+          "seed": null,
+          "model": null,
+          "thinking": null,
+          "max_tokens": null,
+          "temperature": 0.7
+        },
+        "description": "Participants identify key groups such as introverted, isolated, first-year, international, and students with disabilities as likely to benefit from AI chatbots. AI is valued as an initial point of contact that reduces access barriers, especially during exam stress or minor emotional challenges, supporting vulnerable and isolated students.",
+        "resolved_code_refs": [
+          {
+            "name": "Chatbot as an introvert-friendly initial access point for support",
+            "slug": "chatbot-as-introvert-friendly-access-point",
+            "quotes": [
+              {
+                "hash": "qcrdarpc",
+                "type": "quotereference"
+              },
+              {
+                "hash": "rwftdk5o",
+                "type": "quotereference"
+              },
+              {
+                "hash": "anbafbua",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "This code captures how chatbots are perceived as beneficial initial contact points for introverted or reluctant students. Chatbots provide a less intimidating, anonymous, and convenient mode of communication, facilitating engagement with support services without the need for direct human interaction. They help overcome barriers to seeking help by acting like digital receptionists that guide users into the support system.",
+            "resolved_quotes": [
+              {
+                "text": "I\u2019m quite introverted myself ... struggle communicating ... it\u2019s more initiating conversations for me ... I would probably refrain from even seeking that sort of help ... if there was maybe a chatbot ... I would be more likely to sort of engage with that sort of thing.",
+                "type": "quote",
+                "source": "88725a6a714e__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "It could benefit people that are maybe more introverted ... struggle to speak with staff ... It\u2019s sort of almost like a receptionist sort of thing ... Then you\u2019re sort of in the system.",
+                "type": "quote",
+                "source": "88725a6a714e__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "maybe people that struggle to\u2026 Like , go asking for help initially is probably the hardest part , so having something online . that you can just access without anyone else knowing or judging you is probably\u2026",
+                "type": "quote",
+                "source": "0662cb55784b__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Chatbot especially beneficial for isolated or lonely students",
+            "slug": "chatbot-benefit-for-isolated-students",
+            "quotes": [
+              {
+                "hash": "aniwsgor",
+                "type": "quotereference"
+              },
+              {
+                "hash": "uh5m4nwx",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "This code captures the perception that chatbots offer significant support to students who experience loneliness or social isolation. Participants see chatbots as useful when students have limited social contacts or no one to talk to, enhancing emotional support and reducing feelings of solitude.",
+            "resolved_quotes": [
+              {
+                "text": "It could be if I think it could be helpful if someone , say , is feeling very lonely and generally does n't have anyone they can talk to or feel like they can talk to . It can help because obviously if you 've got nobody to talk to , then anything 's better than nothing in a sense . Yeah , definitely .",
+                "type": "quote",
+                "source": "bc<phone>f39__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Probably , like , the people that , like , are quite isolated , or they do n't have , like , loads of close friends , or their friends are , like , far away , and they ca n't always , like , get in touch with them .",
+                "type": "quote",
+                "source": "faf64e4553d7__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Identification of key student groups who would benefit from chatbot support",
+            "slug": "target-groups-for-chatbot-support",
+            "quotes": [
+              {
+                "hash": "eftlnsrz",
+                "type": "quotereference"
+              },
+              {
+                "hash": "cocvgi6v",
+                "type": "quotereference"
+              },
+              {
+                "hash": "roq3x6d4",
+                "type": "quotereference"
+              },
+              {
+                "hash": "m4ip7juj",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants identify first-year students, international and exchange students, anxious, shy, excluded, autistic, and commuting students as groups likely to benefit most from chatbot emotional support due to accessibility and reduced social barriers.",
+            "resolved_quotes": [
+              {
+                "text": "first years , international students . students who are , um , wholly unfamiliar with . system . Students who are anxious . [...] Other students who tend to not . speak , or raise their voice .",
+                "type": "quote",
+                "source": "c4fb<phone>__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "First-year students especially , but really all students \u2014 and maybe even staff .",
+                "type": "quote",
+                "source": "be3147e35354__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "For example, like exchange students who, obviously, there could be a language barrier there, and they don't feel like they could speak to anyone. I do think that's a good way, because I've heard some horror stories about exchange students not being able to talk to people.",
+                "type": "quote",
+                "source": "a286ccfc66fa__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Yeah, potentially students who've like learning disabilities. So maybe like autistic students. People that feel, like, a bit excluded, people that don't really have anyone to turn to, that haven't really clicked with anyone at uni.",
+                "type": "quote",
+                "source": "a286ccfc66fa__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Using AI chatbot for stress and exam period support",
+            "slug": "using-ai-chatbot-for-stress-and-exam-support",
+            "quotes": [
+              {
+                "hash": "tchtsvzg",
+                "type": "quotereference"
+              },
+              {
+                "hash": "r54u3f6d",
+                "type": "quotereference"
+              },
+              {
+                "hash": "rmqjikzz",
+                "type": "quotereference"
+              },
+              {
+                "hash": "bn7kcubs",
+                "type": "quotereference"
+              },
+              {
+                "hash": "ua35hci2",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "This code captures participants' willingness to utilize AI chatbots during stressful times, particularly around exams. It includes seeking reassurance, general advice, and practical strategies to manage stress. Participants view AI as a helpful, accessible resource for emotional and practical support during academic pressures.",
+            "resolved_quotes": [
+              {
+                "text": "if I needed it , if I\u2026 if I\u2026 if I was stressed about something , uh\u2026 I 'll probably give it a go . I 'll give that a go . I 'll give it a chance .",
+                "type": "quote",
+                "source": "c4fb<phone>__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "After seeing the demo , I would use it \u2014 especially around exam time , for reassurance that what I \u2019 m feeling is normal .",
+                "type": "quote",
+                "source": "be3147e35354__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Uh, yeah, I think I'd be rather likely to use it, um\u2026 more for, like, just, like, general questions or just advice on how to like keep my stress levels down for uni.",
+                "type": "quote",
+                "source": "a286ccfc66fa__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I think I'd also probably like recommend people I know to use it.",
+                "type": "quote",
+                "source": "a286ccfc66fa__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I probably would use it if I was stressed with exams and stuff . For advice on that .",
+                "type": "quote",
+                "source": "0662cb55784b__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Preferring people, especially friends, for stress and emotional support",
+            "slug": "preferring-people-for-stress-support",
+            "quotes": [
+              {
+                "hash": "gwgyibip",
+                "type": "quotereference"
+              },
+              {
+                "hash": "jhnaxigb",
+                "type": "quotereference"
+              },
+              {
+                "hash": "oc5tezmt",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants prefer seeking support from people, primarily friends, during times of stress or difficulties related to university life. They value personal connections and human interaction over automated tools, often also including mental health tutors and wellbeing services as trusted sources.",
+            "resolved_quotes": [
+              {
+                "text": "I normally just talk to my friends about it . Yeah . That 's it . That 's it . Oh , actually , I 'd also have a , like , a mental health tutor , like , advice that I talk to everybody . Okay , yeah . talk to her about it as well .",
+                "type": "quote",
+                "source": "bc<phone>f39__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I'd go to people, real people. Uh, yeah, friend, um, the wellbeing services at uni are really helpful. Family, stuff like that.",
+                "type": "quote",
+                "source": "a286ccfc66fa__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "my friends , I guess I 'm I would just go to my friends .",
+                "type": "quote",
+                "source": "0662cb55784b__chunks__0",
+                "metadata": {}
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "name": "AI as a practical tool for academic and everyday tasks",
+        "label": null,
+        "__type__": "Theme",
+        "code_slugs": [
+          "ai-tool-for-academic-support-and-study-efficiency",
+          "ai-for-quick-assistive-tasks-beyond-study",
+          "ai-use-for-academic-research-with-verification"
+        ],
+        "llm_config": {
+          "seed": null,
+          "model": null,
+          "thinking": null,
+          "max_tokens": null,
+          "temperature": 0.7
+        },
+        "description": "Participants utilize AI to enhance academic efficiency, including research, referencing, study aids, and assignment structuring, while also appreciating its utility for practical everyday activities like recipe and gym planning, highlighting AI\u2019s role as a helpful, time-saving resource.",
+        "resolved_code_refs": [
+          {
+            "name": "AI tools essential for academic support and study efficiency",
+            "slug": "ai-tool-for-academic-support-and-study-efficiency",
+            "quotes": [
+              {
+                "hash": "fyxle33k",
+                "type": "quotereference"
+              },
+              {
+                "hash": "c6cyakk5",
+                "type": "quotereference"
+              },
+              {
+                "hash": "xauoabq4",
+                "type": "quotereference"
+              },
+              {
+                "hash": "sqibzlby",
+                "type": "quotereference"
+              },
+              {
+                "hash": "lty74sbd",
+                "type": "quotereference"
+              },
+              {
+                "hash": "2bfdnxna",
+                "type": "quotereference"
+              },
+              {
+                "hash": "yt2hdfks",
+                "type": "quotereference"
+              },
+              {
+                "hash": "lx7stbqt",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants view AI as an essential academic aid that supports various study needs, including creating flashcards, improving grammar, structuring essays, generating quizzes, and marking assignments. AI enhances understanding, overcomes language barriers, and boosts efficiency in studying and university work without promoting overreliance.",
+            "resolved_quotes": [
+              {
+                "text": "I personally use myself as well... to help me with my flashcards for like studying.",
+                "type": "quote",
+                "source": "5f41c40d6ca2__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Grammarly, it helps with my grammatics because\u2026 this is not the first language and it's quite hard for us foreigners to learn grammar.",
+                "type": "quote",
+                "source": "5f41c40d6ca2__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Well, obviously ChatGPT helped me to pass my exam, some of my exams.",
+                "type": "quote",
+                "source": "5f41c40d6ca2__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I do use it quite often , yeah . I find it really , really beneficial . It 's helped me with my studying as well , and exploring questions . It just gives me a little bit more depth to my questions , and so it directs me in different ways , and it helps with my learning and understanding of a subject or even a word , really .",
+                "type": "quote",
+                "source": "be3147e35354__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I think sometimes it can get you an answer to a question quicker... if you just need a bit of help on how to like but when writing an essay, if you can't really work out how to structure it, it's quite easy to do... to just ask it how to structure it. I think that's quite helpful.",
+                "type": "quote",
+                "source": "a286ccfc66fa__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Yeah, like with structuring, and if I just need to quickly get some ideas on... what to include in it. I will just quickly be like. Can you just quickly tell me?",
+                "type": "quote",
+                "source": "a286ccfc66fa__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I try to use it as little as possible , but , like , I will use it if I need it , um\u2026 to , like , surface studying and things . So I 'll have it like generate quizzes on like , um\u2026",
+                "type": "quote",
+                "source": "faf64e4553d7__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I think it can be useful for , like . When I 'm doing work , it can like mark the stuff I 'm doing and give me advice on it .",
+                "type": "quote",
+                "source": "0662cb55784b__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "AI for quick assistive tasks beyond academic study",
+            "slug": "ai-for-quick-assistive-tasks-beyond-study",
+            "quotes": [
+              {
+                "hash": "3m54d3vj",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants also use AI as a fast and efficient tool for practical everyday tasks unrelated to academic work, such as generating cooking recipes, gym plans, or running schedules. AI serves as a useful quick assist tool when speedy answers or guidance are needed in diverse areas.",
+            "resolved_quotes": [
+              {
+                "text": "Sometimes I use it for like cooking recipes or like gym plans, or like running plans, stuff like that.",
+                "type": "quote",
+                "source": "a286ccfc66fa__chunks__0",
+                "metadata": {}
+              }
+            ]
+          },
+          {
+            "name": "Using AI for academic research with verification and referencing",
+            "slug": "ai-use-for-academic-research-with-verification",
+            "quotes": [
+              {
+                "hash": "jlbxhuf7",
+                "type": "quotereference"
+              },
+              {
+                "hash": "2qng7mzi",
+                "type": "quotereference"
+              },
+              {
+                "hash": "la4wv3og",
+                "type": "quotereference"
+              },
+              {
+                "hash": "qofnrsyg",
+                "type": "quotereference"
+              }
+            ],
+            "llm_config": {
+              "seed": null,
+              "model": null,
+              "thinking": null,
+              "max_tokens": null,
+              "temperature": 0.7
+            },
+            "description": "Participants utilize AI tools like ChatGPT for academic study support, particularly to find relevant research studies and references. Emphasis is placed on verifying and fact-checking the information provided by AI to ensure accuracy and properly reference sources in assignments and reports.",
+            "resolved_quotes": [
+              {
+                "text": "I use GPT sometimes for my university to look for for my degree to look for research that , like , so if I 'm doing , like , an assignment . ... I will ask it to find me research studies that have any useful information that I could use in my assignments or in my reports and stuff like that .",
+                "type": "quote",
+                "source": "6fac46bbec92__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Yes , of course , of course , I opened the links , um , individually , and obviously you have to reference them and all of that stuff , so\u2026 yeah .",
+                "type": "quote",
+                "source": "6fac46bbec92__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "I 'll use it to get references and stuff and research just kind of struggling .",
+                "type": "quote",
+                "source": "bc<phone>f39__chunks__0",
+                "metadata": {}
+              },
+              {
+                "text": "Yeah , although you do have to fact check it because sometimes it does .",
+                "type": "quote",
+                "source": "bc<phone>f39__chunks__0",
+                "metadata": {}
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  ]
+}
