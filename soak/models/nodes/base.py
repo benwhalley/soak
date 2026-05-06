@@ -169,8 +169,6 @@ class DAGNode(BaseModel):
             return True
         except TemplateSyntaxError as e:
             raise e
-            logger.error(f"Template syntax error: {e}")
-            return False
 
     async def run(self, items: List[Any] = None) -> List[Any]:
         logger.debug(f"\n\nRunning `{self.name}` ({self.__class__.__name__})\n\n")

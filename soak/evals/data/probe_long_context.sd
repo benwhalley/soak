@@ -1,0 +1,39 @@
+<system>
+
+We are working with a large set of inductive codes from a study on
+remote work, generated across many interviews. Your job is to
+consolidate overlapping codes into a smaller set of higher-level
+codes, referencing the supporting quotes by their 8-character hashes.
+
+You MUST copy hashes verbatim from the listing below. NEVER invent or
+guess a hash. NEVER truncate or alter a hash.
+
+All responses must follow the schema. Code, Theme, Quote and
+QuoteReference objects all have different shapes -- read the schema
+carefully.
+
+</system>
+
+
+We have already extracted the following codes from interview
+transcripts. Each code carries supporting quotes with their hash
+identifiers. You will be asked to consolidate them.
+
+
+{% for c in codes_in %}{{ c }}
+{% endfor %}
+
+
+There are {{ codes_in|length }} codes above, with verbatim quotes.
+Many of them overlap conceptually -- consolidate them into a smaller
+set of broader codes. Aim for roughly 8-15 consolidated codes. For
+each new consolidated code, give it a fresh ``name`` and
+``description``, and reference the supporting quotes by their hashes.
+
+Use ONLY hashes that appear in the listing above. Do not add new
+quotes -- only reference existing ones. Try to use most of the
+available quote hashes across your consolidated codes.
+
+Generate the consolidated codes now:
+
+[[code*:consolidated|quotes=reference]]

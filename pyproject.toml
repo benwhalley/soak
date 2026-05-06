@@ -76,7 +76,7 @@ scrub = [
 
 
 [tool.setuptools.package-data]
-soak = ["templates/*.html", "templates/*.md", "templates/**/*.html", "templates/**/*.md", "templates/**/*.sd", "templates/**/*.jinja", "pipelines/**/*.soak", "pipelines/**/*.sd", "soak-data/**/*", "calibration-data/**/*"]
+soak = ["templates/*.html", "templates/*.md", "templates/**/*.html", "templates/**/*.md", "templates/**/*.sd", "templates/**/*.jinja", "pipelines/**/*.soak", "pipelines/**/*.sd", "soak-data/**/*", "calibration-data/**/*", "evals/data/*.sd"]
 django_soak = ["templates/**/*.html", "static/**/*"]
 
 [tool.setuptools.packages.find]
@@ -99,5 +99,9 @@ umap-learn = { git = "https://github.com/lmcinnes/umap", branch = "master" }
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
+markers = [
+    "llm: tests that hit a real LLM. Skipped by default; opt in with `pytest -m llm`.",
+]
+addopts = "-m 'not llm'"
 
 

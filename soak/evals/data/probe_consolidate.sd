@@ -1,0 +1,324 @@
+<system>
+
+We are doing inductive thematic analysis. I will show you an interview. Respond to questions, and then identify codes and themes when asked.
+Always use the correct response format. Be careful when copying code/quote hash identifiers. NEVER create hash identifiers yourself.
+
+All responses will be in JSON or tool calling format. This means respecting the fields/properties defined in the schema.
+
+Code, Theme, Quote and QuoteReference objects all have slightly different requirements. Pay close attention to these, and always follow the schema.
+
+
+</system>
+
+
+[00:03] FLO HAMMOND: My name is Flo Hammond. I am 53 years old. Today is December 15, 2023. We are at the Opelousas Museum. My son, Matthew Hammond, is graduating from Nichols State University tomorrow in business administration with a minor in accounting.
+
+[00:24] MATTHEW HAMMOND: Hello. My name is Matthew Hammond. I'm 24 years old, and today is December 15, 2023. We are at the Opelousas Museum, and my interview partner is my mom, Flo Hammond. And I am graduating on December 16 in Nichols State University in business administrations with accounting as my minor.
+
+[00:58] FLO HAMMOND: Okay, Matthew, so we are super excited, your dad and I, and so extremely proud of you. Right. It's been a long journey to get to your degree. Can you tell me how you're feeling right now?
+
+[01:15] MATTHEW HAMMOND: I'm feeling pretty excited, as graduating is the beginning of going out into the world.
+
+[01:24] FLO HAMMOND: Okay. So I know that your goal is to be independent, and being, as you are, an adult with autism. Can you tell me what does being independent look like to you?
+
+[01:39] MATTHEW HAMMOND: Being independent looks like doing things all by yourself successfully, whether you receive help from your loved ones or you try to do it without any help.
+
+[01:59] FLO HAMMOND: Okay, so there are a lot of programs that help people with different disabilities, like autism. And the program that you're in at Nichols State University is called bridge to independence. Can you tell me how bridge to independence helped you in your college journey?
+
+[02:21] MATTHEW HAMMOND: It helped me to ask for help when I needed it, and whenever I didn't ask for help, it was a problem, and I couldn't have that.
+
+[02:35] FLO HAMMOND: Do you think you could have made it without bridge? Do you think you could have graduated?
+
+[02:39] MATTHEW HAMMOND: I thought I could, but I've been struggling in classes that I've been taking. Plus, it's. Plus, I felt some were not much help to me, even if I did ask for help. But whenever I did ask for help, my classes start getting better.
+
+[03:07] FLO HAMMOND: When did you decide to go to college, and when did you think college was an option for you?
+
+[03:14] MATTHEW HAMMOND: I decided to go to college after I graduated from high school in 2018, and the reason why I thought about going to college was because I learned that they had job opportunities for when I. I was done. And I thought it would be even greater stuff for me because it had different types of job studies that I could choose from.
+
+[03:45] FLO HAMMOND: Okay. You said you decided to go to college after graduation, but what about before you graduated, while you were still in high school? Were you thinking about college then?
+
+[03:56] MATTHEW HAMMOND: Yes, ma'am, I was. I thought would be like high school, except it's like home to me, as it's not only just classes, but events, dorms, to stay in while I study. And I also, also was able to join another program besides bridged independence called Crown.
+
+[04:33] FLO HAMMOND: Okay, how did Crown help you at Nichols?
+
+[04:40] MATTHEW HAMMOND: It helped me because it has helped me think more independently and learned that I can't do all things without the people that are in my life.
+
+[04:56] FLO HAMMOND: Okay, so Crown is a program that you were in? Colonel's retention Awareness Network. And it was founded by professor Farren Clark in 2018. In 2018.
+
+[05:09] MATTHEW HAMMOND: Which. Which was the first program I joined.
+
+[05:12] FLO HAMMOND: That is correct. You were in the inaugural program. That is true. And what did you do in crown? What kind of activities did you do?
+
+[05:20] MATTHEW HAMMOND: Well, we had meetings on what we needed to do in life and how we needed to do it. We also learned how to reach out to. Out to people, as reaching out to people is one of the things that help people grow into people.
+
+[05:55] FLO HAMMOND: Okay. And didn't you guys do community service as well?
+
+[05:59] MATTHEW HAMMOND: Yes, ma'am, we did. We helped with catering. We helped with. We helped with working at events like trunk or treat.
+
+[06:27] FLO HAMMOND: Okay, so let's go back to high school.
+
+[06:31] MATTHEW HAMMOND: Sure.
+
+[06:32] FLO HAMMOND: Before you graduated, did you have any idea that maybe you weren't going to go to college? Well, if you hadn't gone to college, what else would you. Would you have done?
+
+[06:43] MATTHEW HAMMOND: Well, I could have gotten a job at Opelousas with some training, of course. Or maybe I could have maybe just did housework or anything like that.
+
+[07:07] FLO HAMMOND: Okay, but you decided to go to college.
+
+[07:10] MATTHEW HAMMOND: Yes, ma'am.
+
+[07:11] FLO HAMMOND: And what did you think was the hardest part about being in college?
+
+[07:18] MATTHEW HAMMOND: Maybe it was because of the classes and how they were gonna be. Cuz I already knew they were gonna be much harder than I expected. I also felt that I wasn't gonna make a lot of friends there.
+
+[07:39] FLO HAMMOND: Did you?
+
+[07:41] MATTHEW HAMMOND: Yes, ma'am.
+
+[07:41] FLO HAMMOND: Did you make friends?
+
+[07:42] MATTHEW HAMMOND: Yes, ma'am.
+
+[07:44] FLO HAMMOND: Okay. What did you. What was the thing you liked most about being in college?
+
+[07:51] MATTHEW HAMMOND: Well, besides having my own place there, I like. I think my favorite thing about going to college was, was the events, as they were pretty fun.
+
+[08:10] FLO HAMMOND: Like, can you give me an example of some of the stuff you did?
+
+[08:14] MATTHEW HAMMOND: Yes. There was tailgating and football games, which were my favorite. And there was also movie events. I went to some of them. I also went to see some parades, which was fun.
+
+[08:39] FLO HAMMOND: Okay, and what do you think was the hardest part, besides the classes? Because I know the classes were challenging. If you took classes out, what do you think was the hardest part about being in college?
+
+[08:53] MATTHEW HAMMOND: Finding the right places that I need to go to when I didn't know.
+
+[08:58] FLO HAMMOND: So just getting acquainted with the campus?
+
+[09:00] MATTHEW HAMMOND: Yes, ma'am.
+
+[09:01] FLO HAMMOND: And after you were acquainted with the campus, it was all easy squeezy.
+
+[09:05] MATTHEW HAMMOND: Yes, ma'am.
+
+[09:06] FLO HAMMOND: Okay. Okay. Would you recommend college to somebody with a disability like autism?
+
+[09:14] MATTHEW HAMMOND: Yes, ma'am, I would, because I believe it could help them with. With, um, making right choices and talking to someone when I need it.
+
+[09:32] FLO HAMMOND: Okay. Did you have any questions you wanted to ask me?
+
+[09:35] MATTHEW HAMMOND: Yes. When you first learned I had autism, what. How hard was it? What was it like with me having autism?
+
+[09:54] FLO HAMMOND: It was hard, I'm not gonna lie. When we learned that you had some learning challenges and some processing challenges, I think daddy and I's first thought was, how could we help you? Like, what was your life gonna look like? And I think our goal was for you to have a life as typical and as independent as possible. So we just did everything we could to.
+
+[10:32] MATTHEW HAMMOND: Well, I really want to be normal like everybody else.
+
+[10:37] FLO HAMMOND: There's no such thing as normal. We do not use that word. We use typical. There's no normal, Matthew. Nobody is normal. Either we have typical behaviors that a lot of other people have, or we have atypical behaviors that not a lot of people have. You are just as normal as anybody else, okay?
+
+[11:02] MATTHEW HAMMOND: Yes, ma'am.
+
+[11:03] FLO HAMMOND: So. But we just wanted you to have a life that. Where you were happy and that you were independent and could live on your own. That was our goal. And so everything we did was for that.
+
+[11:19] MATTHEW HAMMOND: What was it like when I first left for graduation?
+
+[11:23] FLO HAMMOND: For college?
+
+[11:24] MATTHEW HAMMOND: For college?
+
+[11:26] FLO HAMMOND: It was awful. It was awful because you and I had been together, and I was worried that people were not going to be nice to you. I was worried that you were going to get hurt or somebody was going to hurt your feelings or that the teachers were not going to be helpful or that you were going to be sad or you were going to be lonely. I was completely terrified. And do you remember when miss Lexi said, hey, my parents live in Thibodeaux, and they can help Matthew while he's there. And we went to meet them, mister Brian and miss and mama Raine.
+
+[12:13] MATTHEW HAMMOND: Yes, ma'am.
+
+[12:14] FLO HAMMOND: And so I remember that made me. Having them there to help you make me feel more comfortable, because even though we weren't there, if there was an emergency or something like that, they were going to be there to help you. And the way they treated us and the way they treated you and how helpful they've been, you know, bringing you into their family and bringing you into church, that made a big difference. So I wasn't that first year. I was just terrified. Every day. And that's why I would get mad sometimes when I would call you and you didn't answer because I was worried that maybe something had happened.
+
+[12:59] MATTHEW HAMMOND: I understand what it's like to be worried when your loved ones aren't around.
+
+[13:06] FLO HAMMOND: Yeah. How did you feel when you first left home?
+
+[13:11] MATTHEW HAMMOND: Honestly, I was pretty nervous. As. As going to college mean? I want to live with you.
+
+[13:20] FLO HAMMOND: And how did you, um. How did you feel that first year?
+
+[13:26] MATTHEW HAMMOND: Honestly, I felt lonely. I really did.
+
+[13:31] FLO HAMMOND: But you never told me that.
+
+[13:32] MATTHEW HAMMOND: Yeah. I guess I was relieved after settling in.
+
+[13:41] FLO HAMMOND: Okay. Okay. Well, having a student with a disability away on a college campus is probably the hardest thing I've had to do after learning that you had autism because it was letting you go to be a man and to be independent and being able to do the things that I had been doing for you. So that was hard.
+
+[14:15] MATTHEW HAMMOND: Well, now that I'm graduating, what is it like for you?
+
+[14:23] FLO HAMMOND: Honestly? Scary again. It's scary again because now we're kind of, like, at the same point where we were when you went away to college. Now it's going to be you leaving permanently and finding your own way and finding your own apartment and finding a job and still not being home every day. Because you said that one of the things you told me when you graduated is that you wanted to get your own apartment and find a job. So at least at college, at Nichols, you were protected like you were in a dorm. You had people expecting you, had people looking out for you. You had support with bridge, with Crown, with the Martins. But now that you're going to be moving to another city, maybe to Lafayette, it's going to be even harder for me because there won't be anybody I can pick up the phone, call and say, hey, can you check on Matthew? Because he's not answering his phone like he does sometimes.
+
+[15:29] MATTHEW HAMMOND: Well, if, since I'm moving, having my own apartment, maybe Lafayette or Thibodeau isn't the. Isn't the option for me. I could still. I could still be in Opelousas or I could still be in. Or. Or not still. I could be in New Orleans.
+
+[15:51] FLO HAMMOND: Yeah, maybe where daddy is. Yeah, both of those are options. But you know what, Matthew? I want you to be wherever you want to be. That's what I want for you. Yeah. Can you share any hopes that you have. Can you share with Matthew any hopes you have for his future in the context of graduating? Yeah. So I. I really want you to be independent because I know that's what you want. You know, I want you to have that circle of friends and, you know, have a job that you like going to and that you can do well. I want the people that you work with to know you and understand you and care whether you fail or succeeded. Like, I want all of those things for you. I want, if you want, I would like for you to have a relationship, you know, with somebody. And we've talked about that maybe, you know, trying to find somebody that you can support and who can support you in a loving relationship. So everything that we've worked towards for the past 24 years, I feel like now is coming to fruition because all the people who said you wouldn't be able to graduate college, who questioned, well, why are y'all sending him to college? You know, he has autism. And it's like, autism does not make you. Autism does not define you. You are Matthew Jerome Hammond, college graduate. And if they're going to define you by anything, let them define you by that. Does that make sense?
+
+[17:44] MATTHEW HAMMOND: Of course it does.
+
+[17:45] FLO HAMMOND: I never wanted you to feel like you couldn't do things because you had autism. And that's why you, on drum line, you played basketball, you know, in high school, you did all those things that typical kids did because we didn't want you to feel like there was a limitation on you.
+
+[18:08] MATTHEW HAMMOND: Well, I always felt that autism made me feel. Made me feel weird, like, as I did a lot of things that. That no one else could do. Plus it, plus having autism makes me think I can't do a lot of things. But I'm glad I have autism, and I hope nothing changes it. And I've successfully did things that I thought I could never do.
+
+[18:54] FLO HAMMOND: Can you say more about that, Matthew? Can you say, can you share a little bit more? I'm just curious to hear your thoughts on what makes you say you're glad you have autism.
+
+[19:04] MATTHEW HAMMOND: I thought autism is what defined people when I was so young. In fact, I thought autism was like a condition. I thought there'd be, like, a cure for it. But because there isn't, I learned that there's no fixing what's already. What's already done. And even though I have autism, I still think that there are many things that I can do, whether I think I can't, can't do it or whether I think I don't want to do it.
+
+[19:55] FLO HAMMOND: Was there anything you wanted to do that you thought to yourself, I can't do that because I have autism?
+
+[20:03] MATTHEW HAMMOND: Well, I thought about having, and I thought about having an office job, but I felt that. I felt that it would be harder to do than any other one.
+
+[20:22] FLO HAMMOND: But your major is business administration. You're gonna have an office job, probably.
+
+[20:28] MATTHEW HAMMOND: Well. Well, I first wanted to be an astronaut when I grew up.
+
+[20:33] FLO HAMMOND: I remember that. I remember that you wanted to be an astronaut for a long time, and everything was about space and science, and we had those planets and stars on your ceiling.
+
+[20:50] MATTHEW HAMMOND: I remember that.
+
+[20:52] FLO HAMMOND: So is that the only thing, being an astronaut that you've ever wanted to do that you felt like you couldn't do with autism?
+
+[20:59] MATTHEW HAMMOND: Yes, ma'am.
+
+[21:01] FLO HAMMOND: Okay, what about. What about. Do you feel like dating is harder because you have autism?
+
+[21:13] MATTHEW HAMMOND: Yes, ma'am. I felt like I won't be able to make a girl happy, or maybe I won't be able to treat her properly when I'm going on a date.
+
+[21:31] FLO HAMMOND: But we practice.
+
+[21:32] MATTHEW HAMMOND: Yeah.
+
+[21:33] FLO HAMMOND: Does that help? Practicing?
+
+[21:35] MATTHEW HAMMOND: Yes, ma'am.
+
+[21:36] FLO HAMMOND: Okay. Um. Did anybody ever tell you that autism was gonna stop you from doing something?
+
+[21:49] MATTHEW HAMMOND: No, ma'am. I never heard from someone.
+
+[21:53] FLO HAMMOND: Okay. What, um, do you remember most about being in school, like, growing up with autism?
+
+[22:02] MATTHEW HAMMOND: Well, I remember when I used to get upset over little things or big things.
+
+[22:12] FLO HAMMOND: Did you get teased in school?
+
+[22:14] MATTHEW HAMMOND: Yes, ma'am, I did, at an elementary school.
+
+[22:20] FLO HAMMOND: How about high school?
+
+[22:24] MATTHEW HAMMOND: Yes, but I got pretty aggressive when that happened. But I always try. I always try to ignore it.
+
+[22:35] FLO HAMMOND: But you had a lot of friends and support. Your classmates were really supportive of you in high school.
+
+[22:40] MATTHEW HAMMOND: Yes, ma'am, they were.
+
+[22:43] FLO HAMMOND: Did you feel like you were part of the team and part of the school?
+
+[22:49] MATTHEW HAMMOND: Yes, ma'am, I did.
+
+[22:52] FLO HAMMOND: Okay, what about, um. I'm trying to think. Um, did you feel differently when you had to go to speech therapy and stuff like that?
+
+[23:12] MATTHEW HAMMOND: Yes, ma'am, I did, because I felt like it was helping me with communicating to other people.
+
+[23:18] FLO HAMMOND: But did you feel differently because the other kids didn't have to go?
+
+[23:23] MATTHEW HAMMOND: Yes, ma'am.
+
+[23:24] FLO HAMMOND: But did that make you feel bad or sad?
+
+[23:28] MATTHEW HAMMOND: No, ma'am.
+
+[23:29] FLO HAMMOND: Okay, remember, when you say, no, ma'am, you got to give me some more information?
+
+[23:37] MATTHEW HAMMOND: No, ma'am. I felt like it will help me, make me more talkative than I usually am. I mean, I see people having conversations, and I feel like I should be being one as well.
+
+[23:55] FLO HAMMOND: Okay, any questions. Any more questions you have for me?
+
+[24:02] MATTHEW HAMMOND: No, ma'am.
+
+[24:03] FLO HAMMOND: Yes, Matthew, any highlights from his childhood that you remember? Like, any particular stories that come to mind? Yes. In elementary school, Matthew, when I think about you growing up and when you were little, you had a lot of severe tendencies. Do you remember you used to twirl around and flap and you would hit your head on the wall when you were real little and you were not.
+
+[24:34] MATTHEW HAMMOND: I remember that.
+
+[24:34] FLO HAMMOND: You remember that. And you didn't really talk until you were about five. And I will never forget. We had been working with the speech therapist, and we had been working with your ABA therapist, and we were trying to get you, you were having, you were having meltdowns, and we were trying to get you to be able to act, ask for help. You've never ever. I never asked liked asking for help.
+
+[25:04] MATTHEW HAMMOND: I never did.
+
+[25:05] FLO HAMMOND: Even as a three and four year old, you hated asking for help. And so you would get frustrated because you couldn't do something, and we would try to get you to say, I need help with blank. And even now at 24, with bridge to independence, the people tell us Matthew hates asking for help. He always thinks he needs to do it on his own. He always wants to try to take care of it. But I will never forget when you were, like, four years old and the first time you said, mom, I need help with, I think it was something in the cabinet, and I broke down crying because you had never asked, you had never been able to articulate that you needed something, that you needed help with something. And I will always remember that day in our kitchen thinking, okay, we have a breakthrough. He's asking. He's not just having a meltdown. He's actually asking for help. That was a big day for us. It was like, okay, these therapies are actually working. He can be able, because being able to ask for help is, like, something that people need to be able to do. They can't just scream and holler and throw a tantrum. They have to be able to articulate that. And so for me, that was amazing. And I will never forget the first time you said, I love you, mom. And you weren't echoing it, because when you were little, you used to echo, I would say, I love you, Matthew, and you would say, I love you, Matthew, because you were just echoing what I said, but you just, I was holding you and putting you to sleep. And I said, I love you, Matthew. And you said, I love you, mom. And for me, that was another, like, real connection. Like, he's not echoing what I'm saying to him. He's actually understanding and expressing that emotion to me. So those two things stand out as far as your childhood. And I think one of the biggest breakthroughs was when I was pregnant with Michael Paul. Do you remember me being pregnant with Michael Paul?
+
+[27:39] MATTHEW HAMMOND: Yes, ma'am, I do.
+
+[27:40] FLO HAMMOND: You were so.
+
+[27:42] MATTHEW HAMMOND: I love Michael so much. I remember when I used to hold him and sleeping with him in his carriage.
+
+[27:50] FLO HAMMOND: Yes. And Michael is your younger brother by five years.
+
+[27:56] MATTHEW HAMMOND: Right.
+
+[27:56] FLO HAMMOND: And that was another major breakthrough in your development, is when we had Michael Paul, you became the big brother the way Jordan was to you, and you became the protector, and you became the person who spoke for Michael Paul. And you would say, mommy, I think Michael Paul needs his hat.
+
+[28:20] MATTHEW HAMMOND: You remember that, right? I remember trying to give him his pacifier when he was upset.
+
+[28:26] FLO HAMMOND: Yep. And doing all. Everything. There was nothing I needed. You'd be like, mommy, I'm gonna get his diaper. Mommy, I'm gonna get this. I'm gonna get that. Because you just was like, you were so into that baby, and that's when you really started talking.
+
+
+
+
+Is this speech about autism? [[boolean:autism]]
+
+Speakers: [[pick{1,2}:roles|mother,son,daughter,father]]
+
+Analyse the text above for codes, as though you are doing a qualitative analysis. Identify at least 2 codes from the text with at least 2 verbatim quotes to support each code.
+
+[[code*:codes]]
+
+<checkpoint/>
+
+We identified a number of Codes from the source text.
+These are the building blocks of thematic analysis.
+
+
+{% for c in codes %}{{ c }}
+{% endfor %}
+
+
+Now, we want to combine these to form new codes. 
+We want to avoid codes that are too specific — if codes overlap combine them.
+
+To make now codes, generate a new name and description, and then identify quotes which relate to the new code. To select quotes, use the 'hash' identifiers. Just list the 8 character quote hashes which you want to use.
+
+You can use several quotes to support the same code. Try to use all the quotes identified above.
+
+NEVER invent or guess a hash.
+
+Generate the consolidated codes now:
+
+[[code*:consolidated|quotes=reference]]
+
+<checkpoint/>
+
+We identified a number of Codes from the text above.
+These are the building blocks of thematic analysis.
+
+
+Here are all the codes so far:
+
+{% for c in consolidated %}{{ c }}
+{% endfor %}
+
+
+Take the codes above. 
+Identify 1 or 2 larger themes from the text. 
+
+Themes have a 
+- name
+- description
+- and a list of codes which support the theme with quotes from the source materials
+
+Only refer to codes by their 8-character hash. 
+ONLY use hashes that appear in the text above. 
+NEVER invent or guess a hash.
+
+Now, generate the themes:
+
+[[theme{1,2}:themes]]

@@ -1,0 +1,3 @@
+# Snapshot corpus -- committed cases captured from real runs.
+# Each subdirectory is a snapshot in the format defined by
+# `soak.evals.snapshot`. See that module for the format spec.

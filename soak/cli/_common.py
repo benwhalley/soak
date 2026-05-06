@@ -44,6 +44,7 @@ COMMANDS = {
     "calibrate",
     "format",
     "extract-themes",
+    "eval",
 }
 
 

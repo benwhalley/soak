@@ -51,6 +51,7 @@ def main(
 
 from .compare import compare
 from .coverage_cmd import coverage
+from .eval_cmd import eval_app
 from .export import export
 from .extract_themes_cmd import extract_themes
 from .format import format as format_cmd
@@ -68,6 +69,7 @@ app.command(name="format")(format_cmd)
 app.command()(show)
 app.command()(test)
 app.command()(calibrate)
+app.add_typer(eval_app, name="eval")
 
 
 def main_with_default_command():
