@@ -1,4 +1,14 @@
 
+in pipelines
+
+Reference existing quotes by their 8-character hash identifier
+
+we need to parameteise "8" 
+
+
+
+
+
 
 Following code review of ~/dev/soaking and ~/dev/soakresearch
 
