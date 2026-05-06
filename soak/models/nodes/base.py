@@ -334,7 +334,7 @@ Parameters:
 class CompletionDAGNode(DAGNode):
     model_name: Optional[str] = None
     temperature: float = 1
-    max_tokens: Optional[int] = None
+    max_tokens: Optional[int] = 16384
     thinking: Optional[str] = None
 
     @field_validator("thinking", mode="before")

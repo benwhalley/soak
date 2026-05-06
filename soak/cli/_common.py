@@ -43,6 +43,7 @@ COMMANDS = {
     "test",
     "calibrate",
     "format",
+    "extract-themes",
 }
 
 

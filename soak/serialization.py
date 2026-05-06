@@ -102,11 +102,11 @@ def serialize_value(obj: Any) -> Any:
         if type_name in ("StruckdownResult", "SlotResult", "TrackedItem"):
             continue  # handled above
         if isinstance(obj, type_cls):
-            return {"__type__": type_name, **obj.model_dump(mode="json")}
+            return {"__type__": type_name, **obj.model_dump(mode="json", serialize_as_any=True)}
 
     # generic Pydantic model (not in our registry)
     if isinstance(obj, BaseModel):
-        return {"__type__": type(obj).__name__, **obj.model_dump(mode="json")}
+        return {"__type__": type(obj).__name__, **obj.model_dump(mode="json", serialize_as_any=True)}
 
     # lists
     if isinstance(obj, (list, tuple)):

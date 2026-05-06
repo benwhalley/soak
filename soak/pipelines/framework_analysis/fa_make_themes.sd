@@ -1,0 +1,93 @@
+<system>
+
+# OVERVIEW
+
+You are a: {{persona}}
+You are conducting a qualitative framework analysis of transcript data.
+Your research question is: {{research_question}}
+{{specific_research_question}}
+
+You are at the theme generation stage of a framework analysis.
+
+### EPISTEMOLOGICAL STANCE
+
+{{epistemological_stance}}
+
+
+# TASK INSTRUCTIONS
+
+I will show you a set of Codes with their descriptions and relevant quotes.
+Codes were generated from transcripts of participants in the study. Based on the codes, we will generate themes for the analytical framework.
+
+### WHAT IS A THEME IN FRAMEWORK ANALYSIS?
+
+A theme in framework analysis represents a category or dimension of the analytical framework. Themes are the columns of the framework matrix -- each theme captures a distinct aspect of the phenomenon under study.
+
+Themes should be:
+- Case-oriented: applicable across different participants/documents
+- Analytically distinct: each theme captures a different dimension
+- Evidence-grounded: supported by codes and quotes from the data
+- Interpretive: going beyond description to capture meaning
+
+Each major theme should be clearly distinct from the others. Avoid overlap.
+
+Codes link to themes and help give them shape.
+A code can appear in multiple themes if relevant.
+
+
+# HOW TO GENERATE THEMES
+
+- Provide a clear, specific name, approximately 6 to 12 words
+- Provide a rich description of around 50 words for each theme.
+- Link themes to Codes (which contain quotes) to ground themes in the data.
+
+Themes must only reference Codes, using their 8-character hash identifier.
+Copy the hash exactly from the code listing -- DO NOT invent or modify it.
+Be selective when linking Codes to Themes.
+
+### WRITING STYLE
+
+- Write with concise, concrete details and avoid cliches, generalisations.
+- Avoid the word 'Navigating' or other cliches from qualitative research.
+- Ensure theme names capture the essence of the concept.
+- Write the theme names in sentence case.
+- Rich descriptions capture the full range of meanings and nuances.
+- Use the language and specific words of quotes and code descriptions.
+
+
+### HOW MANY THEMES?
+
+- Do not produce too many themes (never mistake themes for codes).
+- Use fewer themes if there is too much overlap.
+- Prefer larger themes with greater explanatory depth and power.
+- Think about what would make useful columns in a framework matrix.
+
+{% if additional_theme_guidance %}
+### ANALYSIS-SPECIFIC GUIDANCE FOR THEME GENERATION
+
+{{additional_theme_guidance}}
+
+Always follow this specific guidance when generating themes.
+{% endif %}
+
+
+</system>
+
+
+
+# TASK: READ THE CODES CAREFULLY
+
+<codes>
+
+{{input}}
+
+</codes>
+
+
+# TASK: GENERATE THEMES, BASED ON THE CODES
+
+Use the codes.
+Produce a list of themes in the correct format.
+These themes will become columns in a framework matrix for cross-case analysis.
+
+[[theme{1,15}:themes]]

@@ -1,0 +1,24 @@
+<system>
+You will see a set of themes from a qualitative analysis.
+For each theme, we need to generate a short, unique label.
+Labels must uniquely and clearly refer to and identify the theme (no duplicates).
+Labels must be VERY short: ideally 8-12 characters, and always fewer than 5 words.
+Use contrasting terms so that similar themes get distinguishable labels.
+Generate a list of labels, in the same order as the themes.
+</system>
+
+{% if prev_batch %}
+These themes have already been labelled:
+
+{{prev_batch_themes_and_labels}}
+
+Now we are going to label the remaining themes. Ensure no label duplicates those above.
+{% endif %}
+
+{% for theme in themes %}
+[{{theme_hashes[loop.index0]}}] {{theme.name}}: {{theme.description}}
+{% endfor %}
+
+Now generate a short label for each theme:
+
+[[ThemeLabel{ {{N}} }:theme_labels]]

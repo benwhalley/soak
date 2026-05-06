@@ -127,16 +127,36 @@ def PostProcessedField(**kwargs):
 
 
 # Quote and QuoteReference classes for provenance tracking
+def _strip_quote_system_fields(schema: dict) -> None:
+    """Remove source/metadata/type from Quote JSON schema.
+
+    These are system metadata set by post-processing, not by the LLM.
+    Stripping them avoids wasting tokens and confusing models with
+    internal IDs like ``8fba6f23__chunks__0``.
+    """
+    props = schema.get("properties", {})
+    props.pop("source", None)
+    props.pop("metadata", None)
+    props.pop("type", None)
+    required = schema.get("required", [])
+    for field_name in ("source", "metadata", "type"):
+        if field_name in required:
+            required.remove(field_name)
+
+
 class Quote(BaseModel):
     """Quote with source document tracking.
 
-    A Quote always comes from a single source (chunk). For quotes that reference
-    multiple sources, use QuoteReference with a hash pointing to an existing Quote.
+    The ``source`` and ``metadata`` fields are system metadata set by
+    post-processing, not by the LLM. They are stripped from the JSON
+    schema sent to the LLM to save tokens.
     """
 
-    type: Literal["quote"] = "quote"  # Discriminator for Union
-    text: str
-    source: str = ""  # Single source ID (quotes always from one chunk)
+    model_config = ConfigDict(json_schema_extra=_strip_quote_system_fields)
+
+    type: Literal["quote"] = "quote"  # discriminator for Union
+    text: str = Field(..., max_length=1000)
+    source: str = ""
     metadata: Dict[str, Any] = Field(default_factory=dict)
 
     def hash(self) -> str:
@@ -150,11 +170,28 @@ class Quote(BaseModel):
         """Render as 'hash: text' for templates."""
         return f"{self.hash()}: '{self.text}'"
 
+    __repr__ = __str__
+
+
+def _strip_type_field(schema: dict) -> None:
+    """Remove the ``type`` discriminator from the JSON schema.
+
+    The discriminator is only needed internally for deserialising old
+    ``Union[Quote, QuoteReference]`` data. The LLM never needs to produce it.
+    """
+    props = schema.get("properties", {})
+    props.pop("type", None)
+    required = schema.get("required", [])
+    if "type" in required:
+        required.remove("type")
+
 
 class QuoteReference(BaseModel):
     """Reference to existing quote by hash."""
 
-    type: Literal["quotereference"] = "quotereference"  # Discriminator for Union
+    model_config = ConfigDict(json_schema_extra=_strip_type_field)
+
+    type: Literal["quotereference"] = "quotereference"  # discriminator for old Union data
     hash: str = Field(
         ...,
         min_length=QUOTE_HASH_LENGTH,
@@ -167,29 +204,37 @@ class QuoteReference(BaseModel):
         return "ref: " + self.hash
 
 
-# Type alias for Union
-QuoteOrRef = Union[Quote, QuoteReference]
-
-
 # Base models for qualitative analysis
-@ResponseTypes.register("code")
+
+
 class Code(ResponseModel):
-    name: str = Field(..., min_length=1, description="A short name for the code.")
+    """Qualitative code with name, description, and supporting quotes.
+
+    The quotes field accepts both Quote and QuoteReference from the LLM,
+    but post_process() resolves all references to Quote objects so that
+    downstream code only ever sees Quote.
+    """
+
+    name: str = Field(
+        ..., min_length=1, max_length=400, description="A short name for the code."
+    )
     description: str = Field(
-        ..., min_length=5, description="A description of the code."
+        ..., min_length=5, max_length=1000, description="A description of the code."
     )
 
-    # LLM generates Union[Quote, QuoteReference]
-    # pydantic handles discriminated union via 'type' field
     quotes: List[Union[Quote, QuoteReference]] = Field(
         default_factory=list,
         max_length=24,
-        description="Example quotes from the text which illustrate the code. Choose the best examples. Maximum 24 quotes allowed, but typically fewer--be selective.",
+        description=(
+            "Example quotes from the text which illustrate the code. "
+            "Choose the best examples. Maximum 24 quotes allowed, but typically fewer -- be selective."
+        ),
     )
 
     # post-processed fields (excluded from LLM schema)
     slug: Optional[str] = PostProcessedField(default=None)
     resolved_quotes: Optional[List[Dict]] = PostProcessedField(default=None)
+    theme_name: Optional[str] = PostProcessedField(default=None)
 
     def hash(self) -> str:
         """Deterministic short hash for referencing this code."""
@@ -198,12 +243,13 @@ class Code(ResponseModel):
     def __str__(self):
         return render_str_template("Code.jinja", {"code": self})
 
+    __repr__ = __str__
+
     @property
     def all_quotes(self) -> List[Quote]:
-        """Get all quotes as Quote objects (resolves references)."""
+        """All quotes as Quote objects. Always resolved -- never QuoteReference."""
         if self.resolved_quotes:
             return [Quote(**q) for q in self.resolved_quotes]
-        # Fallback: convert quotes directly
         return [q for q in self.quotes if isinstance(q, Quote)]
 
     @property
@@ -212,7 +258,11 @@ class Code(ResponseModel):
         return {q.source for q in self.all_quotes if q.source}
 
     def post_process(self, context: Dict[str, Any]):
-        """Post-process: auto-generate slug, resolve quotes."""
+        """Post-process: auto-generate slug, resolve quotes.
+
+        After post-processing, all QuoteReference objects are resolved to Quote
+        objects, so downstream code only ever sees Quote.
+        """
         import re
 
         from soak.models.utils import post_process_code_quotes
@@ -221,34 +271,92 @@ class Code(ResponseModel):
             self.slug = re.sub(r"[^a-z0-9]+", "-", self.name.lower()).strip("-")
         post_process_code_quotes(self, context)
 
-    @classmethod
-    def customize_schema_for_context(
-        cls, schema: dict, context: Dict[str, Any]
-    ) -> dict:
-        """Customize quotes field: use QuoteReference when rationalizing."""
-        use_refs = _has_code_inputs(context)
 
-        if use_refs and "properties" in schema and "quotes" in schema["properties"]:
-            quotes_schema = schema["properties"]["quotes"]
-            if "items" in quotes_schema:
-                quotes_schema["items"] = (
-                    QuoteReference.__pydantic_model__().model_json_schema()
-                )
+@ResponseTypes.register("code")
+def code_response_model(options=None, quantifier=None, required_prefix=False):
+    """Factory for Code response models.
 
-        return schema
+    Supports a ``quotes`` option that controls how the LLM handles quotes:
 
+    ``[[code*:codes]]``
+        Default (extract) mode. The LLM extracts verbatim quotes from the
+        source text and returns ``Quote`` objects.
 
-def _has_code_inputs(context: Dict[str, Any]) -> bool:
-    """Private utility: check if context contains Code/CodeList objects."""
+    ``[[code*:codes|quotes=reference]]``
+        Reference mode. The LLM references existing quotes by hash and
+        returns ``QuoteReference`` objects. Use this when consolidating or
+        rationalising codes that already carry quotes from an earlier stage.
 
-    def check_value(val) -> bool:
-        if isinstance(val, (Code, CodeList)):
-            return True
-        if isinstance(val, list):
-            return any(check_value(item) for item in val)
-        return False
+    In both modes, ``Code.post_process()`` resolves all references so that
+    downstream code always sees ``Quote`` objects.
+    """
+    from pydantic import create_model
+    from struckdown.model_utils import create_list_model
+    from struckdown.validation import parse_options
 
-    return any(check_value(val) for val in context.values())
+    opts = parse_options(options)
+    quote_mode = opts.kwargs.get("quotes", "extract")
+    theme_name_opt = opts.kwargs.get("theme_name", False)
+    include_theme_name = str(theme_name_opt).lower() == "true" if theme_name_opt else False
+
+    if quote_mode == "reference":
+        # reference mode: LLM only produces QuoteReference objects
+        quotes_field = (
+            List[QuoteReference],
+            Field(
+                default_factory=list,
+                max_length=24,
+                description=(
+                    "References to existing quotes by their "
+                    f"{QUOTE_HASH_LENGTH}-character hash. Copy the hash exactly from "
+                    "the code listing. Do NOT copy quote text -- just reference by hash."
+                ),
+            ),
+        )
+    else:
+        # extract mode (default): LLM produces Quote objects with verbatim text.
+        # Quote's json_schema_extra strips source/metadata from the schema.
+        quotes_field = (
+            List[Quote],
+            Field(
+                default_factory=list,
+                max_length=24,
+                description=(
+                    "Verbatim quotes from the text which illustrate the code. "
+                    "Choose the best examples. Maximum 24 quotes, but typically fewer -- be selective."
+                ),
+            ),
+        )
+
+    # build a Code variant with the narrowed quotes field for the LLM schema
+    extra_fields = {"quotes": quotes_field}
+
+    if include_theme_name:
+        extra_fields["theme_name"] = (
+            Optional[str],
+            Field(
+                default=None,
+                max_length=200,
+                json_schema_extra={},  # override PostProcessedField's exclude
+                description=(
+                    "The name of the theme this code belongs to. "
+                    "Must match one of the theme names from the analytical framework, "
+                    "or null if it doesn't fit any theme."
+                ),
+            ),
+        )
+
+    model = create_model(
+        "CodeResponse",
+        __base__=Code,
+        __module__="soak.models.base",
+        **extra_fields,
+    )
+
+    if quantifier:
+        return create_list_model(model, "code", quantifier)
+
+    return model
 
 
 class CodeList(BaseModel):
@@ -258,6 +366,8 @@ class CodeList(BaseModel):
 
     def __str__(self):
         return render_str_template("CodeList.jinja", {"codes": self.codes})
+
+    __repr__ = __str__
 
     def __iter__(self):
         return iter(self.codes)
@@ -276,8 +386,8 @@ CodeHashStr = constr(min_length=CODE_HASH_LENGTH, max_length=CODE_HASH_LENGTH)
 
 @ResponseTypes.register("theme")
 class Theme(ResponseModel):
-    name: str = Field(..., min_length=10)
-    description: str = Field(..., min_length=10)
+    name: str = Field(..., min_length=10, max_length=400)
+    description: str = Field(..., min_length=10, max_length=1000)
     code_hashes: List[str] = Field(
         ...,
         min_length=0,
@@ -308,6 +418,8 @@ class Theme(ResponseModel):
 
     def __str__(self):
         return render_str_template("Theme.jinja", {"theme": self})
+
+    __repr__ = __str__
 
     # Post-processed fields (excluded from LLM schema)
     resolved_code_refs: Optional[List[Dict]] = PostProcessedField(default=None)
@@ -349,13 +461,23 @@ class Themes(BaseModel):
     def __iter__(self):
         return iter(self.themes)
 
-    def __len__(self):
-        return len(self.themes)
 
-    def post_process(self, context: Dict[str, Any]):
-        """Post-process each theme in the list."""
-        for theme in self.themes:
-            theme.post_process(context)
+class FrameworkTheme(BaseModel):
+    """A theme in the analytical framework for deductive/hybrid FA."""
+
+    name: str = Field(..., min_length=1, max_length=400)
+    description: str = Field(..., min_length=1, max_length=1000)
+
+
+class AnalyticalFramework(BaseModel):
+    """User-defined analytical framework for deductive/hybrid framework analysis.
+
+    Passed as a context variable (``framework``) to the FA pipeline.
+    In deductive mode the LLM codes against these themes.
+    In hybrid mode the LLM codes against these themes but may also create new ones.
+    """
+
+    themes: List[FrameworkTheme] = Field(..., min_length=1)
 
 
 @dataclass

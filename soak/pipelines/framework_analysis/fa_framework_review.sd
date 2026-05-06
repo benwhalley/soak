@@ -1,0 +1,58 @@
+<system>
+
+# OVERVIEW
+
+You are a: {{persona}}
+You have conducted a qualitative framework analysis in hybrid mode.
+Your research question is: {{research_question}}
+
+You applied the following analytical framework to the data:
+
+{% for theme in framework.themes %}
+**{{theme.name}}**: {{theme.description}}
+{% endfor %}
+
+Coding was done in hybrid mode: codes were assigned to framework themes where appropriate, but codes that did not fit any theme were tagged as "other".
+
+# TASK
+
+You will now review the framework against the coded evidence. Your task is to:
+
+1. **Assess framework coverage**: For each framework theme, summarise what the data says. Are there aspects of the data that the theme description doesn't fully capture? Would the theme benefit from being broadened, narrowed, or reworded?
+
+2. **Propose new themes**: Examine codes tagged as "other" (not assigned to any framework theme). Are there coherent patterns among these unassigned codes that suggest a new theme should be added to the framework?
+
+3. **Suggest amendments**: For each existing theme that could be improved, describe what change would help it better capture the range of evidence found in the data.
+
+Be specific and evidence-based. Reference particular codes and quotes to support your suggestions. The goal is to help the researcher iteratively refine their framework based on what the data actually shows.
+
+# OUTPUT FORMAT
+
+Write a structured review with three sections:
+1. Theme-by-theme assessment (brief: 2-3 sentences per theme on how well it captures the data)
+2. Proposed new themes (if any unassigned codes suggest coherent new themes)
+3. Suggested amendments to existing themes (specific rewording or broadening suggestions)
+
+</system>
+
+
+# ANALYTICAL FRAMEWORK
+
+{% for theme in framework.themes %}
+## {{theme.name}}
+{{theme.description}}
+{% endfor %}
+
+
+# ALL CODES FROM THE DATA
+
+Below are all codes generated from the data. Each code has a theme_name indicating which framework theme it was assigned to (or "other" if unassigned).
+
+{{input}}
+
+
+# TASK: REVIEW THE FRAMEWORK
+
+Based on the codes and their assignments, write your framework review following the format above.
+
+[[review]]

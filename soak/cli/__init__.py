@@ -52,6 +52,7 @@ def main(
 from .compare import compare
 from .coverage_cmd import coverage
 from .export import export
+from .extract_themes_cmd import extract_themes
 from .format import format as format_cmd
 from .misc import calibrate, test
 # import and register commands
@@ -62,6 +63,7 @@ app.command()(run)
 app.command()(compare)
 app.command()(coverage)
 app.command()(export)
+app.command(name="extract-themes")(extract_themes)
 app.command(name="format")(format_cmd)
 app.command()(show)
 app.command()(test)

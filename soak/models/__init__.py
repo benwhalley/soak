@@ -13,6 +13,8 @@ from .base import (  # Exceptions; Base models; Utility functions
     get_action_lookup, get_default_llm_credentials, get_embedding,
     get_embedding_async, get_max_concurrency, get_semaphore, memory,
     safe_json_dump, set_max_concurrency)
+# Matrix models
+from .matrix import FrameworkMatrix, MatrixCell
 # Context variable models
 from .context import ContextVariable, get_context_defaults, normalize_context
 # DAG execution
@@ -68,6 +70,9 @@ __all__ = [
     "Transform",
     "Ungroup",
     "VerifyQuotes",
+    # Matrix
+    "FrameworkMatrix",
+    "MatrixCell",
     # Pipeline
     "QualitativeAnalysisPipeline",
     # Functions

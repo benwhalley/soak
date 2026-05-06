@@ -288,79 +288,76 @@ def post_process_complete_result(result, context: Dict[str, Any]) -> None:
 def post_process_code_quotes(code: Code, context: Dict[str, Any]):
     """Post-process quotes for a Code object.
 
-    Mode 1 (Primary Extraction): Capture source from context for Quote objects
-    Mode 2 (Rationalization): Resolve QuoteReference objects to Quote objects
+    Two modes, determined by what quotes the LLM produced:
+
+    Extract mode (Quote objects):
+        Captures source provenance from context. Used when the LLM
+        extracts fresh quotes from source text.
+
+    Reference mode (QuoteReference objects):
+        Resolves hashes to the original Quote objects from input codes.
+        Used when consolidating/rationalising codes from an earlier stage.
+
+    After post-processing, code.quotes contains only Quote objects and
+    code.resolved_quotes contains their serialised form.
 
     Raises:
-        QuoteProvenanceError: If quotes are extracted after Reduce (multiple sources)
+        QuoteProvenanceError: If quotes are extracted after a Reduce node
+            (which combines multiple sources -- ambiguous provenance).
     """
     from soak.models.base import QuoteProvenanceError, TrackedItem
 
     resolved = []
+    has_references = any(isinstance(q, QuoteReference) for q in code.quotes)
 
-    # Check if we have existing codes in context
-    input_codes = collect_input_codes(context)
+    if has_references:
+        # reference mode: resolve QuoteReference hashes to Quote objects
+        input_codes = collect_input_codes(context)
+        quote_by_hash = build_quote_lookup(input_codes) if input_codes else {}
 
-    if not input_codes:
-        # Mode 1: Primary extraction (no existing codes in context)
-        # Determine source from context
+        for q in code.quotes:
+            if isinstance(q, QuoteReference):
+                matched = resolve_quote_reference(q, quote_by_hash)
+                resolved.append(matched)
+            elif isinstance(q, Quote):
+                # unexpected Quote mixed with references -- keep it
+                if not q.source:
+                    q.source = ""
+                resolved.append(q)
+    else:
+        # extract mode: capture source from context for fresh Quote objects
         source = None
-
-        # Try to extract source from TrackedItem in context
         for value in context.values():
             if isinstance(value, TrackedItem):
-                # Check provenance - quotes require single source
                 if len(value.sources) > 1:
                     raise QuoteProvenanceError(
-                        f"Cannot extract quotes with multiple sources ({len(value.sources)} sources). "
-                        f"This Code was extracted after a Reduce node, which combines multiple sources. "
-                        f"Use QuoteReference (with hash) instead of Quote in Map nodes after Reduce. "
-                        f"Sources: {value.sources[:5]}{'...' if len(value.sources) > 5 else ''}"
+                        f"Cannot extract quotes with multiple sources "
+                        f"({len(value.sources)} sources). This Code was extracted "
+                        f"after a Reduce node. Use [[code*:codes|quotes=reference]] "
+                        f"instead."
                     )
-                # Use the item's ID as source (single source context)
                 source = value.id
                 break
-
-        # Fallback: check for source_id key (backward compatibility)
         if not source:
             source = context.get("source_id", "")
 
         for q in code.quotes:
             if isinstance(q, Quote):
-                # Update source from context
                 q.source = source
-                resolved.append(q.model_dump())
+                resolved.append(q)
             elif isinstance(q, QuoteReference):
-                # Shouldn't happen in primary extraction, but handle gracefully
                 logger.warning(
-                    f"Unexpected QuoteReference in primary extraction: {q.hash}"
+                    "Unexpected QuoteReference in extract mode: %s", q.hash
                 )
                 resolved.append(
-                    Quote(
-                        text=f"[unresolved: {q.hash}]", source=source or ""
-                    ).model_dump()
+                    Quote(text=f"[unresolved: {q.hash}]", source=source or "")
                 )
-    else:
-        # Mode 2: Rationalization (codes exist in context)
-        # Build hash -> Quote lookup
-        quote_by_hash = build_quote_lookup(input_codes)
 
-        for q in code.quotes:
-            if isinstance(q, Quote):
-                # Quote object in rationalization mode - capture source if missing
-                # This shouldn't normally happen (quotes should come via QuoteReference)
-                if not q.source:
-                    logger.warning(
-                        f"Quote without source in rationalization mode: {q.text[:50]}"
-                    )
-                    q.source = ""
-                resolved.append(q.model_dump())
-            elif isinstance(q, QuoteReference):
-                # Resolve reference to Quote
-                matched_quote = resolve_quote_reference(q, quote_by_hash)
-                resolved.append(matched_quote.model_dump())
-
-    code.resolved_quotes = resolved
+    # store resolved quotes as dicts for serialisation
+    code.resolved_quotes = [q.model_dump() for q in resolved]
+    # replace quotes with resolved Quote objects so downstream code
+    # never sees QuoteReference
+    code.quotes = resolved
 
 
 def build_quote_lookup(input_codes: List[Code]) -> Dict[str, Quote]:
@@ -422,37 +419,21 @@ def build_quote_lookup(input_codes: List[Code]) -> Dict[str, Quote]:
 
 
 def resolve_quote_reference(
-    ref: QuoteReference, quote_by_hash: Dict[str, Quote], threshold: float = 0.85
+    ref: QuoteReference, quote_by_hash: Dict[str, Quote]
 ) -> Quote:
-    """Resolve QuoteReference to Quote by hash.
+    """Resolve QuoteReference to Quote by exact hash match.
 
-    Falls back to fuzzy matching if exact hash not found.
+    Returns an unresolved placeholder if the hash doesn't match any known quote.
     """
-    # Try exact hash match
     if ref.hash in quote_by_hash:
         return quote_by_hash[ref.hash]
 
-    # Fallback: fuzzy match (in case of minor hash differences)
-    # This shouldn't normally happen, but provides robustness
-    logger.warning(f"Quote hash not found: {ref.hash}, trying fuzzy match")
-
-    from difflib import SequenceMatcher
-
-    best_match = None
-    best_ratio = threshold
-
-    for h, quote in quote_by_hash.items():
-        ratio = SequenceMatcher(None, ref.hash, h).ratio()
-        if ratio > best_ratio:
-            best_ratio = ratio
-            best_match = quote
-
-    if best_match:
-        logger.info(f"Fuzzy matched {ref.hash} to {best_match.hash()}")
-        return best_match
-
-    # No match found - create placeholder
-    logger.error(f"Could not resolve quote reference: {ref.hash}")
+    valid_hashes = ", ".join(sorted(quote_by_hash.keys())[:20])
+    logger.warning(
+        "Could not resolve quote reference: '%s'. Valid hashes: %s",
+        ref.hash,
+        valid_hashes,
+    )
     return Quote(text=f"[unresolved reference: {ref.hash}]")
 
 

@@ -671,6 +671,10 @@ async def verify_quotes_bm25_first(
         texts_to_embed.add(r["_quote_truncated"])
         texts_to_embed.add(r["_span_truncated"])
 
+    # filter out empty/whitespace-only texts that would cause API errors
+    texts_to_embed.discard("")
+    texts_to_embed = {t for t in texts_to_embed if t.strip()}
+
     unique_texts = list(texts_to_embed)
     logger.info(
         f"Phase 2: Computing embeddings for {len(unique_texts)} unique texts..."
@@ -709,6 +713,9 @@ async def verify_quotes_bm25_first(
 
     results = []
     for r in intermediate_results:
+        # skip results with empty texts that couldn't be embedded
+        if not r["_quote_truncated"].strip() or not r["_span_truncated"].strip():
+            continue
         quote_emb = np.array([text_to_embedding[r["_quote_truncated"]]])
         span_emb = np.array([text_to_embedding[r["_span_truncated"]]])
         cosine_sim = float(cosine_similarity(quote_emb, span_emb)[0][0])
@@ -1314,6 +1321,7 @@ class VerifyQuotes(CompletionDAGNode):
 
                 async def check_match(idx, quote_hash, quote, source_doc):
                     nonlocal existence_done
+                    from soak.events import NodeProgress
                     async with get_semaphore():
                         source_doc_content = doc_content_map.get(source_doc, "")
                         result = await self.llm_as_judge(quote, source_doc_content)
@@ -1388,6 +1396,7 @@ class VerifyQuotes(CompletionDAGNode):
 
                 async def check_fairness(idx, item, match_result):
                     nonlocal fairness_done
+                    from soak.events import NodeProgress
                     async with get_semaphore():
                         source_doc = match_result.get("source_doc", "")
                         source_doc_content = doc_content_map.get(source_doc, "")

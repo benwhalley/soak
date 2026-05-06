@@ -356,6 +356,12 @@ class Cluster(DAGNode):
     method: ClusterMethod = Field(default_factory=HDBSCANMethod)
     items_field: Optional[str] = None
     text_field: str = "content"
+    preserve_groups: bool = Field(
+        default=False,
+        description="When True and input is a BatchList, cluster within each batch "
+        "independently instead of flattening. Used for within-group consolidation "
+        "(e.g. within-theme clustering in framework analysis).",
+    )
     skip_below: int = Field(
         default=20,
         description="If input item count is below this threshold, "
@@ -368,6 +374,68 @@ class Cluster(DAGNode):
         "intermediate processing nodes.",
     )
 
+    async def _run_on_batch(self, items: List[Any]) -> List[TrackedItem]:
+        """Cluster a single batch of items. Extracted for reuse with preserve_groups."""
+        texts = [self._extract_text(item) for item in items]
+
+        if not items:
+            return []
+
+        if self.skip_below is not None and len(items) < self.skip_below:
+            return self._make_single_cluster(items, texts)
+
+        texts = [t if t.strip() else "[empty]" for t in texts]
+        unique_texts = list(set(texts))
+        text_to_idx = {t: i for i, t in enumerate(unique_texts)}
+
+        embeddings_list = await get_embedding_async(
+            unique_texts,
+            model=self.dag.config.embedding_model,
+            credentials=self.dag.config.get_embedding_credentials(),
+        )
+        unique_embeddings = np.array(embeddings_list)
+        full_embeddings = np.array([unique_embeddings[text_to_idx[t]] for t in texts])
+
+        cluster_indices = self.method.cluster(
+            full_embeddings, seed=self.dag.config.seed
+        )
+
+        cluster_items_output = []
+        for cluster_idx, indices in enumerate(cluster_indices):
+            cluster_key = f"cluster_{cluster_idx}"
+            cluster_items = [items[idx] for idx in indices]
+
+            content_parts = []
+            for item in cluster_items:
+                if hasattr(item, "model_dump"):
+                    content_parts.append(str(item))
+                elif isinstance(item, TrackedItem):
+                    content_parts.append(item.content)
+                else:
+                    content_parts.append(str(item))
+
+            cluster_tracked = TrackedItem(
+                content="\n\n---\n\n".join(content_parts),
+                id=f"{self.name}__{cluster_key}",
+                sources=[
+                    (
+                        item.id
+                        if isinstance(item, TrackedItem)
+                        else (item.slug if hasattr(item, "slug") else str(idx))
+                    )
+                    for idx, item in zip(indices, cluster_items)
+                ],
+                metadata={
+                    "cluster_id": cluster_key,
+                    "cluster_index": cluster_idx,
+                    "cluster_size": len(cluster_items),
+                    "items": cluster_items,
+                },
+            )
+            cluster_items_output.append(cluster_tracked)
+
+        return cluster_items_output
+
     async def run(self) -> BatchList:
         """Execute clustering on input items.
 
@@ -377,6 +445,66 @@ class Cluster(DAGNode):
         """
         await super().run()
         logger.info(f"Cluster '{self.name}': Starting clustering...")
+
+        # preserve_groups: cluster within each batch of a BatchList independently
+        if self.preserve_groups:
+            input_data = self._get_raw_input()
+            if isinstance(input_data, BatchList):
+                # count total items across all batches
+                total_items = 0
+                all_batch_items = []
+                for batch_idx, batch in enumerate(input_data.batches):
+                    if self.items_field:
+                        batch_items = unwrap_complete_items(batch, self.items_field)
+                    else:
+                        batch_items = batch
+                    all_batch_items.append(batch_items)
+                    total_items += len(batch_items)
+
+                # check skip_below against total items (same as non-preserve_groups)
+                if self.skip_below is not None and total_items < self.skip_below:
+                    self._skipped = True
+                    if self.if_skipped_bypass_to:
+                        target = self.if_skipped_bypass_to
+                        intermediate = self._find_path_to(target)
+                        for node_name in intermediate:
+                            if node_name not in self.dag.config.skip_nodes:
+                                self.dag.config.skip_nodes.append(node_name)
+                                logger.info(f"Bypass: skipping '{node_name}'")
+                        # flatten all items for passthrough
+                        flat_items = []
+                        for batch_items in all_batch_items:
+                            flat_items.extend(batch_items)
+                        self.output = flat_items
+                        logger.info(
+                            f"Cluster '{self.name}': {total_items} items < "
+                            f"skip_below={self.skip_below}, bypassing to '{target}'"
+                        )
+                        return self.output
+
+                logger.info(
+                    f"Cluster '{self.name}': preserve_groups=True, "
+                    f"clustering {len(input_data.batches)} groups independently"
+                )
+                all_batch_results = []
+                for batch_idx, batch_items in enumerate(all_batch_items):
+                    group_key = (
+                        input_data.group_keys[batch_idx]
+                        if batch_idx < len(input_data.group_keys)
+                        else str(batch_idx)
+                    )
+                    logger.info(
+                        f"  Group '{group_key}': {len(batch_items)} items"
+                    )
+                    clustered = await self._run_on_batch(batch_items)
+                    all_batch_results.append(clustered)
+
+                self.output = BatchList(
+                    batches=all_batch_results,
+                    group_field=input_data.group_field,
+                    group_keys=input_data.group_keys,
+                )
+                return self.output
 
         # gather inputs using helper method
         items, texts = self._gather_inputs()
@@ -415,6 +543,9 @@ class Cluster(DAGNode):
                 )
                 self.output = self._make_single_cluster(items, texts)
                 return self.output
+
+        # replace empty/whitespace-only texts with a placeholder so they can be embedded
+        texts = [t if t.strip() else "[empty]" for t in texts]
 
         # deduplicate texts for embedding efficiency
         unique_texts = list(set(texts))
@@ -547,6 +678,16 @@ class Cluster(DAGNode):
 
         return self.output
 
+    def _get_raw_input(self) -> Any:
+        """Get raw input data from upstream node without flattening."""
+        if self.inputs:
+            input_name = self.inputs[0]
+            if input_name == "documents":
+                return self.dag.config.load_documents()
+            input_node = self.dag.nodes_dict.get(input_name)
+            return input_node.output if input_node else None
+        return self.dag.config.load_documents()
+
     def _gather_inputs(self) -> tuple[List[Any], List[str]]:
         """Gather and process input items for clustering.
 
@@ -557,15 +698,7 @@ class Cluster(DAGNode):
         # get input data directly from the upstream node's raw output.
         # self.context[...] wraps StruckdownResults in _TemplateProxy for template
         # rendering, which hides individual items from unwrap_complete_items.
-        if self.inputs:
-            input_name = self.inputs[0]
-            if input_name == "documents":
-                input_data = self.dag.config.load_documents()
-            else:
-                input_node = self.dag.nodes_dict.get(input_name)
-                input_data = input_node.output if input_node else None
-        else:
-            input_data = self.dag.config.load_documents()
+        input_data = self._get_raw_input()
 
         # flatten if BatchList
         if isinstance(input_data, BatchList):

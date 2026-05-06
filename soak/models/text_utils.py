@@ -95,19 +95,69 @@ def find_source_document(
 
 
 def snap_to_boundaries(
-    text: str, start: int, end: int, snap_to: Literal["word", "sentence"] = "word"
+    text: str,
+    start: int,
+    end: int,
+    snap_to: Literal["word", "sentence"] = "word",
+    max_expansion: Optional[int] = None,
 ) -> Tuple[int, int]:
     """Expand start/end to nearest word or sentence boundary.
 
     Prevents ugly mid-word cuts by snapping outward to natural boundaries.
+    Expansion is capped by max_expansion to avoid runaway growth on boundary-free text.
 
     Args:
         text: Full text
         start: Start index (inclusive)
         end: End index (exclusive, as in text[start:end])
+        snap_to: Snap to "word" or "sentence" boundaries
+        max_expansion: Maximum chars to expand in each direction.
+            Defaults to 20 for word, 200 for sentence.
+
+    Examples:
+
+        Word boundary snapping expands to complete words:
+
+        >>> snap_to_boundaries("the quick brown fox jumps", 5, 14)
+        (4, 15)
+        >>> "the quick brown fox jumps"[4:15]
+        'quick brown'
+
+        Mid-word positions snap outward to complete the word:
+
+        >>> snap_to_boundaries("foo bar baz", 5, 6)
+        (4, 7)
+        >>> "foo bar baz"[4:7]
+        'bar'
+
+        Already on a boundary -- no change:
+
+        >>> snap_to_boundaries("one two three", 0, 3)
+        (0, 3)
+
+        Sentence boundary snapping expands to full sentences:
+
+        >>> snap_to_boundaries("First sentence. Second one. Third.", 17, 22, snap_to="sentence")
+        (16, 28)
+        >>> "First sentence. Second one. Third."[16:28]
+        'Second one. '
+
+        max_expansion limits how far we look for a boundary:
+
+        >>> snap_to_boundaries("abcdefghij klmno", 2, 5, max_expansion=3)
+        (0, 5)
+
+        Text start counts as a boundary, but the space at index 10 is too far right:
+
+        >>> snap_to_boundaries("abcdefghij klmno", 8, 9, max_expansion=1)
+        (8, 9)
     """
+    if max_expansion is None:
+        max_expansion = 20 if snap_to == "word" else 200
+
+    # NOTE: word boundary chars are ASCII-centric; adequate for English research text.
+
     if snap_to == "word":
-        # define word boundary characters (whitespace and punctuation)
         boundaries = {
             " ",
             "\n",
@@ -132,14 +182,31 @@ def snap_to_boundaries(
             "\\",
         }
 
-        # expand left until we hit a boundary (or reach start of text)
-        while start > 0 and text[start - 1] not in boundaries:
-            start -= 1
+        orig_start, orig_end = start, end
 
-        # expand right until we hit a boundary (or reach end of text)
-        # note: end is exclusive (text[start:end]), so we check text[end] if it exists
-        while end < len(text) and text[end] not in boundaries:
-            end += 1
+        # expand left until we hit a boundary char or text start
+        new_start = start
+        found_left = False
+        while new_start > 0 and (orig_start - new_start) < max_expansion:
+            if text[new_start - 1] in boundaries:
+                found_left = True
+                break
+            new_start -= 1
+        # accept if we found a boundary char, or reached text start within the limit
+        if found_left or (new_start == 0 and (orig_start - new_start) <= max_expansion):
+            start = new_start
+
+        # expand right until we hit a boundary char or text end
+        new_end = end
+        found_right = False
+        while new_end < len(text) and (new_end - orig_end) < max_expansion:
+            if text[new_end] in boundaries:
+                found_right = True
+                break
+            new_end += 1
+        # accept if we found a boundary char, or reached text end within the limit
+        if found_right or (new_end == len(text) and (new_end - orig_end) <= max_expansion):
+            end = new_end
 
         # trim leading whitespace
         while start < end and text[start] in (" ", "\n", "\t", "\r"):
@@ -150,24 +217,29 @@ def snap_to_boundaries(
             end -= 1
 
     elif snap_to == "sentence":
-        # find sentence boundaries (periods, exclamation, question marks followed by space/newline)
-        sentence_pattern = r"[.!?][\s\n]+"
-        sentence_ends = [m.end() for m in re.finditer(sentence_pattern, text)]
+        from pysbd import Segmenter
 
-        # expand left to previous sentence end (or beginning)
-        prev_end = 0
+        seg = Segmenter(language="en", clean=False, char_span=True)
+        spans = seg.segment(text)
+
+        # find the sentence boundary edges from pysbd spans
+        sentence_ends = [s.end for s in spans]
+
+        # expand left to previous sentence end (or beginning), within max_expansion
+        prev_end = max(0, start - max_expansion)
         for pos in sentence_ends:
-            if pos < start:
+            if pos <= start and (start - pos) <= max_expansion:
                 prev_end = pos
-            else:
+            elif pos > start:
                 break
         start = prev_end
 
-        # expand right to next sentence end (or end of text)
-        next_end = len(text)
+        # expand right to next sentence end (or end of text), within max_expansion
+        next_end = min(len(text), end + max_expansion)
         for pos in sentence_ends:
-            if pos > end:
-                next_end = pos
+            if pos >= end:
+                if (pos - end) <= max_expansion:
+                    next_end = pos
                 break
         end = next_end
 
@@ -205,7 +277,7 @@ def extract_context_window(
     global_end: int,
     context_window_size: int = 1000,
 ) -> str:
-    """Extract a fixed-size context window centered on the quote.
+    """Extract a fixed-size context window centered on a quote from a text.
 
     Used primarily for LLM-based fairness checks.
 
@@ -218,6 +290,28 @@ def extract_context_window(
 
     Returns:
         Context string centered on the quote (or full document if shorter than window)
+
+    Examples:
+
+        Short document returned in full:
+
+        >>> extract_context_window("hello", "short text", 0, 5, context_window_size=100)
+        'short text'
+
+        Window centred on the quote position:
+
+        >>> doc = "A" * 100 + "QUOTE" + "B" * 100
+        >>> result = extract_context_window("QUOTE", doc, 100, 105, context_window_size=20)
+        >>> len(result)
+        20
+        >>> "QUOTE" in result
+        True
+
+        Quote near start -- window anchored at beginning:
+
+        >>> doc = "XY" + "Z" * 50
+        >>> extract_context_window("XY", doc, 0, 2, context_window_size=10)
+        'XYZZZZZZZZ'
     """
     # if document is shorter than window, return full document
     if len(source_doc_content) <= context_window_size:

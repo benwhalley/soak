@@ -1,0 +1,223 @@
+name: Framework analysis
+version: 0.1.0
+description: A qualitative framework analysis. Supports inductive, deductive, and hybrid modes. In inductive mode, codes are generated openly and themes emerge from the data. In deductive mode, an analytical framework guides coding. In hybrid mode, the framework guides coding but new themes can emerge.
+default_context:
+  research_question:
+    type: primary
+    default: To understand the source documents in the context of the Framework
+    description: Research question
+    help_text: The main question guiding the framework analysis
+  framework:
+    type: config
+    default: null
+    description: Analytical framework (null for inductive mode)
+    help_text: A structured framework with themes for deductive or hybrid analysis. Set to null for inductive mode.
+  allow_new_themes:
+    type: config
+    default: false
+    description: Allow new themes to emerge (hybrid mode)
+    help_text: When true and a framework is provided, the LLM can create codes outside the framework themes.
+  persona:
+    type: secondary
+    default: Experienced qualitative researcher, expert in framework analysis (Ritchie & Spencer, 1994; Gale et al., 2013).
+    description: Analyst persona
+    help_text: The perspective and expertise from which the analysis is conducted.
+  report_audience:
+    type: secondary
+    default: other researchers
+    description: Report audience
+    help_text: Who will be reading the report.
+  epistemological_stance:
+    type: secondary
+    default: This analysis takes a pragmatic approach to framework analysis. We treat participants' accounts as meaningful representations of their experiences, while recognising that these are shaped by context, language, and the research process. The analytical framework provides structure for systematic comparison across cases, but the analysis remains attentive to nuance, contradiction, and variation.
+    description: Epistemological stance
+    help_text: This text is presented during all key steps.
+  specific_research_question:
+    type: secondary
+    default: ""
+    description: Specific research focus
+    help_text: (Optional) specific aspect or sub-question to focus on.
+    input_type: textarea
+  specific_coding_guidance:
+    type: secondary
+    default: null
+    description: Specific coding guidance
+    help_text: Extra instructions on what types of codes to extract or how to interpret the source texts during coding.
+    input_type: textarea
+  additional_theme_guidance:
+    type: secondary
+    default: null
+    description: Additional theme guidance
+    help_text: Extra instructions on how to write themes or what to look out for when generating them.
+    input_type: textarea
+  input_data_format:
+    type: config
+    default: The data consist of transcripts from interviews/focus groups, and/or answers to open-ended questions in surveys.
+    description: Describe your specific input data.
+    help_text: Describing the input data helps soak understand how to interpret it.
+    input_type: textarea
+  theme_size_guidance:
+    type: config
+    default: "Produce 7-10 themes. Strongly prefer fewer/larger themes with greater explanatory depth and power."
+    description: Guidance on the number of themes to produce.
+    input_type: textarea
+  max_themes:
+    type: config
+    default: 12
+    description: Maximum number of themes to generate
+  min_themes:
+    type: config
+    default: 3
+    description: Minimum number of themes to generate
+
+scrub: false
+randomise_document_order: true
+
+allow_web_overrides:
+  chunks:
+    - chunk_size:
+        label: Chunk size (in words)
+    - min_split:
+        label: Minimum chunk size
+    - overlap:
+        label: Overlap between chunks
+  codes_from_chunks:
+    - thinking:
+        label: Level of thinking for initial coding
+  grouped_codes:
+    - skip_below:
+        label: Skip clustering if fewer than this many codes
+  checkquotes:
+    - check_fairness:
+        label: Check fairness
+        help_text: Extra LLM call to verify quote fairness. Slower but more accurate.
+  themes:
+    - thinking:
+        label: Level of thinking for final theme generation
+
+config:
+  report_texts:
+    narrative.meta_narrative:
+      label: Summary
+      description: Overarching narrative account of the analysis.
+    narrative.narrative:
+      label: Thematic Narrative
+      description: Text-representation of all themes identified in the analysis.
+    framework_review.review:
+      label: Framework Review
+      description: Analysis of how well the framework captures the data, with suggestions for amendments and new themes.
+
+default_config:
+  models:
+    default: gpt-5-mini
+    best: gpt-5-mini
+    cheap: gpt-5-mini
+    charting: gpt-5-mini
+  embeddings: text-embedding-3-large
+  seed: 1
+
+nodes:
+  - name: chunks
+    type: Split
+    split_unit: words
+    chunk_size: 12000
+    min_split: 500
+    overlap: 100
+    inputs:
+      - documents
+
+  - name: codes_from_chunks
+    type: Map
+    template: fa_coding.sd
+    max_tokens: 4000
+    model: default
+    thinking: medium
+    inputs:
+      - chunks
+
+  # extract individual Code objects from the Map results
+  - name: all_codes
+    type: Reduce
+    items_field: codes
+    inputs: [codes_from_chunks]
+
+  # group codes by theme_name (one group if inductive, N groups if deductive)
+  - name: codes_by_theme
+    type: GroupBy
+    group_by: theme_name
+    inputs: [all_codes]
+
+  # cluster similar codes WITHIN each theme group
+  - name: grouped_codes
+    type: Cluster
+    inputs: [codes_by_theme]
+    preserve_groups: true
+    skip_below: 75
+    if_skipped_bypass_to: codes
+    method:
+      name: hdbscan
+      min_cluster_size: 2
+      max_cluster_size: 50
+
+  - name: consolidated_codes
+    type: Map
+    inputs: [grouped_codes]
+    model: default
+    thinking: low
+    template: fa_consolidate.sd
+
+  - name: codes
+    type: Reduce
+    items_field: codes
+    inputs: [consolidated_codes]
+
+  - name: checkquotes
+    type: VerifyQuotes
+    model: cheap
+    thinking: low
+    inputs: [codes]
+    check_fairness: false
+
+  # --- INDUCTIVE PATH: generate themes from codes ---
+  # (skipped in deductive and hybrid modes via skip_nodes)
+  - name: big_code_groups
+    type: Cluster
+    inputs: [codes]
+    method:
+      name: hdbscan
+      min_cluster_size: 50
+
+  - name: theme_groups
+    type: Map
+    template: fa_make_themes.sd
+    model: best
+    thinking: medium
+    inputs:
+      - big_code_groups
+
+  - name: themes
+    type: Transform
+    template: fa_final_themes.sd
+    model: best
+    thinking: medium
+    inputs:
+      - theme_groups
+
+  # --- HYBRID PATH: review framework against coded evidence ---
+  # (skipped in inductive and pure deductive modes via skip_nodes)
+  - name: framework_review
+    type: Transform
+    template: fa_framework_review.sd
+    model: best
+    thinking: medium
+    inputs:
+      - codes
+
+  - name: narrative
+    type: Transform
+    template: fa_narrative.sd
+    temperature: 1.0
+    model: best
+    thinking: medium
+    inputs:
+      - themes

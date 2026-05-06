@@ -144,6 +144,7 @@ nodes:
   - name: codes_from_chunks
     type: Map
     template: initial_codes.sd
+    max_tokens: 4000
     model: default
     thinking: medium
     inputs:

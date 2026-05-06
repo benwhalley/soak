@@ -18,9 +18,9 @@ combines overlapping codes. If all the codes are useful and distinct, we reprodu
 ### Handling quotes
 
 We will use quotes from preliminary codes to support the consolidated list of codes.
-New codes may end up combining quotes from earlier codes. 
+New codes may end up combining quotes from earlier codes.
 
-We do NOT copy quotes in full. We just need to use the quote identifer to make QuoteReference objects. These allow the system to find the original quote text, and link it to the new code.
+Do NOT copy quotes in full. Reference existing quotes by their 8-character hash identifier. The system will resolve these hashes to the original quote text automatically.
 
 Select the "best" quotes for the new Code. Not all quotes need to be included. Use the ones that best exemplify the new Code.
 
@@ -33,11 +33,9 @@ Code objects consist of:
 
 - Name: str. The theme name in approx in 8 to 15 words in sentence case.
 - Description: str. A rich description of the code in 50 words.
-- Quotes: List[QuoteReference].  A list of QuoteReference objects. Max 24 quotes per Code, and often fewer.
+- Quotes: List[QuoteReference]. Reference existing quotes by their 8-character hash. Max 24 per Code, often fewer.
 
-Do not construct Quote objects or copy quote text — just use QuoteReference objects and allow the system to find the original text using these codes.
-
-Be careful when constructing these objects to include all relevant fields.
+Do not copy quote text -- just reference by hash. Be careful when constructing these objects to include all relevant fields.
 
 </system>
 
@@ -55,4 +53,4 @@ Be careful when constructing these objects to include all relevant fields.
 
 Make a new CodeList of new/aligned codes. Follow the required format.
 
-[[code*:codes]]
+[[code*:codes|quotes=reference]]

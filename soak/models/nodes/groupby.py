@@ -185,6 +185,9 @@ class GroupBy(DAGNode):
             obj = item
         elif isinstance(item, dict):
             obj = item
+        elif hasattr(item, "model_dump"):
+            # Pydantic model (Code, Theme, etc.) -- access attributes directly
+            obj = item
         else:
             raise ValueError(f"Cannot extract field from {type(item)}")
 

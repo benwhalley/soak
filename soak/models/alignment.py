@@ -264,8 +264,6 @@ def trim_span_to_quote(
 ) -> Dict[str, Any]:
     """Trim span to align with quote start using specified matching method.
 
-    Backwards-compatible wrapper around alignment strategies.
-
     Args:
         quote: The quote text to find
         span: The larger text span to search in
@@ -325,26 +323,3 @@ def trim_span_to_quote(
     return result.to_dict()
 
 
-def get_alignment_strategy(
-    method: Literal["fuzzy", "sliding_bm25", "hybrid"] = "hybrid",
-    min_ratio: float = 0.6,
-    context_pad: int = 30,
-) -> AlignmentStrategy:
-    """Factory function to get an alignment strategy instance.
-
-    Args:
-        method: Which alignment method to use
-        min_ratio: Minimum match ratio for fuzzy/hybrid
-        context_pad: Context padding for fuzzy/hybrid
-
-    Returns:
-        AlignmentStrategy instance
-    """
-    if method == "fuzzy":
-        return FuzzyAlignment(min_ratio=min_ratio, context_pad=context_pad)
-    elif method == "sliding_bm25":
-        return BM25SlidingAlignment()
-    elif method == "hybrid":
-        return HybridAlignment(min_ratio=min_ratio, context_pad=context_pad)
-    else:
-        raise ValueError(f"Unknown alignment method: {method}")

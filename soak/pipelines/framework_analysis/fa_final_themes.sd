@@ -1,0 +1,145 @@
+<system>
+
+# OVERVIEW
+
+You are a: {{persona}}
+You are conducting a qualitative framework analysis of transcript data.
+Your research question is: {{research_question}}
+{{specific_research_question}}
+
+You are at the final theme generation stage of a framework analysis.
+
+### EPISTEMOLOGICAL STANCE
+
+{{epistemological_stance}}
+
+
+# TASK INSTRUCTIONS
+
+Preliminary themes were generated from transcripts in batches from semantically related codes. There may be overlap between the themes, and we need to consolidate them into the final analytical framework.
+
+Our task is to join related themes and interpret the codes and quotes to generate the final set of framework dimensions -- the columns of our framework matrix.
+
+
+### WHAT IS A THEME IN FRAMEWORK ANALYSIS?
+
+A theme in framework analysis represents a dimension of the analytical framework. These themes will become the columns of a framework matrix where:
+- Rows = documents/participants (cases)
+- Columns = themes (dimensions)
+- Cells = the evidence from each case for each dimension
+
+Themes should be:
+- Case-oriented: meaningful when applied across different participants
+- Analytically distinct: each captures a different dimension of the phenomenon
+- Evidence-grounded: supported by codes and quotes
+- Useful for cross-case comparison: facilitate looking across the matrix
+
+
+### WHAT IS A GOOD THEME?
+
+Themes should represent processes, mechanisms, or meanings, not activities, tools, or surface features.
+
+If a theme can be paraphrased as "people do X", it is probably too narrow.
+
+For each theme, ask:
+- Would this make a useful column in a comparison matrix?
+- Can I imagine meaningful variation between cases for this theme?
+- Does this capture something analytically distinct from the other themes?
+
+
+# HOW TO GENERATE THEMES
+
+- Provide a clear, specific name, approximately 6 to 12 words
+- Provide a rich description of around 50 words for each theme.
+- Link themes to Codes using their 8-character hash identifier.
+
+Copy the hash exactly from the code listing -- do not invent or modify it.
+Be selective linking to Codes -- link only the most relevant.
+
+
+### WRITING STYLE
+
+- Write with concise, concrete details and avoid cliches, generalisations.
+- Avoid the word 'Navigating' or other cliches from qualitative research.
+- Ensure theme names capture the essence of the concept.
+- Write the theme names in sentence case.
+- Rich descriptions capture the full range of meanings and nuances.
+- Use the language and specific words of quotes and code descriptions.
+
+
+# CONSOLIDATING THEMES
+
+Usually, we generate around 7 themes (plus or minus 2).
+The user will also give guidance on the number of themes to produce. ALWAYS follow this guidance.
+
+### Heuristic steps for consolidation
+
+Step 1: Identify the organising verb
+Rewrite each theme as a short clause starting with a verb. If two themes share the same verb or implied action, they are likely the same theme.
+
+Step 2: Separate experience from response
+Distinguish between context (what participants experience), adaptive response (what participants do), and interpretative response (how participants understand their experience).
+
+Step 3: Test with subtraction
+For each proposed theme, ask: if I removed this theme, would the analytic story break, or just lose detail? If it only loses detail, collapse it.
+
+Step 4: Limit themes per analytic layer
+At any single analytic level, aim for 5-7 themes max. More usually indicates insufficient abstraction.
+
+Step 5: Write theme definitions first, then reassign codes
+Define the collapsed themes before reassigning codes.
+
+Step 6: Check coherence, not coverage
+Themes do not need to account for every code equally. They need to be internally coherent, conceptually distinct, and analytically useful.
+
+{% if additional_theme_guidance %}
+### ANALYSIS-SPECIFIC GUIDANCE FOR THEME GENERATION
+
+{{additional_theme_guidance}}
+
+Always follow this specific guidance when generating themes.
+{% endif %}
+
+
+</system>
+
+
+# TASK: READ ALL THE PRELIMINARY THEMES CAREFULLY
+
+These were generated in batches. They are likely to overlap or be insufficiently distinct. We must rationalise them.
+
+<preliminary-themes>
+{% for batch in theme_groups %}
+---
+{% for theme in batch.themes %}
+{{theme}}
+
+{% endfor %}
+
+{% endfor %}
+</preliminary-themes>
+
+
+# TASK: PLANNING THEME CONSOLIDATION
+
+Start by deciding what level we want themes to work at.
+Use the heuristics to decide how to consolidate themes.
+Don't worry about the details or write all the themes yet.
+
+Think about which themes will make the most useful columns in a framework matrix for cross-case comparison.
+
+{{theme_size_guidance}}
+
+[[think:theme_consolidation]]
+
+
+# TASK: CONSOLIDATE THE THEMES
+
+Produce a final list of themes.
+Be selective linking to Codes -- link only the most relevant.
+
+{{theme_size_guidance}}
+
+Now, use your plan and the guidance above. Write the final consolidated set of themes:
+
+[[theme{ {{min_themes}},{{max_themes}} }:themes]]
