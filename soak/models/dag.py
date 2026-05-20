@@ -712,14 +712,22 @@ class DAG(BaseModel):
                             # call node.skip() for passthrough behavior
                             node = self.nodes_dict[name]
                             node._skipped = True  # Mark as skipped for callbacks
-                            result = await node.skip()
-                            if result is not None:
-                                node.output = result
+                            # if output was already restored (e.g. from a
+                            # checkpoint), keep it -- skip()'s passthrough is
+                            # only a fallback and would overwrite real data.
+                            if node.output is not None:
                                 logger.info(
-                                    f"Skipped node '{name}' with passthrough output"
+                                    f"Skipped node '{name}' with restored output (output already set)"
                                 )
                             else:
-                                logger.info(f"Skipping node: {name}")
+                                result = await node.skip()
+                                if result is not None:
+                                    node.output = result
+                                    logger.info(
+                                        f"Skipped node '{name}' with passthrough output"
+                                    )
+                                else:
+                                    logger.info(f"Skipping node: {name}")
                             # emit completion for skipped nodes too
                             if self.config.event_handlers:
                                 await anyio.to_thread.run_sync(
