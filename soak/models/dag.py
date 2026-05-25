@@ -12,7 +12,7 @@ from typing import (TYPE_CHECKING, Annotated, Any, Dict, List, Optional, Set,
 
 import anyio
 from jinja2 import Environment, StrictUndefined, Undefined, meta
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field, PrivateAttr, model_validator
 from struckdown import LLM, LLMCredentials, StruckdownResult
 
 from soak.document_utils import (extract_text, get_scrubber, is_spreadsheet,
@@ -352,6 +352,10 @@ async def run_node(node):
         result = await node.run()
         logger.debug(f"COMPLETED: {node.name}\n")
 
+        # run declared output invariants. raises NodeInvariantError which is
+        # caught by the same except below and surfaces through node._error
+        node.validate_output()
+
         # Export node if incremental export is enabled
         if (
             node.dag.config.export_enabled
@@ -519,6 +523,10 @@ class DAG(BaseModel):
     # computed pipeline version with content hash (version + 4-char hash, e.g., "0.1.0-a1b2")
     pipeline_version: Optional[str] = Field(default=None)
 
+    # Set by run() on failure (in addition to the stringified error returned via
+    # the tuple). Read via the `execution_error` property below.
+    _execution_error: Optional[Exception] = PrivateAttr(default=None)
+
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
         # add defaults for config fields
@@ -528,6 +536,29 @@ class DAG(BaseModel):
         # initialize cost tracker
         if self.cost_tracker is None:
             self.cost_tracker = GlobalCostTracker()
+
+    @property
+    def execution_error(self) -> Optional[Exception]:
+        """The typed exception that aborted run(), or None.
+
+        Populated inside run()'s except branch alongside the stringified form
+        returned via the (dag, error_str) tuple. Lets callers recover the
+        original exception class (e.g. for retry classification) without
+        relying on string matching.
+        """
+        return self._execution_error
+
+    @property
+    def failed_node(self) -> Optional["DAGNode"]:
+        """The first node whose run() raised, or None.
+
+        Iterates `nodes` in declaration order, so the result matches the
+        original execution order in the common single-failure case.
+        """
+        for node in self.nodes:
+            if node.error is not None:
+                return node
+        return None
 
     @model_validator(mode="after")
     def validate_node_templates(self) -> "DAG":
@@ -802,6 +833,10 @@ class DAG(BaseModel):
             error_str = str(actual_exception)
             err = f"DAG execution failed: {error_str}\n{traceback.format_exc()}"
             logger.error(err)
+
+            # stash the typed exception so callers can recover the real class
+            # rather than relying on the stringified form returned below.
+            self._execution_error = actual_exception
 
             if self.config.pdb_on_exception:
                 pdb.post_mortem(actual_exception.__traceback__)

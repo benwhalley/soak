@@ -354,7 +354,10 @@ def post_process_code_quotes(code: Code, context: Dict[str, Any]):
                 )
 
     # store resolved quotes as dicts for serialisation
-    code.resolved_quotes = [q.model_dump() for q in resolved]
+    # serialize_as_any so subclasses/sibling-type instances dump their real fields
+    code.resolved_quotes = [
+        q.model_dump(mode="json", serialize_as_any=True) for q in resolved
+    ]
     # replace quotes with resolved Quote objects so downstream code
     # never sees QuoteReference
     code.quotes = resolved
@@ -458,7 +461,13 @@ def post_process_theme_code_refs(theme, context: Dict[str, Any]):
             # Fallback: fuzzy slug matching for old data with long slug-style refs
             matched = fuzzy_match_code_slug(ref, input_codes)
         if matched:
-            matched_codes.append(matched.model_dump())
+            # serialize_as_any: Code.quotes may carry Quote instances on a field
+            # typed as QuoteReference (reference-mode CodeResponse, after
+            # post_process_code_quotes swap). Without this, Pydantic serializes
+            # by declared field type and drops Quote.text.
+            matched_codes.append(
+                matched.model_dump(mode="json", serialize_as_any=True)
+            )
 
     theme.resolved_code_refs = matched_codes
 

@@ -50,7 +50,10 @@ class _TemplateProxy:
         for ref in theme.code_hashes:
             code = code_by_hash.get(ref) or code_by_slug.get(ref)
             if code:
-                matched.append(code.model_dump())
+                # serialize_as_any so Quote instances on QuoteReference-typed fields
+                # (reference-mode CodeResponse after post_process_code_quotes swap)
+                # keep their text instead of collapsing to {"type": "quote"}.
+                matched.append(code.model_dump(mode="json", serialize_as_any=True))
         if matched:
             theme.resolved_code_refs = matched
 
@@ -147,6 +150,24 @@ class DAGNode(BaseModel):
         default=None,
         description="Model alias (e.g., 'default', 'best') or model ID to use for this node",
     )
+    invariants: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "Names of post-run output checks (registered in soak.invariants). "
+            "Run after the node's run() succeeds; first failure raises "
+            "NodeInvariantError and propagates like any other node exception."
+        ),
+    )
+
+    @property
+    def error(self) -> Optional[Exception]:
+        """The exception that aborted this node's run, or None.
+
+        Set by `dag.run_node` in its except branch (writes to `_error`).
+        Exposed here as a public attribute so callers don't have to know the
+        backing field name. None means either "ran cleanly" or "hasn't run yet".
+        """
+        return getattr(self, "_error", None)
 
     def get_model(self):
         # First check explicit model_name attribute (legacy)
@@ -184,6 +205,19 @@ class DAGNode(BaseModel):
         """
         logger.debug(f"Skipping node '{self.name}' (default: no output)")
         return None
+
+    def validate_output(self) -> None:
+        """Run declared invariants against self.output.
+
+        Called after run() succeeds (but not after skip()). First violation
+        raises NodeInvariantError, which propagates through run_node's
+        exception path -- same handling as any other node failure.
+        """
+        if not self.invariants:
+            return
+        from soak.invariants import run_invariants
+
+        run_invariants(self, self.invariants, self.context)
 
     @property
     def context(self) -> Dict[str, Any]:

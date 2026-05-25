@@ -51,6 +51,28 @@ class MaxConsecutiveConnectionErrorsExceeded(Exception):
     pass
 
 
+class NodeInvariantError(Exception):
+    """Raised when a node produces output that violates a declared invariant.
+
+    Triggered by DAGNode.validate_output() after a node's run() completes.
+    Carries the failing node's name and a human-readable message describing
+    which invariant failed and why.
+
+    Downstream consumers (e.g. the django web app's auto-retry policy)
+    classify this as a retryable trigger -- the output is wrong but a
+    fresh stochastic attempt may succeed.
+    """
+
+    def __init__(self, node_name: str, message: str, invariant_name: Optional[str] = None):
+        self.node_name = node_name
+        self.invariant_name = invariant_name
+        self.message = message
+        prefix = f"Node '{node_name}'"
+        if invariant_name:
+            prefix += f" invariant '{invariant_name}'"
+        super().__init__(f"{prefix}: {message}")
+
+
 class ConnectionErrorCounter:
     """Thread-safe counter for tracking consecutive connection errors.
 

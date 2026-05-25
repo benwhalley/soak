@@ -121,20 +121,26 @@ def serialize_value(obj: Any) -> Any:
 
 
 def _serialize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]:
-    """Clean metadata dict for JSON serialization."""
+    """Clean metadata dict for JSON serialization.
+
+    Recurses through values via serialize_value so registered Pydantic models
+    (Code, Theme, Quote, ...) keep their ``__type__`` envelope and can be
+    rebuilt on restart. Without this, e.g. Cluster's ``metadata["items"]``
+    (a list of Code objects) would be stringified and quote/code provenance
+    would be lost across checkpoints.
+    """
     import json as _json
 
     clean = {}
     for k, v in metadata.items():
         if isinstance(v, (str, int, float, bool, type(None))):
             clean[k] = v
-        elif isinstance(v, (list, dict)):
-            try:
-                _json.dumps(v)
-                clean[k] = v
-            except (TypeError, ValueError):
-                clean[k] = str(v)
-        else:
+            continue
+        serialized = serialize_value(v)
+        try:
+            _json.dumps(serialized)
+            clean[k] = serialized
+        except (TypeError, ValueError):
             clean[k] = str(v)
     return clean
 
@@ -232,15 +238,17 @@ def _deserialize_segment_result(data: dict) -> Any:
 
 
 def _deserialize_tracked_item(data: dict) -> Any:
-    """Reconstruct TrackedItem with recursive content deserialization."""
+    """Reconstruct TrackedItem with recursive content + metadata deserialization."""
     from soak.models.base import TrackedItem
 
     content = deserialize_value(data.get("content"))
+    raw_metadata = data.get("metadata", {})
+    metadata = {k: deserialize_value(v) for k, v in raw_metadata.items()}
     return TrackedItem(
         content=content,
         id=data["id"],
         sources=data.get("sources", []),
-        metadata=data.get("metadata", {}),
+        metadata=metadata,
         content_excluding_overlap=data.get("content_excluding_overlap"),
     )
 

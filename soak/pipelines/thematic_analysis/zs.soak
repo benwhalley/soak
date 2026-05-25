@@ -167,6 +167,8 @@ nodes:
     model: default
     thinking: low
     template: consolidate_codes.sd
+    invariants:
+      - code_retention_and_quotes
 
   - name: codes
     type: Reduce
@@ -203,6 +205,8 @@ nodes:
     thinking: medium
     inputs:
       - theme_groups
+    invariants:
+      - min_themes_with_codes
 
   - name: narrative
     type: Transform
