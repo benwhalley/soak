@@ -1,8 +1,9 @@
 """Text extraction utilities for PDF, Word, text documents, and spreadsheets.
 
 Document extraction strategy:
-- pandoc (via pypandoc) for: .docx, .rtf, .txt, .md, .markdown
-- pdfplumber for: .pdf (text extraction only, no OCR)
+- pandoc (via pypandoc) for: .docx, .rtf, .epub, .txt, .md, .markdown
+- docling for: .pdf, .pptx (markdown with structure, layout-aware)
+- trafilatura with pandoc fallback for: .html, .htm
 
 All document formats are converted to GitHub-Flavoured Markdown (GFM).
 """
@@ -19,7 +20,6 @@ from pathlib import Path
 from typing import Any, Dict, List, Union
 
 import pandas as pd
-import pdfplumber
 import pypandoc
 
 logger = logging.getLogger(__name__)
@@ -30,17 +30,39 @@ TEXT_EXTENSIONS = {
     ".txt",
     ".md",
     ".markdown",  # plain text / markdown
-    ".vtt",
-    ".srt",  # subtitles (video transcripts)
     ".log",  # log files
     ".rst",  # reStructuredText
 }
 
+# subtitle/transcript formats - cue-timing markers stripped
+SUBTITLE_EXTENSIONS = {".vtt", ".srt"}
+
+# email message formats
+EMAIL_EXTENSIONS = {".eml", ".msg"}
+
 # binary document extensions - need pandoc or special handling
-BINARY_DOCUMENT_EXTENSIONS = {".docx", ".rtf", ".pdf"}
+BINARY_DOCUMENT_EXTENSIONS = {".docx", ".rtf", ".pdf", ".pptx", ".epub"}
+
+# docling handles structural extraction for these
+DOCLING_EXTENSIONS = {".pdf", ".pptx", ".eml"}
+
+# HTML extensions - extracted with trafilatura (readability) or pandoc
+HTML_EXTENSIONS = {".html", ".htm"}
 
 # all supported document extensions for text extraction
-DOCUMENT_EXTENSIONS = TEXT_EXTENSIONS | BINARY_DOCUMENT_EXTENSIONS
+DOCUMENT_EXTENSIONS = (
+    TEXT_EXTENSIONS
+    | SUBTITLE_EXTENSIONS
+    | EMAIL_EXTENSIONS
+    | BINARY_DOCUMENT_EXTENSIONS
+    | HTML_EXTENSIONS
+)
+
+# PDF extraction backends. Docling handles layout-aware markdown with
+# table extraction; the dispatcher / kwarg remain in place so additional
+# backends can be slotted in later without breaking callers.
+PDF_BACKEND_DOCLING = "docling"
+PDF_BACKENDS = (PDF_BACKEND_DOCLING,)
 
 
 def normalise_whitespace(text: str) -> str:
@@ -94,20 +116,203 @@ def _convert_with_pandoc(path: Path) -> str:
     )
 
 
-def _extract_pdf_text(path: Path) -> str:
-    """Extract text from PDF using pdfplumber.
+_SCRIPT_STYLE_RE = re.compile(
+    r"<(script|style)\b[^>]*>.*?</\1\s*>", re.DOTALL | re.IGNORECASE
+)
+_TAG_RE = re.compile(r"<[^>]+>")
 
-    - Extracts embedded text only (no OCR)
-    - Does not attempt layout or column reconstruction
-    - Preserves paragraph breaks where detectable
+
+def _visible_text_length(html: str) -> int:
+    """Approximate the length of human-visible text in an HTML document.
+
+    Strips script/style blocks first (their contents shouldn't count as
+    content), then drops all remaining tags. Whitespace is collapsed so
+    the result roughly tracks what a reader would actually see.
     """
-    with pdfplumber.open(path) as pdf:
-        pages = []
-        for page in pdf.pages:
-            text = page.extract_text()
-            if text:
-                pages.append(text)
-        return "\n\n".join(pages)
+    cleaned = _SCRIPT_STYLE_RE.sub(" ", html)
+    cleaned = _TAG_RE.sub(" ", cleaned)
+    return len(re.sub(r"\s+", " ", cleaned).strip())
+
+
+def _extract_html_text(
+    path: Path,
+    use_readability: bool = True,
+    fallback_min_chars: int = 200,
+    fallback_min_recall: float = 0.01,
+) -> str:
+    """Extract main content from an HTML file as markdown.
+
+    With use_readability=True (default), trafilatura identifies the article
+    body and emits markdown. We then sanity-check the output and fall back
+    to pandoc on the full document when extraction looks broken:
+
+    - **fallback_min_chars**: absolute minimum extracted character count.
+      Anything shorter is treated as a miss regardless of input size.
+    - **fallback_min_recall**: minimum share of the page's *visible text*
+      (after stripping `<script>`, `<style>` and remaining tags) that the
+      extractor must keep. A value of `0.01` means trafilatura has to hold
+      onto at least 1% of what a reader would see; less than that and we
+      assume the heuristic latched onto a sidebar/menu. The ratio check
+      only applies when the visible text is large enough (>1000 chars) to
+      make the ratio meaningful.
+
+    These thresholds are intentionally loose -- they catch hard failures
+    (e.g. database-results pages where readability returns just the
+    navigation) without rejecting genuinely short articles.
+
+    With use_readability=False, runs pandoc on the full HTML document --
+    deterministic, no heuristics, but you keep whatever nav/footer/ads
+    are in the source.
+    """
+    html = _read_text_file(path)
+
+    if use_readability:
+        import trafilatura
+
+        extracted = trafilatura.extract(
+            html,
+            output_format="markdown",
+            include_links=True,
+            include_tables=True,
+            include_formatting=True,
+        )
+        ext_len = len((extracted or "").strip())
+        visible_len = _visible_text_length(html)
+        too_small = ext_len < fallback_min_chars
+        low_recall = (
+            visible_len > 1000 and ext_len < visible_len * fallback_min_recall
+        )
+        if extracted and not (too_small or low_recall):
+            return extracted
+        logger.info(
+            "trafilatura kept %d chars vs %d visible-text chars (min=%d, "
+            "recall>=%.3f); falling back to pandoc",
+            ext_len,
+            visible_len,
+            fallback_min_chars,
+            fallback_min_recall,
+        )
+
+    extra_args = ["--wrap=none", "--strip-comments"]
+    pandoc_data_home = os.environ.get("PANDOC_DATA_HOME")
+    if pandoc_data_home:
+        extra_args.append(f"--data-dir={pandoc_data_home}")
+    return pypandoc.convert_text(
+        html, to="gfm", format="html", extra_args=extra_args
+    )
+
+
+_SUBTITLE_TIMING_RE = re.compile(r"-->")
+_SUBTITLE_SEQ_RE = re.compile(r"^\d+$")
+_SUBTITLE_TAG_RE = re.compile(r"<[^>]+>")
+
+
+def _extract_subtitle_text(path: Path) -> str:
+    """Strip cue timings/sequence numbers from a VTT or SRT file.
+
+    Returns the dialogue text with timing markers, cue identifiers and
+    inline styling tags removed. Useful for qualitative analysis where
+    the spoken content matters but the timing noise doesn't.
+    """
+    raw = _read_text_file(path)
+    out = []
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped == "WEBVTT" or stripped.startswith("WEBVTT "):
+            continue
+        if _SUBTITLE_TIMING_RE.search(stripped):
+            continue
+        if _SUBTITLE_SEQ_RE.match(stripped):
+            continue
+        if stripped.startswith("NOTE ") or stripped == "NOTE":
+            continue
+        out.append(_SUBTITLE_TAG_RE.sub("", stripped))
+    return "\n".join(out)
+
+
+
+
+def _extract_msg_text(path: Path) -> str:
+    """Extract subject/from/to/body from an Outlook .msg file."""
+    import extract_msg
+
+    msg = extract_msg.Message(str(path))
+
+    header_lines = []
+    if msg.subject:
+        header_lines.append(f"**Subject:** {msg.subject}")
+    if msg.sender:
+        header_lines.append(f"**From:** {msg.sender}")
+    if msg.to:
+        header_lines.append(f"**To:** {msg.to}")
+    if msg.date:
+        header_lines.append(f"**Date:** {msg.date}")
+
+    body = msg.body or ""
+    if not body and msg.htmlBody:
+        html = msg.htmlBody
+        if isinstance(html, bytes):
+            html = html.decode("utf-8", errors="ignore")
+        body = pypandoc.convert_text(html, to="gfm", format="html",
+                                      extra_args=["--wrap=none"])
+
+    return "\n".join(header_lines + ["", body]) if header_lines else body
+
+
+_DOCLING_CONVERTER = None
+
+
+def _get_docling_converter():
+    """Lazy-initialise a shared DocumentConverter.
+
+    Constructing the converter loads layout/table models from disk (or
+    downloads them on first run). Reusing one instance across calls
+    avoids repeated model load on every document.
+
+    OCR is disabled by default. Image-only / scanned PDFs will extract
+    as empty text. Re-enable per-call if and when a scanned-PDF backend
+    is wired up; for now the assumption is born-digital input.
+    """
+    global _DOCLING_CONVERTER
+    if _DOCLING_CONVERTER is None:
+        from docling.datamodel.base_models import InputFormat
+        from docling.datamodel.pipeline_options import PdfPipelineOptions
+        from docling.document_converter import DocumentConverter, PdfFormatOption
+
+        pdf_opts = PdfPipelineOptions(do_ocr=False)
+        _DOCLING_CONVERTER = DocumentConverter(
+            format_options={
+                InputFormat.PDF: PdfFormatOption(pipeline_options=pdf_opts),
+            }
+        )
+    return _DOCLING_CONVERTER
+
+
+def _extract_with_docling(path: Path) -> str:
+    """Extract document text as markdown via docling.
+
+    Handles PDF and PPTX with layout-aware structural extraction
+    (headings, lists, tables). For PDF, OCR is applied to image-only
+    pages when the docling OCR pipeline is enabled.
+    """
+    converter = _get_docling_converter()
+    result = converter.convert(str(path))
+    return result.document.export_to_markdown()
+
+
+def _extract_pdf_text(path: Path, backend: str = PDF_BACKEND_DOCLING) -> str:
+    """Dispatch PDF extraction to the requested backend.
+
+    Only docling is wired today; the `backend` kwarg exists so future
+    backends can be added without changing the call sites.
+    """
+    if backend not in PDF_BACKENDS:
+        logger.warning(
+            "Unknown PDF backend %r; falling back to %s.", backend, PDF_BACKEND_DOCLING
+        )
+    return _extract_with_docling(path)
 
 
 def resolve_path_with_package_data(path_pattern: str) -> list[str]:
@@ -330,15 +535,33 @@ def extract_spreadsheet_rows(path: str) -> List[Dict[str, Any]]:
         raise
 
 
-def extract_text(path: str) -> Union[str, List[Dict[str, Any]]]:
+def extract_text(
+    path: str,
+    html_use_readability: bool = True,
+    html_fallback_min_chars: int = 200,
+    html_fallback_min_recall: float = 0.01,
+    pdf_backend: str = PDF_BACKEND_DOCLING,
+) -> Union[str, List[Dict[str, Any]]]:
     """Extract text from document, converting to GitHub-Flavoured Markdown.
 
     Supports:
-    - Documents (.docx, .rtf, .txt, .md, .markdown, .pdf)
+    - Documents (.docx, .rtf, .epub, .txt, .md, .markdown, .pdf, .pptx)
+    - HTML (.html, .htm) -- main content via trafilatura by default,
+      with pandoc fallback when extraction looks suspicious
     - Spreadsheets (.csv, .xlsx, .xls) -- returns list of row dictionaries
 
     Args:
         path: Path to the document file
+        html_use_readability: For HTML files, extract main article content
+            via trafilatura. If False, convert the full HTML via pandoc.
+        html_fallback_min_chars: Trafilatura outputs shorter than this trigger
+            the pandoc fallback. See `_extract_html_text` for details.
+        html_fallback_min_recall: Minimum share of the page's visible text
+            that trafilatura must keep before its output is trusted.
+        pdf_backend: For PDF files, which extractor to use. Only "docling"
+            (default, layout-aware markdown with table extraction) is
+            currently supported. The kwarg is kept for forward
+            compatibility with future backends.
 
     Returns:
         Extracted markdown text (str) or list of row dictionaries for spreadsheets
@@ -351,15 +574,36 @@ def extract_text(path: str) -> Union[str, List[Dict[str, Any]]]:
 
     # documents return markdown text
     mtime = path_obj.stat().st_mtime
-    return strip_null_bytes(_extract_text_cached(str(path), mtime))
+    return strip_null_bytes(
+        _extract_text_cached(
+            str(path),
+            mtime,
+            html_use_readability,
+            html_fallback_min_chars,
+            html_fallback_min_recall,
+            pdf_backend,
+        )
+    )
 
 
-def _extract_text_cached(path: str, mtime: float) -> str:
+def _extract_text_cached(
+    path: str,
+    mtime: float,
+    html_use_readability: bool = True,
+    html_fallback_min_chars: int = 200,
+    html_fallback_min_recall: float = 0.01,
+    pdf_backend: str = PDF_BACKEND_DOCLING,
+) -> str:
     """Extract text from document as GFM. Cached by mtime.
 
     Uses:
-    - pandoc for: .docx, .rtf, .txt, .md, .markdown
-    - pdfplumber for: .pdf
+    - pandoc for: .docx, .rtf, .epub
+    - direct read for: .txt, .md, .markdown, .log, .rst
+    - docling for: .pdf, .pptx, .eml
+    - custom cleaner for: .vtt, .srt (docling drops cues with unclosed
+      <v Speaker> voice tags, which are common in Zoom/Teams transcripts)
+    - extract-msg for: .msg (no docling backend)
+    - trafilatura (with pandoc fallback) for: .html, .htm
     """
     path_obj = Path(path)
     suffix = path_obj.suffix.lower()
@@ -368,7 +612,20 @@ def _extract_text_cached(path: str, mtime: float) -> str:
         raise ValueError(f"Unsupported document format: {suffix}")
 
     if suffix == ".pdf":
-        text = _extract_pdf_text(path_obj)
+        text = _extract_pdf_text(path_obj, backend=pdf_backend)
+    elif suffix in (".pptx", ".eml"):
+        text = _extract_with_docling(path_obj)
+    elif suffix == ".msg":
+        text = _extract_msg_text(path_obj)
+    elif suffix in SUBTITLE_EXTENSIONS:
+        text = _extract_subtitle_text(path_obj)
+    elif suffix in HTML_EXTENSIONS:
+        text = _extract_html_text(
+            path_obj,
+            use_readability=html_use_readability,
+            fallback_min_chars=html_fallback_min_chars,
+            fallback_min_recall=html_fallback_min_recall,
+        )
     else:
         text = _convert_with_pandoc(path_obj)
 
@@ -394,9 +651,17 @@ def detect_file_type(path: Path) -> str:
         ".pdf": "PDF",
         ".docx": "Word Document",
         ".rtf": "RTF Document",
+        ".pptx": "PowerPoint",
+        ".epub": "EPUB",
+        ".eml": "Email",
+        ".msg": "Outlook Message",
+        ".vtt": "WebVTT Subtitles",
+        ".srt": "SRT Subtitles",
         ".txt": "Text File",
         ".md": "Markdown",
         ".markdown": "Markdown",
+        ".html": "HTML",
+        ".htm": "HTML",
         ".csv": "CSV Spreadsheet",
         ".xlsx": "Excel Spreadsheet",
         ".xls": "Excel Spreadsheet",

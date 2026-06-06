@@ -121,9 +121,9 @@ config:
 
 default_config:
   models:
-    default: gpt-5-mini
-    best: gpt-5-mini
-    cheap: gpt-5-mini
+    default: gpt-5.4-mini
+    best: gpt-5.4-mini
+    cheap: gpt-5.4-mini
   embeddings: text-embedding-3-large
   seed: 1
 
