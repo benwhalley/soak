@@ -135,7 +135,7 @@ nodes:
   - name: chunks
     type: Split
     split_unit: words
-    chunk_size: 12000
+    chunk_size: 8000
     min_split: 500
     overlap: 100
     inputs:
