@@ -98,7 +98,7 @@ def normalise_whitespace(text: str) -> str:
     return text.strip()
 
 
-def _read_text_file(path: Path) -> str:
+def read_text_file(path: Path) -> str:
     """Read plain text file directly, trying common encodings."""
     for encoding in ["utf-8", "utf-8-sig", "latin-1", "cp1252"]:
         try:
@@ -107,6 +107,10 @@ def _read_text_file(path: Path) -> str:
             continue
     # last resort: read with errors ignored
     return path.read_text(encoding="utf-8", errors="ignore")
+
+
+# backwards-compatible private alias
+_read_text_file = read_text_file
 
 
 def _convert_with_pandoc(path: Path) -> str:
@@ -119,7 +123,7 @@ def _convert_with_pandoc(path: Path) -> str:
 
     # plain text files: read directly, skip pandoc overhead
     if suffix in TEXT_EXTENSIONS:
-        return _read_text_file(path)
+        return read_text_file(path)
 
     # .docx, .rtf: use pandoc for actual format conversion
     extra_args = ["--wrap=none", "--strip-comments"]
@@ -183,7 +187,7 @@ def _extract_html_text(
     deterministic, no heuristics, but you keep whatever nav/footer/ads
     are in the source.
     """
-    html = _read_text_file(path)
+    html = read_text_file(path)
 
     if use_readability:
         import trafilatura
@@ -233,7 +237,7 @@ def _extract_subtitle_text(path: Path) -> str:
     inline styling tags removed. Useful for qualitative analysis where
     the spoken content matters but the timing noise doesn't.
     """
-    raw = _read_text_file(path)
+    raw = read_text_file(path)
     out = []
     for line in raw.splitlines():
         stripped = line.strip()
