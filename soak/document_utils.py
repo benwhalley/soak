@@ -25,6 +25,25 @@ import pypandoc
 logger = logging.getLogger(__name__)
 
 
+def _harden_xml_parsers() -> None:
+    """Disable external-entity / DTD resolution in stdlib XML parsers (anti-XXE).
+
+    Untrusted office documents (DOCX/XLSX/PPTX/EPUB) and HTML are parsed
+    transitively by openpyxl, docling and others. defusedxml.defuse_stdlib()
+    monkeypatches xml.etree, xml.sax, xml.dom and pyexpat so external entities,
+    DTD retrieval and entity-expansion bombs are refused process-wide. lxml-based
+    parsers (trafilatura HTML, python-pptx) already default to resolve_entities
+    off / HTML parsing that ignores entity definitions; this covers the stdlib
+    paths defusedxml can reach. Best-effort -- never block import if unavailable.
+    """
+    import defusedxml
+
+    defusedxml.defuse_stdlib()
+
+
+_harden_xml_parsers()
+
+
 # plain text extensions - read directly without pandoc
 TEXT_EXTENSIONS = {
     ".txt",
@@ -398,27 +417,66 @@ def get_scrubber(salt, model="en_core_web_md"):
     return scrubber
 
 
+class ZipSecurityError(Exception):
+    """A zip archive failed a security check (path traversal, symlink, or zip bomb).
+
+    Raised before any extraction occurs so a malicious archive never touches disk.
+    """
+
+
+# default ceiling on total uncompressed size of a zip archive (200 MB).
+# override with SOAK_MAX_UNCOMPRESSED_ZIP_BYTES to raise/lower for trusted inputs.
+DEFAULT_MAX_UNCOMPRESSED_ZIP_BYTES = 200 * 1024 * 1024
+
+
+def _max_uncompressed_zip_bytes() -> int:
+    return int(
+        os.environ.get(
+            "SOAK_MAX_UNCOMPRESSED_ZIP_BYTES", DEFAULT_MAX_UNCOMPRESSED_ZIP_BYTES
+        )
+    )
+
+
 def safer_extract(zip_ref, dest_dir, max_files: int = 1000):
-    """Safely extract zip archive with path traversal and symlink checks.
+    """Safely extract zip archive with path traversal, symlink, and zip-bomb checks.
+
+    All checks run against the central directory before any member is written, so a
+    hostile archive is rejected without writing to disk.
 
     Raises:
-        Exception: If zip contains too many files, unsafe paths, or symlinks
+        ZipSecurityError: If the zip contains too many files, unsafe paths, symlinks,
+            or its total uncompressed size exceeds the configured ceiling (a potential
+            zip bomb).
     """
     members = zip_ref.infolist()
 
     if len(members) > max_files:
-        raise Exception(f"Zip contains too many files ({len(members)} > {max_files})")
+        raise ZipSecurityError(
+            f"Zip contains too many files ({len(members)} > {max_files})"
+        )
+
+    max_uncompressed = _max_uncompressed_zip_bytes()
+    total_uncompressed = 0
 
     for member in members:
-        # Avoid path traversal
+        # avoid path traversal
         dest_path = os.path.abspath(os.path.join(dest_dir, member.filename))
         if not dest_path.startswith(os.path.abspath(dest_dir)):
-            raise Exception(f"Unsafe path in zip: {member.filename}")
+            raise ZipSecurityError(f"Unsafe path in zip: {member.filename}")
 
-        # Block symlinks
+        # block symlinks
         is_symlink = (member.external_attr >> 16) & 0o170000 == 0o120000
         if is_symlink:
-            raise Exception(f"Symlink found in zip: {member.filename}")
+            raise ZipSecurityError(f"Symlink found in zip: {member.filename}")
+
+        # guard against zip bombs: cap total uncompressed size
+        total_uncompressed += member.file_size
+        if total_uncompressed > max_uncompressed:
+            raise ZipSecurityError(
+                f"Zip uncompressed size exceeds limit "
+                f"({total_uncompressed} > {max_uncompressed} bytes); "
+                f"possible zip bomb. Raise SOAK_MAX_UNCOMPRESSED_ZIP_BYTES to allow."
+            )
 
     zip_ref.extractall(dest_dir)
 

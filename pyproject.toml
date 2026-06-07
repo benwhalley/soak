@@ -55,6 +55,9 @@ dependencies = [
     "trafilatura>=1.12",
     "docling>=2.0.0",
     "extract-msg>=0.48",
+    # direct dep (not just transitive via docling): openpyxl only hardens its XML
+    # parsing against XXE when defusedxml is importable, so we pin it explicitly.
+    "defusedxml>=0.7.1",
 ]
 
 [project.optional-dependencies]
